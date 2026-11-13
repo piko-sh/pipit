@@ -110,7 +110,6 @@ func (runner *GoRunner) Run(parent context.Context, spec BenchSpec, mode RunMode
 
 // build compiles the benchmark's go directory to binaryPath with the shared GOCACHE.
 //
-// Takes parent (context.Context) which bounds the build.
 // Takes spec (BenchSpec) which names the benchmark.
 // Takes mode (RunMode) which is recorded in a failed result.
 // Takes benchmarkDir (string) which holds the go directory.

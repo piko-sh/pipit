@@ -71,7 +71,9 @@ func (c *Compiler) RegisterPackageLevelVarsFromDecls(ctx context.Context, decls 
 //
 // Returns error when registration or body compilation fails.
 func (c *Compiler) TwoPassCompileFuncs(ctx context.Context, files []*ast.File, packageLabel string) error {
+	c.noteUnsafePointerExpressions()
 	c.runtimePackageName = runtimePackageName(files, packageLabel)
+	unparenthesiseTargets(files)
 	entries, err := c.registerFunctionDecls(ctx, files)
 	if err != nil {
 		return c.wrapCompileError(ctx, err, packageLabel)
@@ -79,6 +81,7 @@ func (c *Compiler) TwoPassCompileFuncs(ctx context.Context, files []*ast.File, p
 	if err := c.compileFunctionBodies(ctx, entries); err != nil {
 		return c.wrapCompileError(ctx, err, packageLabel)
 	}
+	c.compileReceiverInstances(ctx)
 	return nil
 }
 
@@ -112,8 +115,8 @@ func (c *Compiler) registerFunctionDecls(ctx context.Context, files []*ast.File)
 //
 // Takes entries ([]functionDeclEntry) which are the registered functions.
 //
-// Returns error which joins the overflows, preceded by any other failure that stopped
-// the compile.
+// Returns error which joins the overflows, preceded by any other failure that stopped the
+// compile.
 func (c *Compiler) compileFunctionBodies(ctx context.Context, entries []functionDeclEntry) error {
 	var overflows []error
 	omitted := 0
@@ -177,8 +180,13 @@ func (c *Compiler) compileVariableInit(ctx context.Context, files []*ast.File) (
 	if len(c.globalVariables) == 0 {
 		return nil, nil
 	}
+	unparenthesiseTargets(files)
 
 	initFunction := &program.CompiledFunction{Name: "<varinit>"}
+	savedRetypes := c.namedRetypes
+	c.namedRetypes = nil
+	c.notePackageVariableRetypes(files)
+	defer func() { c.namedRetypes = savedRetypes }()
 	savedFunction := c.Function
 	c.Function = initFunction
 	c.Scopes.PushScope()
@@ -196,6 +204,7 @@ func (c *Compiler) compileVariableInit(ctx context.Context, files []*ast.File) (
 	if err != nil {
 		return nil, err
 	}
+	c.compileReceiverInstances(ctx)
 	return initFunction, nil
 }
 
@@ -368,8 +377,8 @@ func stubUnspecialisedGeneric(compiledFunction *program.CompiledFunction, cause 
 	}
 	compiledFunction.NumRegisters[isa.RegisterString] = max(compiledFunction.NumRegisters[isa.RegisterString], 1)
 	compiledFunction.NumRegisters[isa.RegisterGeneral] = max(compiledFunction.NumRegisters[isa.RegisterGeneral], 1)
-	program.EmitWide(compiledFunction, isa.OpLoadStringConst, 0, message)
-	program.Emit(compiledFunction, isa.OpDrillTier1, uint8(isa.SubOpMoveStringToGeneral), 0, 0)
+	program.EmitWide(compiledFunction, isa.OpLoadStringConstant, 0, message)
+	program.Emit(compiledFunction, isa.OpDrillTier1, uint8(isa.SubOpBoxString), 0, 0)
 	program.Emit(compiledFunction, isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Panic), 0)
 	syncStubSourceMap(compiledFunction)
 }

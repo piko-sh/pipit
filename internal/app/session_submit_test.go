@@ -54,7 +54,7 @@ func TestSessionEnforcesImportPolicyBeforeExecution(t *testing.T) {
 				"math": {"Value": reflect.ValueOf(42)},
 				"os":   {"Value": reflect.ValueOf(42)},
 			})
-			symbols.SynthesiseAll()
+			symbols.SynthesiseAll(t.Context())
 			service.UseSymbols(symbols)
 			session := service.NewSession()
 			_, err := session.Submit(t.Context(), tt.code+"\nvar value = func() int { println(42); return 1 }()")

@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +16,11 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxhost_test
 
 import (
-	"context"
 	"crypto/sha256"
 	"errors"
 	"io"
@@ -54,17 +53,17 @@ func TestIsolatedEmbeddingNative(t *testing.T) {
 	config.Imports = []string{"math"}
 	config.Tenant = "native-test"
 	config.StateDirectory = privateStateDirectory(t)
-	worker, err := sandboxhost.NewIsolatedWorker(context.Background(), config)
+	worker, err := sandboxhost.NewIsolatedWorker(t.Context(), config)
 	if worker != nil {
-		defer worker.Close()
+		defer worker.Close(t.Context())
 	}
 	require.NoError(t, err)
 	config.Imports[0] = "os"
-	result, err := worker.Eval("import \"math\"\nmath.Sqrt(49)")
+	result, err := worker.Eval(t.Context(), "import \"math\"\nmath.Sqrt(49)")
 	if err != nil || string(result.Value) != "7" {
 		require.Failf(t, "the native worker returns 7", "result=%+v error=%v diagnostics=%s", result, err, worker.Diagnostics())
 	}
-	_, err = worker.Eval("1")
+	_, err = worker.Eval(t.Context(), "1")
 	require.ErrorIs(t, err, sandboxhost.ErrIsolatedUsed, "native worker was reused")
 	sessionConfig := config
 	sessionConfig.Imports = []string{"math"}
@@ -76,9 +75,9 @@ func TestIsolatedEmbeddingNative(t *testing.T) {
 	assertLaunchRecordsClean(t, config.StateDirectory)
 	config.Imports = nil
 	config.LinuxCgroupParent = t.TempDir()
-	unavailable, err := sandboxhost.NewIsolatedWorker(context.Background(), config)
+	unavailable, err := sandboxhost.NewIsolatedWorker(t.Context(), config)
 	if unavailable != nil {
-		defer unavailable.Close()
+		defer unavailable.Close(t.Context())
 	}
 	require.ErrorIs(t, err, sandboxhost.ErrIsolatedUnavailable, "a missing cgroup boundary fails closed")
 }

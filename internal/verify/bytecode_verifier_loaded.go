@@ -32,7 +32,7 @@ import (
 // Loaded bytecode is untrusted input, so this runs whenever bytecode is loaded, whatever
 // the post-compile verification setting.
 //
-// Takes cfs (*program.CompiledFileSet) which was just decoded; nil passes.
+// Takes cfs (*program.CompiledFileSet) which was just decoded. Nil passes.
 //
 // Returns an error wrapping fault.ErrBytecodeVerification, ErrRegisterOperandOutOfRange
 // or ErrCallSiteOutOfRange when any reachable function fails, or nil.
@@ -51,7 +51,7 @@ func VerifyLoadedFileSet(ctx context.Context, cfs *program.CompiledFileSet) erro
 		if report.HasErrors() {
 			return fmt.Errorf("loaded %w:\n%w", fault.ErrBytecodeVerification, report.Err())
 		}
-		if err := VerifyOperandBounds(root); err != nil {
+		if err := VerifyOperandBounds(ctx, root); err != nil {
 			return fmt.Errorf("loaded bytecode failed verification: %w", err)
 		}
 	}

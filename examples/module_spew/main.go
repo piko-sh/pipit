@@ -74,7 +74,7 @@ func main() {
 	out := spew.Sdump(order.Customer.Address)
 	fmt.Print(out)
 
-	fmt.Println("\n== spew.Printf %#+v ==")
+	fmt.Printf("\n== spew.Printf %s ==\n", "%#+v")
 	spew.Printf("order = %#+v\n", order.Items)
 
 	fmt.Println("\n== Configured: MaxDepth=1 hides the nested struct ==")

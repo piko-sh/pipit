@@ -1,0 +1,97 @@
+; pkasm - pipit bytecode assembly
+; dispatch: A assembly, S in-loop shim call to Go, X dedicated exit to Go, G generic exit to Go
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int64=5 general=2
+;   dispatch:  asm=11 shim=8 exit=0 go=2
+;   params:    (none)
+;   returns:   (int64)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=-9223372036854775808  [2]=-9223372036854775807  [3]=-9223372036854775806  [4]=2
+
+0000 S 0:MAKE_CLOSURE                                         0   1   0    ; closure (func 1)
+0001 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0002 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0003 S 1:RESET_SHARED_CELL                                  139   1   0
+0004 S 1:SET_SHARED_CELL                                    140   1   0
+0005 S 1:SET_SHARED_CELL                                    140   2   0
+0006 S 1:SET_SHARED_CELL                                    140   0   0
+0007 S 0:MAKE_CLOSURE                                         1   2   0    ; closure (func 2)
+0008 G 1:CALL_NATIVE                                        130   0   0    ; call native general[0] (site 0)
+0009 S 2:SYNCHRONISE_CLOSURE_CAPTURED_VARIABLES               0  15   1
+0010 A 1:MOVE_INT64                                          35   3   1
+0011 A 0:LOAD_INT64_CONSTANT                                  1   1   0    ; ints[1] = -9223372036854775808
+0012 S 1:SET_SHARED_CELL                                    140   1   0
+0013 A 1:MOVE_INT64                                          35   1   3
+0014 A 1:EQUAL_INT64_CONSTANT_THEN_JUMP_IF_FALSE            124   1   2
+0015   0:EXTENSION                                            2   0   0
+0016 A 0:LOAD_INT64_CONSTANT                                  3   3   0    ; ints[3] = -9223372036854775806
+0017 G 2:PANIC_RANGE_FUNCTION_CONTINUED_INT64                 0  18   3
+0018 A 1:EQUAL_INT64_CONSTANT_THEN_JUMP_IF_FALSE            124   1   4
+0019   0:EXTENSION                                            2   0   0
+0020 A 1:MOVE_INT64                                          35   0   2
+0021 A 2:RETURN                                               0  10   1    ; 1 values
+0022 A 2:RETURN                                               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int64=2 general=1 bool=2
+;   dispatch:  asm=21 shim=0 exit=0 go=0
+;   params:    (general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0001 A 1:CALL                                               128   0   0    ; call closure general[0] (site 0)
+0002 A 2:JUMP_IF_TRUE_BOOL                                    0  21   0
+0003   0:EXTENSION                                            1   0   0
+0004 A 3:RETURN_VOID                                          0   0   1
+0005 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0006 A 1:CALL                                               128   1   0    ; call closure general[0] (site 1)
+0007 A 2:JUMP_IF_TRUE_BOOL                                    0  21   0
+0008   0:EXTENSION                                            1   0   0
+0009 A 3:RETURN_VOID                                          0   0   1
+0010 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0011 A 1:CALL                                               128   2   0    ; call closure general[0] (site 2)
+0012 A 2:JUMP_IF_TRUE_BOOL                                    0  21   0
+0013   0:EXTENSION                                            1   0   0
+0014 A 3:RETURN_VOID                                          0   0   1
+0015 A 1:LOAD_INT64_IMMEDIATE                                75   0   3    ; ints[0] = 3
+0016 A 1:CALL                                               128   3   0    ; call closure general[0] (site 3)
+0017 A 2:JUMP_IF_TRUE_BOOL                                    0  21   0
+0018   0:EXTENSION                                            1   0   0
+0019 A 3:RETURN_VOID                                          0   0   1
+0020 A 1:LOAD_INT64_IMMEDIATE                                75   0   4    ; ints[0] = 4
+0021 A 1:CALL                                               128   4   0    ; call closure general[0] (site 4)
+0022 A 2:JUMP_IF_TRUE_BOOL                                    0  21   0
+0023   0:EXTENSION                                            1   0   0
+0024 A 3:RETURN_VOID                                          0   0   1
+0025 A 3:RETURN_VOID                                          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function <yield>
+;   registers: int64=3 bool=1
+;   dispatch:  asm=8 shim=3 exit=0 go=1
+;   params:    (int64)
+;   returns:   (bool)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=-9223372036854775807  [1]=0
+
+0000 A 0:GET_CAPTURED_VARIABLE                                1   0   0
+0001 G 2:PANIC_RANGE_FUNCTION_CONTINUED_INT64                 0  18   1
+0002 A 0:LOAD_INT64_CONSTANT                                  1   0   0    ; ints[1] = -9223372036854775807
+0003 S 0:SET_CAPTURED_VARIABLE                                1   0   0
+0004 A 0:GET_CAPTURED_VARIABLE                                1   2   0
+0005 A 0:ADD_INT64                                            2   1   0
+0006 S 0:SET_CAPTURED_VARIABLE                                2   2   0
+0007 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0008 S 0:SET_CAPTURED_VARIABLE                                1   0   0
+0009 A 1:LOAD_BOOL_IMMEDIATE_AS_INT64                        76   1   1    ; ints[1] = true
+0010 A 1:CONVERT_INT64_TO_BOOL                               54   0   1
+0011 A 2:RETURN                                               0  10   1    ; 1 values

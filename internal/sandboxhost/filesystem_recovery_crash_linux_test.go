@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxhost_test
 
@@ -93,10 +93,10 @@ func TestPublicFilesystemRecoveryClaimantChild(t *testing.T) {
 	}
 	var config sandboxhost.IsolatedFilesystemConfig
 	require.NoError(t, json.Unmarshal([]byte(encoded), &config))
-	recovery, err := sandboxhost.NewIsolatedFilesystemRecovery(context.Background(), config)
+	recovery, err := sandboxhost.NewIsolatedFilesystemRecovery(t.Context(), config)
 	require.NoError(t, err)
 	defer recovery.Close()
-	require.Error(t, recovery.Recover(context.Background()), "recovery fails while a cleanup phase is blocked")
+	require.Error(t, recovery.Recover(t.Context()), "recovery fails while a cleanup phase is blocked")
 	require.Error(t, recovery.Close(), "a failed replacement recovery keeps its ownership")
 	fmt.Println("ready")
 	var input [1]byte

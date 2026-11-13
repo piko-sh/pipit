@@ -154,8 +154,8 @@ func TestInlinerReadOnlyParamElidesPreCopy(t *testing.T) {
 	t.Parallel()
 	callee := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			isa.NewInstruction(isa.OpAddInt, 2, 0, 1),
-			isa.NewInstruction(isa.OpDrillTier1, byte(isa.SubOpMoveInt), 0, 2),
+			isa.NewInstruction(isa.OpAddInt64, 2, 0, 1),
+			isa.NewInstruction(isa.OpDrillTier1, byte(isa.SubOpMoveInt64), 0, 2),
 			isa.NewInstruction(
 				isa.OpDrillTier1,
 				byte(isa.SubOpDrillTier2),
@@ -163,55 +163,55 @@ func TestInlinerReadOnlyParamElidesPreCopy(t *testing.T) {
 				1,
 			),
 		},
-		ParameterKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterInt},
-		ResultKinds:    []isa.RegisterKind{isa.RegisterInt},
-		NumRegisters:   [isa.NumRegisterKinds]uint32{isa.RegisterInt: 3},
+		ParameterKinds: []isa.RegisterKind{isa.RegisterInt64, isa.RegisterInt64},
+		ResultKinds:    []isa.RegisterKind{isa.RegisterInt64},
+		NumRegisters:   [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 3},
 	}
 	caller := &program.CompiledFunction{
 		Body: []isa.Instruction{
 			makeOpCallSlot(0),
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
 		},
 		CallSites: []program.CallSite{
 			{
 				CachedCallee: callee,
 				Arguments: []program.VarLocation{
-					{Register: 5, Kind: isa.RegisterInt},
-					{Register: 6, Kind: isa.RegisterInt},
+					{Register: 5, Kind: isa.RegisterInt64},
+					{Register: 6, Kind: isa.RegisterInt64},
 				},
-				Returns: []program.VarLocation{{Register: 7, Kind: isa.RegisterInt}},
+				Returns: []program.VarLocation{{Register: 7, Kind: isa.RegisterInt64}},
 			},
 		},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 8},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 8},
 	}
 	result := inline.TrySpliceCall(caller, 0)
 	require.True(t, result.Spliced, "the splice succeeds: %v", result.Reason)
 
-	require.Equal(t, uint32(10), caller.NumRegisters[isa.RegisterInt])
+	require.Equal(t, uint32(10), caller.NumRegisters[isa.RegisterInt64])
 
 	var addInt isa.Instruction
 	for _, instr := range caller.Body {
-		if instr.Op == isa.OpAddInt {
+		if instr.Op == isa.OpAddInt64 {
 			addInt = instr
 			break
 		}
 	}
-	require.Equal(t, isa.OpAddInt, addInt.Op, "the inlined body holds an ADD_INT: %+v", caller.Body)
+	require.Equal(t, isa.OpAddInt64, addInt.Op, "the inlined body holds an ADD_INT64: %+v", caller.Body)
 	require.Equal(t, uint8(9), addInt.A)
-	require.Equal(t, uint8(8), addInt.B)
-	require.Equal(t, uint8(6), addInt.C, "ADD_INT reads argument register 6 directly for callee slot 1, with no pre-copy")
+	require.Equal(t, uint8(7), addInt.B, "callee slot 0 is both the first parameter and the result, so its copy lives in the result's register")
+	require.Equal(t, uint8(6), addInt.C, "ADD_INT64 reads argument register 6 directly for callee slot 1, with no pre-copy")
 
 	preCopyCount := 0
 	for _, instr := range caller.Body {
-		if instr.Op == isa.OpDrillTier1 && isa.SubOpcode(instr.A) == isa.SubOpMoveInt &&
-			instr.B == 8 && instr.C == 5 {
+		if instr.Op == isa.OpDrillTier1 && isa.SubOpcode(instr.A) == isa.SubOpMoveInt64 &&
+			instr.B == 7 && instr.C == 5 {
 			preCopyCount++
 		}
 	}
-	require.Equal(t, 1, preCopyCount, "one pre-copy MOVE_INT 8 <- 5, and none for the read-only slot 1: %+v", caller.Body)
+	require.Equal(t, 1, preCopyCount, "one pre-copy MOVE_INT64 7 <- 5, and none for the read-only slot 1: %+v", caller.Body)
 
 	for _, instr := range caller.Body {
-		if instr.Op == isa.OpDrillTier1 && isa.SubOpcode(instr.A) == isa.SubOpMoveInt {
+		if instr.Op == isa.OpDrillTier1 && isa.SubOpcode(instr.A) == isa.SubOpMoveInt64 {
 			require.NotEqual(t, uint8(6), instr.C, "the read-only parameter 1 needs no pre-copy from argument register 6")
 		}
 	}
@@ -238,7 +238,7 @@ func TestInlinerWritesThroughParamForceFreshSlot(t *testing.T) {
 	caller := &program.CompiledFunction{
 		Body: []isa.Instruction{
 			makeOpCallSlot(0),
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
 		},
 		CallSites: []program.CallSite{
 			{
@@ -278,4 +278,34 @@ func TestInlinerWritesThroughParamForceFreshSlot(t *testing.T) {
 	require.Equal(t, uint8(4), setField.A, "the inlined SET_FIELD writes the fresh slot 4; 3 would mutate the caller's struct")
 
 	require.Equal(t, uint8(2), setField.C, "the inlined SET_FIELD reads the caller's argument 2 directly, with no pre-copy")
+}
+
+func TestInlinerRemapsADynamicBankOperand(t *testing.T) {
+	t.Parallel()
+	const source = `package main
+
+type Counter int
+
+func (c *Counter) Set(v int) { *c = Counter(v) }
+
+type Label string
+
+func (l *Label) Set(v string) { *l = Label(v) }
+
+func entrypoint() int {
+	c := Counter(1000)
+	c.Set(7)
+	l := Label("before")
+	l.Set("after")
+	return int(c)*1000 + len(string(l))
+}
+`
+	service := app.NewService()
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
+	require.NoError(t, err)
+	result, err := service.ExecuteEntrypoint(t.Context(), cfs, "entrypoint")
+	require.NoError(t, err)
+	require.Equal(t, "7005", fmt.Sprint(result),
+		"the inlined Set boxes its argument with BOX_AS_TYPE, whose source bank is chosen by a kind marker; "+
+			"anything else means the source register was left as the callee's slot instead of the caller's argument")
 }

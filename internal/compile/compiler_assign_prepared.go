@@ -69,12 +69,15 @@ type preparedTarget struct {
 // Takes leftHandSide (ast.Expr) which is the target.
 // Takes rightHandSide (ast.Expr) which is the value.
 //
-// Returns true when the target is not a plain identifier and one side contains a call or
-// a channel receive.
+// Returns true when the target has an operand that is not a plain name and one side
+// contains a call or a channel receive.
 func (c *Compiler) assignmentNeedsOrdering(leftHandSide, rightHandSide ast.Expr) bool {
 	switch leftHandSide.(type) {
 	case *ast.IndexExpr, *ast.SelectorExpr, *ast.StarExpr:
 	default:
+		return false
+	}
+	if targetOperandsAreNames(leftHandSide) {
 		return false
 	}
 	return c.exprHasCallOrReceive(leftHandSide) || c.exprHasCallOrReceive(rightHandSide)
@@ -305,7 +308,7 @@ func (c *Compiler) addressOfAssignField(ctx context.Context, expr *ast.SelectorE
 func (c *Compiler) emitStableAddress(ctx context.Context, location program.VarLocation) program.VarLocation {
 	c.boxToGeneral(ctx, &location)
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpAddr, dest, location.Register, engine.AddrSourceStable)
+	program.Emit(c.Function, isa.OpAddress, dest, location.Register, engine.AddrSourceStable)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}
 }
 
@@ -331,6 +334,36 @@ func (c *Compiler) emitPreparedStore(ctx context.Context, target preparedTarget,
 		return program.VarLocation{}, err
 	}
 	return value, nil
+}
+
+// targetOperandsAreNames reports whether an assignment target's operands are identifiers
+// or literals, which evaluate without a fault and without running code.
+//
+// Takes target (ast.Expr) which is an index, selector or dereference target.
+//
+// Returns true when its collection or receiver is an identifier and its index, if it has
+// one, is an identifier or a literal.
+func targetOperandsAreNames(target ast.Expr) bool {
+	switch expression := target.(type) {
+	case *ast.IndexExpr:
+		if _, named := expression.X.(*ast.Ident); !named {
+			return false
+		}
+		switch expression.Index.(type) {
+		case *ast.Ident, *ast.BasicLit:
+			return true
+		default:
+			return false
+		}
+	case *ast.SelectorExpr:
+		_, named := expression.X.(*ast.Ident)
+		return named
+	case *ast.StarExpr:
+		_, named := expression.X.(*ast.Ident)
+		return named
+	default:
+		return false
+	}
 }
 
 // isReferenceLikeType reports whether copying a value of t copies only a reference or

@@ -61,9 +61,9 @@ func verifyInPlaceAppendSafety(compiledFunction *program.CompiledFunction, analy
 	for index := range compiledFunction.Body {
 		instruction := compiledFunction.Body[index]
 		switch instruction.Op {
-		case isa.OpAppendByteFastInPlace:
+		case isa.OpAppendByteInPlace:
 			if !inPlaceAppendSiteIsSafe(compiledFunction, index, instruction.B, jumpTargets) {
-				compiledFunction.Body[index] = isa.NewInstruction(isa.OpAppendByteFast, instruction.A, instruction.B, instruction.C)
+				compiledFunction.Body[index] = isa.NewInstruction(isa.OpAppendByte, instruction.A, instruction.B, instruction.C)
 			}
 		case isa.OpAppendInPlace:
 			if !inPlaceAppendSiteIsSafe(compiledFunction, index, instruction.B, jumpTargets) {
@@ -89,8 +89,8 @@ func verifyInPlaceAppendSafety(compiledFunction *program.CompiledFunction, analy
 // Takes instr (isa.Instruction) which is the instruction at that PC.
 // Takes jumpTargets (map[int]bool) which marks branch destinations.
 func maybeDemoteTier1InPlaceAppend(compiledFunction *program.CompiledFunction, index int, instr isa.Instruction, jumpTargets map[int]bool) {
-	if isa.SubOpcode(instr.A) == isa.SubOpAppendUintInPlace && !inPlaceAppendSiteIsSafe(compiledFunction, index, instr.C, jumpTargets) {
-		compiledFunction.Body[index] = isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpAppendUint), instr.B, instr.C)
+	if isa.SubOpcode(instr.A) == isa.SubOpAppendUint64WideInPlace && !inPlaceAppendSiteIsSafe(compiledFunction, index, instr.C, jumpTargets) {
+		compiledFunction.Body[index] = isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpAppendUint64Wide), instr.B, instr.C)
 	}
 }
 

@@ -23,6 +23,7 @@ import (
 	"slices"
 
 	"pipit.sh/pipit/internal/fault"
+	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/policy"
 )
 
@@ -299,4 +300,32 @@ func callGraphHasCycle(adjacency [][]uint16) bool {
 	}
 
 	return false
+}
+
+// CalleeUsesScalarBanksOnly reports whether every parameter and result uses a scalar
+// bank.
+//
+// Takes callee (*CompiledFunction) which carries the compiled parameter and result kinds.
+//
+// Returns true when every entry of ParameterKinds and ResultKinds is a scalar typed kind.
+func CalleeUsesScalarBanksOnly(callee *CompiledFunction) bool {
+	leavesTheScalarBanks := func(kind isa.RegisterKind) bool {
+		return kind == isa.RegisterGeneral || isa.IsTypedSliceKind(kind)
+	}
+	return !slices.ContainsFunc(callee.ParameterKinds, leavesTheScalarBanks) &&
+		!slices.ContainsFunc(callee.ResultKinds, leavesTheScalarBanks)
+}
+
+// DirectCallSubOpcode picks between isa.SubOpCall and isa.SubOpCallScalar for a call
+// whose callee is known when the program is compiled.
+//
+// Takes site (*CallSite) which is the populated call site.
+// Takes callee (*CompiledFunction) which is the resolved callee.
+//
+// Returns isa.SubOpcode which is the sub-opcode to emit.
+func DirectCallSubOpcode(site *CallSite, callee *CompiledFunction) isa.SubOpcode {
+	if callee == nil || callee.IsVariadic || len(site.LinkedTypeArgs) > 0 || !CalleeUsesScalarBanksOnly(callee) {
+		return isa.SubOpCall
+	}
+	return isa.SubOpCallScalar
 }

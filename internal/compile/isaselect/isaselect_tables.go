@@ -51,28 +51,28 @@ var (
 	// CompoundSliceGetOps carries the read-half opcodes for compound typed-slice
 	// assignments.
 	CompoundSliceGetOps = CompoundSliceOps{
-		DirectIntOpcode: isa.OpSliceGetIntDirect,
+		DirectIntOpcode: isa.OpGetSliceInt64Element,
 		Tier1SubOp:      typedSliceDirectGetTier1SubOp,
 		PerKind: [isa.NumRegisterKinds]isa.Opcode{
-			isa.RegisterInt:    isa.OpSliceGetInt,
-			isa.RegisterFloat:  isa.OpSliceGetFloat,
-			isa.RegisterString: isa.OpSliceGetString,
-			isa.RegisterUint:   isa.OpSliceGetUint,
-			isa.RegisterBool:   isa.OpSliceGetBool,
+			isa.RegisterInt64:   isa.OpGetElementInt64,
+			isa.RegisterFloat64: isa.OpGetElementFloat64,
+			isa.RegisterString:  isa.OpGetElementString,
+			isa.RegisterUint64:  isa.OpGetElementUint64,
+			isa.RegisterBool:    isa.OpGetElementBool,
 		},
 	}
 
 	// CompoundSliceSetOps carries the write-half opcodes for compound typed-slice
 	// assignments.
 	CompoundSliceSetOps = CompoundSliceOps{
-		DirectIntOpcode: isa.OpSliceSetIntDirect,
+		DirectIntOpcode: isa.OpSetSliceInt64Element,
 		Tier1SubOp:      typedSliceDirectSetTier1SubOp,
 		PerKind: [isa.NumRegisterKinds]isa.Opcode{
-			isa.RegisterInt:    isa.OpSliceSetInt,
-			isa.RegisterFloat:  isa.OpSliceSetFloat,
-			isa.RegisterString: isa.OpSliceSetString,
-			isa.RegisterUint:   isa.OpSliceSetUint,
-			isa.RegisterBool:   isa.OpSliceSetBool,
+			isa.RegisterInt64:   isa.OpSetElementInt64,
+			isa.RegisterFloat64: isa.OpSetElementFloat64,
+			isa.RegisterString:  isa.OpSetElementString,
+			isa.RegisterUint64:  isa.OpSetElementUint64,
+			isa.RegisterBool:    isa.OpSetElementBool,
 		},
 	}
 )
@@ -100,16 +100,16 @@ type structFieldSliceSubOpPair struct {
 // Returns the matching sub-op and true, or (0, false) for unsupported kinds.
 func TypedMakeSliceSubOp(kind isa.RegisterKind) (isa.SubOpcode, bool) {
 	switch kind {
-	case isa.RegisterSliceInt:
-		return isa.SubOpMakeSliceInt, true
-	case isa.RegisterSliceFloat:
-		return isa.SubOpMakeSliceFloat, true
+	case isa.RegisterSliceInt64:
+		return isa.SubOpMakeSliceInt64, true
+	case isa.RegisterSliceFloat64:
+		return isa.SubOpMakeSliceFloat64, true
 	case isa.RegisterSliceString:
 		return isa.SubOpMakeSliceString, true
 	case isa.RegisterSliceBool:
 		return isa.SubOpMakeSliceBool, true
-	case isa.RegisterSliceUint:
-		return isa.SubOpMakeSliceUint, true
+	case isa.RegisterSliceUint64:
+		return isa.SubOpMakeSliceUint64, true
 	case isa.RegisterSliceByte:
 		return isa.SubOpMakeSliceByte, true
 	default:
@@ -118,100 +118,100 @@ func TypedMakeSliceSubOp(kind isa.RegisterKind) (isa.SubOpcode, bool) {
 }
 
 // TypedSliceDirectLenSubOp maps a typed-slice register kind to the matching
-// subOpLenSlice<Kind>Direct opcode.
+// SubOpLenSlice<Kind> opcode.
 //
 // Takes kind (isa.RegisterKind) which is the typed-slice bank.
 //
 // Returns the matching sub-op and true, or (0, false) for unsupported kinds.
 func TypedSliceDirectLenSubOp(kind isa.RegisterKind) (isa.SubOpcode, bool) {
 	switch kind {
-	case isa.RegisterSliceInt:
-		return isa.SubOpLenSliceIntDirect, true
-	case isa.RegisterSliceFloat:
-		return isa.SubOpLenSliceFloatDirect, true
+	case isa.RegisterSliceInt64:
+		return isa.SubOpLengthSliceInt64, true
+	case isa.RegisterSliceFloat64:
+		return isa.SubOpLengthSliceFloat64, true
 	case isa.RegisterSliceString:
-		return isa.SubOpLenSliceStringDirect, true
+		return isa.SubOpLengthSliceString, true
 	case isa.RegisterSliceBool:
-		return isa.SubOpLenSliceBoolDirect, true
-	case isa.RegisterSliceUint:
-		return isa.SubOpLenSliceUintDirect, true
+		return isa.SubOpLengthSliceBool, true
+	case isa.RegisterSliceUint64:
+		return isa.SubOpLengthSliceUint64, true
 	case isa.RegisterSliceByte:
-		return isa.SubOpLenSliceByteDirect, true
+		return isa.SubOpLengthSliceByte, true
 	default:
 	}
 	return 0, false
 }
 
 // TypedSliceDirectCapSubOp maps a typed-slice register kind to the matching
-// subOpCapSlice<Kind>Direct opcode.
+// SubOpCapSlice<Kind> opcode.
 //
 // Takes kind (isa.RegisterKind) which is the typed-slice bank.
 //
 // Returns the matching sub-op and true, or (0, false) for unsupported kinds.
 func TypedSliceDirectCapSubOp(kind isa.RegisterKind) (isa.SubOpcode, bool) {
 	switch kind {
-	case isa.RegisterSliceInt:
-		return isa.SubOpCapSliceIntDirect, true
-	case isa.RegisterSliceFloat:
-		return isa.SubOpCapSliceFloatDirect, true
+	case isa.RegisterSliceInt64:
+		return isa.SubOpCapacitySliceInt64, true
+	case isa.RegisterSliceFloat64:
+		return isa.SubOpCapacitySliceFloat64, true
 	case isa.RegisterSliceString:
-		return isa.SubOpCapSliceStringDirect, true
+		return isa.SubOpCapacitySliceString, true
 	case isa.RegisterSliceBool:
-		return isa.SubOpCapSliceBoolDirect, true
-	case isa.RegisterSliceUint:
-		return isa.SubOpCapSliceUintDirect, true
+		return isa.SubOpCapacitySliceBool, true
+	case isa.RegisterSliceUint64:
+		return isa.SubOpCapacitySliceUint64, true
 	case isa.RegisterSliceByte:
-		return isa.SubOpCapSliceByteDirect, true
+		return isa.SubOpCapacitySliceByte, true
 	default:
 	}
 	return 0, false
 }
 
 // typedSliceDirectGetTier1SubOp maps a typed-slice register kind to the matching tier-1
-// subOpSliceGet<Kind>Direct opcode that reads an element from the typed bank without
+// SubOpGetSlice<Kind>Element opcode that reads an element from the typed bank without
 // entering reflect.
 //
 // Takes kind (isa.RegisterKind) which is the typed-slice bank.
 //
 // Returns the matching tier-1 sub-op and true, or (0, false) when kind has no tier-1
-// direct-get variant. isa.RegisterSliceInt uses a tier-0 opcode instead.
+// direct-get variant. isa.RegisterSliceInt64 uses a tier-0 opcode instead.
 func typedSliceDirectGetTier1SubOp(kind isa.RegisterKind) (isa.SubOpcode, bool) {
 	switch kind {
-	case isa.RegisterSliceFloat:
-		return isa.SubOpSliceGetFloatDirect, true
+	case isa.RegisterSliceFloat64:
+		return isa.SubOpGetSliceFloat64Element, true
 	case isa.RegisterSliceString:
-		return isa.SubOpSliceGetStringDirect, true
+		return isa.SubOpGetSliceStringElement, true
 	case isa.RegisterSliceBool:
-		return isa.SubOpSliceGetBoolDirect, true
-	case isa.RegisterSliceUint:
-		return isa.SubOpSliceGetUintDirect, true
+		return isa.SubOpGetSliceBoolElement, true
+	case isa.RegisterSliceUint64:
+		return isa.SubOpGetSliceUint64Element, true
 	case isa.RegisterSliceByte:
-		return isa.SubOpSliceGetByteDirect, true
+		return isa.SubOpGetSliceByteElement, true
 	default:
 	}
 	return 0, false
 }
 
 // typedSliceDirectSetTier1SubOp maps a typed-slice register kind to the matching tier-1
-// subOpSliceSet<Kind>Direct opcode that writes an element to the typed bank without
+// SubOpSetSlice<Kind>Element opcode that writes an element to the typed bank without
 // entering reflect.
 //
 // Takes kind (isa.RegisterKind) which is the typed-slice bank.
 //
 // Returns the matching tier-1 sub-op and true, or (0, false) when kind has no tier-1
-// direct-set variant. isa.RegisterSliceInt uses a tier-0 opcode instead.
+// direct-set variant. isa.RegisterSliceInt64 uses a tier-0 opcode instead.
 func typedSliceDirectSetTier1SubOp(kind isa.RegisterKind) (isa.SubOpcode, bool) {
 	switch kind {
-	case isa.RegisterSliceFloat:
-		return isa.SubOpSliceSetFloatDirect, true
+	case isa.RegisterSliceFloat64:
+		return isa.SubOpSetSliceFloat64Element, true
 	case isa.RegisterSliceString:
-		return isa.SubOpSliceSetStringDirect, true
+		return isa.SubOpSetSliceStringElement, true
 	case isa.RegisterSliceBool:
-		return isa.SubOpSliceSetBoolDirect, true
-	case isa.RegisterSliceUint:
-		return isa.SubOpSliceSetUintDirect, true
+		return isa.SubOpSetSliceBoolElement, true
+	case isa.RegisterSliceUint64:
+		return isa.SubOpSetSliceUint64Element, true
 	case isa.RegisterSliceByte:
-		return isa.SubOpSliceSetByteDirect, true
+		return isa.SubOpSetSliceByteElement, true
 	default:
 	}
 	return 0, false
@@ -225,16 +225,16 @@ func typedSliceDirectSetTier1SubOp(kind isa.RegisterKind) (isa.SubOpcode, bool) 
 // Returns the matching sub-op and true, or (0, false) for unsupported kinds.
 func PickGetStructFieldUnsafeSubOp(kind isa.RegisterKind) (isa.SubOpcode, bool) {
 	switch kind {
-	case isa.RegisterInt:
-		return isa.SubOpGetStructFieldInt, true
-	case isa.RegisterUint:
-		return isa.SubOpGetStructFieldUint, true
-	case isa.RegisterFloat:
-		return isa.SubOpGetStructFieldFloat, true
+	case isa.RegisterInt64:
+		return isa.SubOpGetStructFieldInt64Wide, true
+	case isa.RegisterUint64:
+		return isa.SubOpGetStructFieldUint64Wide, true
+	case isa.RegisterFloat64:
+		return isa.SubOpGetStructFieldFloat64Wide, true
 	case isa.RegisterBool:
-		return isa.SubOpGetStructFieldBool, true
+		return isa.SubOpGetStructFieldBoolWide, true
 	case isa.RegisterString:
-		return isa.SubOpGetStructFieldString, true
+		return isa.SubOpGetStructFieldStringWide, true
 	default:
 	}
 	return 0, false
@@ -248,16 +248,16 @@ func PickGetStructFieldUnsafeSubOp(kind isa.RegisterKind) (isa.SubOpcode, bool) 
 // Returns the matching sub-op and true, or (0, false) for unsupported kinds.
 func PickSetStructFieldUnsafeSubOp(kind isa.RegisterKind) (isa.SubOpcode, bool) {
 	switch kind {
-	case isa.RegisterInt:
-		return isa.SubOpSetStructFieldInt, true
-	case isa.RegisterUint:
-		return isa.SubOpSetStructFieldUint, true
-	case isa.RegisterFloat:
-		return isa.SubOpSetStructFieldFloat, true
+	case isa.RegisterInt64:
+		return isa.SubOpSetStructFieldInt64Wide, true
+	case isa.RegisterUint64:
+		return isa.SubOpSetStructFieldUint64Wide, true
+	case isa.RegisterFloat64:
+		return isa.SubOpSetStructFieldFloat64Wide, true
 	case isa.RegisterBool:
-		return isa.SubOpSetStructFieldBool, true
+		return isa.SubOpSetStructFieldBoolWide, true
 	case isa.RegisterString:
-		return isa.SubOpSetStructFieldString, true
+		return isa.SubOpSetStructFieldStringWide, true
 	default:
 	}
 	return 0, false
@@ -301,12 +301,12 @@ func PickSetStructFieldSliceSubOp(fieldType types.Type) (isa.SubOpcode, isa.Regi
 // Returns the matching opcode and true, or (0, false) for unsupported kinds.
 func PickGetStructFieldTier0Op(kind isa.RegisterKind) (isa.Opcode, bool) {
 	switch kind {
-	case isa.RegisterInt:
-		return isa.OpGetStructFieldIntT0, true
-	case isa.RegisterUint:
-		return isa.OpGetStructFieldUint, true
-	case isa.RegisterFloat:
-		return isa.OpGetStructFieldFloat, true
+	case isa.RegisterInt64:
+		return isa.OpGetStructFieldInt64, true
+	case isa.RegisterUint64:
+		return isa.OpGetStructFieldUint64, true
+	case isa.RegisterFloat64:
+		return isa.OpGetStructFieldFloat64, true
 	case isa.RegisterBool:
 		return isa.OpGetStructFieldBool, true
 	case isa.RegisterGeneral:
@@ -324,12 +324,12 @@ func PickGetStructFieldTier0Op(kind isa.RegisterKind) (isa.Opcode, bool) {
 // Returns the matching opcode and true, or (0, false) for unsupported kinds.
 func PickSetStructFieldTier0Op(kind isa.RegisterKind) (isa.Opcode, bool) {
 	switch kind {
-	case isa.RegisterInt:
-		return isa.OpSetStructFieldIntT0, true
-	case isa.RegisterUint:
-		return isa.OpSetStructFieldUint, true
-	case isa.RegisterFloat:
-		return isa.OpSetStructFieldFloat, true
+	case isa.RegisterInt64:
+		return isa.OpSetStructFieldInt64, true
+	case isa.RegisterUint64:
+		return isa.OpSetStructFieldUint64, true
+	case isa.RegisterFloat64:
+		return isa.OpSetStructFieldFloat64, true
 	case isa.RegisterBool:
 		return isa.OpSetStructFieldBool, true
 	case isa.RegisterGeneral:
@@ -349,11 +349,11 @@ func PickSetStructFieldTier0Op(kind isa.RegisterKind) (isa.Opcode, bool) {
 func RegisterKindForReflectKind(kind reflect.Kind) isa.RegisterKind {
 	switch kind {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return isa.RegisterInt
+		return isa.RegisterInt64
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return isa.RegisterUint
+		return isa.RegisterUint64
 	case reflect.Float32, reflect.Float64:
-		return isa.RegisterFloat
+		return isa.RegisterFloat64
 	case reflect.Bool:
 		return isa.RegisterBool
 	case reflect.String:
@@ -371,18 +371,18 @@ func RegisterKindForReflectKind(kind reflect.Kind) isa.RegisterKind {
 // Returns the direct sub-op and true, or (0, false) for unsupported kinds.
 func TypedDirectAppendSubOp(bank isa.RegisterKind) (isa.SubOpcode, bool) {
 	switch bank {
-	case isa.RegisterSliceInt:
-		return isa.SubOpAppendSliceIntDirect, true
-	case isa.RegisterSliceFloat:
-		return isa.SubOpAppendSliceFloatDirect, true
+	case isa.RegisterSliceInt64:
+		return isa.SubOpAppendSliceInt64, true
+	case isa.RegisterSliceFloat64:
+		return isa.SubOpAppendSliceFloat64, true
 	case isa.RegisterSliceString:
-		return isa.SubOpAppendSliceStringDirect, true
+		return isa.SubOpAppendSliceString, true
 	case isa.RegisterSliceBool:
-		return isa.SubOpAppendSliceBoolDirect, true
-	case isa.RegisterSliceUint:
-		return isa.SubOpAppendSliceUintDirect, true
+		return isa.SubOpAppendSliceBool, true
+	case isa.RegisterSliceUint64:
+		return isa.SubOpAppendSliceUint64, true
 	case isa.RegisterSliceByte:
-		return isa.SubOpAppendSliceByteDirect, true
+		return isa.SubOpAppendSliceByte, true
 	default:
 	}
 	return 0, false
@@ -396,18 +396,18 @@ func TypedDirectAppendSubOp(bank isa.RegisterKind) (isa.SubOpcode, bool) {
 // Returns the matching sub-op and true, or (0, false) for unsupported kinds.
 func TypedSliceDirectCopySubOp(kind isa.RegisterKind) (isa.SubOpcode, bool) {
 	switch kind {
-	case isa.RegisterSliceInt:
-		return isa.SubOpCopySliceIntDirect, true
-	case isa.RegisterSliceFloat:
-		return isa.SubOpCopySliceFloatDirect, true
+	case isa.RegisterSliceInt64:
+		return isa.SubOpCopySliceInt64, true
+	case isa.RegisterSliceFloat64:
+		return isa.SubOpCopySliceFloat64, true
 	case isa.RegisterSliceString:
-		return isa.SubOpCopySliceStringDirect, true
+		return isa.SubOpCopySliceString, true
 	case isa.RegisterSliceBool:
-		return isa.SubOpCopySliceBoolDirect, true
-	case isa.RegisterSliceUint:
-		return isa.SubOpCopySliceUintDirect, true
+		return isa.SubOpCopySliceBool, true
+	case isa.RegisterSliceUint64:
+		return isa.SubOpCopySliceUint64, true
 	case isa.RegisterSliceByte:
-		return isa.SubOpCopySliceByteDirect, true
+		return isa.SubOpCopySliceByte, true
 	default:
 	}
 	return 0, false
@@ -421,18 +421,36 @@ func TypedSliceDirectCopySubOp(kind isa.RegisterKind) (isa.SubOpcode, bool) {
 // Returns the direct sub-op and true, or (0, false) for unsupported kinds.
 func TypedSliceDirectSliceSliceSubOp(kind isa.RegisterKind) (isa.SubOpcode, bool) {
 	switch kind {
-	case isa.RegisterSliceInt:
-		return isa.SubOpSliceSliceIntDirect, true
-	case isa.RegisterSliceFloat:
-		return isa.SubOpSliceSliceFloatDirect, true
+	case isa.RegisterSliceInt64:
+		return isa.SubOpSliceSliceInt64, true
+	case isa.RegisterSliceFloat64:
+		return isa.SubOpSliceSliceFloat64, true
 	case isa.RegisterSliceString:
-		return isa.SubOpSliceSliceStringDirect, true
+		return isa.SubOpSliceSliceString, true
 	case isa.RegisterSliceBool:
-		return isa.SubOpSliceSliceBoolDirect, true
-	case isa.RegisterSliceUint:
-		return isa.SubOpSliceSliceUintDirect, true
+		return isa.SubOpSliceSliceBool, true
+	case isa.RegisterSliceUint64:
+		return isa.SubOpSliceSliceUint64, true
 	case isa.RegisterSliceByte:
-		return isa.SubOpSliceByteSlice, true
+		return isa.SubOpSliceSliceByte, true
+	default:
+	}
+	return 0, false
+}
+
+// PickSliceIndexStructFieldStoreOp returns the fused opcode that stores into a field of a
+// slice element, for the leaf register kinds that have one.
+//
+// Takes kind (isa.RegisterKind) which is the leaf field's register kind.
+//
+// Returns isa.Opcode which is the fused store opcode, or zero.
+// Returns bool which is true when a fused store exists for kind.
+func PickSliceIndexStructFieldStoreOp(kind isa.RegisterKind) (isa.Opcode, bool) {
+	switch kind {
+	case isa.RegisterInt64:
+		return isa.OpSetElementFieldInt64, true
+	case isa.RegisterFloat64:
+		return isa.OpSetElementFieldFloat64, true
 	default:
 	}
 	return 0, false
@@ -446,16 +464,16 @@ func TypedSliceDirectSliceSliceSubOp(kind isa.RegisterKind) (isa.SubOpcode, bool
 // Returns the opcode and true, or (0, false) for unsupported kinds.
 func PickSliceIndexStructFieldOp(kind isa.RegisterKind) (isa.Opcode, bool) {
 	switch kind {
-	case isa.RegisterInt:
-		return isa.OpSliceIndexStructFieldInt, true
-	case isa.RegisterUint:
-		return isa.OpSliceIndexStructFieldUint, true
-	case isa.RegisterFloat:
-		return isa.OpSliceIndexStructFieldFloat, true
+	case isa.RegisterInt64:
+		return isa.OpGetElementFieldInt64, true
+	case isa.RegisterUint64:
+		return isa.OpGetElementFieldUint64, true
+	case isa.RegisterFloat64:
+		return isa.OpGetElementFieldFloat64, true
 	case isa.RegisterBool:
-		return isa.OpSliceIndexStructFieldBool, true
+		return isa.OpGetElementFieldBool, true
 	case isa.RegisterString:
-		return isa.OpSliceIndexStructFieldString, true
+		return isa.OpGetElementFieldString, true
 	default:
 	}
 	return 0, false
@@ -469,7 +487,7 @@ func PickSliceIndexStructFieldOp(kind isa.RegisterKind) (isa.Opcode, bool) {
 // Returns true for int, uint, float, bool, string, and general banks.
 func StructFieldFastPathKindEnabled(kind isa.RegisterKind) bool {
 	switch kind {
-	case isa.RegisterInt, isa.RegisterUint, isa.RegisterFloat, isa.RegisterBool, isa.RegisterString,
+	case isa.RegisterInt64, isa.RegisterUint64, isa.RegisterFloat64, isa.RegisterBool, isa.RegisterString,
 		isa.RegisterGeneral:
 		return true
 	default:
@@ -486,14 +504,14 @@ func StructFieldFastPathKindEnabled(kind isa.RegisterKind) bool {
 // Returns the chosen sub-opcode, or 0 when there is no fused variant.
 func PickIncDecStructFieldSubOp(fieldKind isa.RegisterKind, operatorToken token.Token) isa.SubOpcode {
 	switch {
-	case fieldKind == isa.RegisterInt && operatorToken == token.INC:
-		return isa.SubOpIncStructFieldInt
-	case fieldKind == isa.RegisterInt && operatorToken == token.DEC:
-		return isa.SubOpDecStructFieldInt
-	case fieldKind == isa.RegisterUint && operatorToken == token.INC:
-		return isa.SubOpIncStructFieldUint
-	case fieldKind == isa.RegisterUint && operatorToken == token.DEC:
-		return isa.SubOpDecStructFieldUint
+	case fieldKind == isa.RegisterInt64 && operatorToken == token.INC:
+		return isa.SubOpIncrementStructFieldInt64
+	case fieldKind == isa.RegisterInt64 && operatorToken == token.DEC:
+		return isa.SubOpDecrementStructFieldInt64
+	case fieldKind == isa.RegisterUint64 && operatorToken == token.INC:
+		return isa.SubOpIncrementStructFieldUint64
+	case fieldKind == isa.RegisterUint64 && operatorToken == token.DEC:
+		return isa.SubOpDecrementStructFieldUint64
 	}
 	return 0
 }
@@ -507,35 +525,35 @@ func PickIncDecStructFieldSubOp(fieldKind isa.RegisterKind, operatorToken token.
 // pair.
 func ScalarCrossBankSubOp(sourceKind, destKind isa.RegisterKind) (isa.SubOpcode, bool) {
 	switch sourceKind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		switch destKind {
-		case isa.RegisterFloat:
-			return isa.SubOpIntToFloat, true
-		case isa.RegisterUint:
-			return isa.SubOpIntToUint, true
+		case isa.RegisterFloat64:
+			return isa.SubOpConvertInt64ToFloat64, true
+		case isa.RegisterUint64:
+			return isa.SubOpConvertInt64ToUint64, true
 		case isa.RegisterBool:
-			return isa.SubOpIntToBool, true
+			return isa.SubOpConvertInt64ToBool, true
 		default:
 		}
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		switch destKind {
-		case isa.RegisterInt:
-			return isa.SubOpFloatToInt, true
-		case isa.RegisterUint:
-			return isa.SubOpFloatToUint, true
+		case isa.RegisterInt64:
+			return isa.SubOpConvertFloat64ToInt64, true
+		case isa.RegisterUint64:
+			return isa.SubOpConvertFloat64ToUint64, true
 		default:
 		}
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		switch destKind {
-		case isa.RegisterInt:
-			return isa.SubOpUintToInt, true
-		case isa.RegisterFloat:
-			return isa.SubOpUintToFloat, true
+		case isa.RegisterInt64:
+			return isa.SubOpConvertUint64ToInt64, true
+		case isa.RegisterFloat64:
+			return isa.SubOpConvertUint64ToFloat64, true
 		default:
 		}
 	case isa.RegisterBool:
-		if destKind == isa.RegisterInt {
-			return isa.SubOpBoolToInt, true
+		if destKind == isa.RegisterInt64 {
+			return isa.SubOpConvertBoolToInt64, true
 		}
 	default:
 	}
@@ -550,7 +568,7 @@ func ScalarCrossBankSubOp(sourceKind, destKind isa.RegisterKind) (isa.SubOpcode,
 // Returns true for int, uint, float, bool, string, and general banks.
 func StructFieldFastPathWriteKindEnabled(kind isa.RegisterKind) bool {
 	switch kind {
-	case isa.RegisterInt, isa.RegisterUint, isa.RegisterFloat, isa.RegisterBool, isa.RegisterString, isa.RegisterGeneral:
+	case isa.RegisterInt64, isa.RegisterUint64, isa.RegisterFloat64, isa.RegisterBool, isa.RegisterString, isa.RegisterGeneral:
 		return true
 	default:
 	}
@@ -570,30 +588,30 @@ func StructFieldFastPathWriteKindEnabled(kind isa.RegisterKind) bool {
 // operation.
 func ResolveArithOpcode(intOp, floatOp, strOp, genOp isa.Opcode, leftKind isa.RegisterKind) (isa.Opcode, isa.RegisterKind, error) {
 	switch leftKind {
-	case isa.RegisterInt:
-		return intOp, isa.RegisterInt, nil
-	case isa.RegisterFloat:
+	case isa.RegisterInt64:
+		return intOp, isa.RegisterInt64, nil
+	case isa.RegisterFloat64:
 		if floatOp == 0 {
-			return 0, isa.RegisterFloat, fault.ErrCompileArithFloatUnsupported
+			return 0, isa.RegisterFloat64, fault.ErrCompileArithFloatUnsupported
 		}
-		return floatOp, isa.RegisterFloat, nil
+		return floatOp, isa.RegisterFloat64, nil
 	case isa.RegisterString:
 		if strOp == 0 {
 			return 0, isa.RegisterString, fault.ErrCompileArithStringUnsupported
 		}
 		return strOp, isa.RegisterString, nil
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		uintOp, ok := intToUintArithOp(intOp)
 		if !ok {
-			return 0, isa.RegisterUint, fault.ErrCompileArithUintUnsupported
+			return 0, isa.RegisterUint64, fault.ErrCompileArithUintUnsupported
 		}
-		return uintOp, isa.RegisterUint, nil
-	case isa.RegisterComplex:
+		return uintOp, isa.RegisterUint64, nil
+	case isa.RegisterComplex128:
 		complexOp, ok := intToComplexArithOp(intOp)
 		if !ok {
-			return 0, isa.RegisterComplex, fault.ErrCompileArithComplexUnsupported
+			return 0, isa.RegisterComplex128, fault.ErrCompileArithComplexUnsupported
 		}
-		return complexOp, isa.RegisterComplex, nil
+		return complexOp, isa.RegisterComplex128, nil
 	default:
 		if genOp == 0 {
 			return 0, isa.RegisterGeneral, fault.ErrCompileArithGeneralUnsupported
@@ -611,15 +629,15 @@ func ResolveArithOpcode(intOp, floatOp, strOp, genOp isa.Opcode, leftKind isa.Re
 func ArithmeticOpcodes(op token.Token) (intOp, floatOp, strOp, genOp isa.Opcode) {
 	switch op {
 	case token.ADD:
-		return isa.OpAddInt, isa.OpAddFloat, isa.OpConcatString, isa.OpAdd
+		return isa.OpAddInt64, isa.OpAddFloat64, isa.OpConcatenateString, isa.OpAddGeneral
 	case token.SUB:
-		return isa.OpSubInt, isa.OpSubFloat, 0, isa.OpSub
+		return isa.OpSubtractInt64, isa.OpSubtractFloat64, 0, isa.OpSubtractGeneral
 	case token.MUL:
-		return isa.OpMulInt, isa.OpMulFloat, 0, isa.OpMul
+		return isa.OpMultiplyInt64, isa.OpMultiplyFloat64, 0, isa.OpMultiplyGeneral
 	case token.QUO:
-		return isa.OpDivInt, isa.OpDivFloat, 0, isa.OpDiv
+		return isa.OpDivideInt64, isa.OpDivideFloat64, 0, isa.OpDivideGeneral
 	case token.REM:
-		return isa.OpRemInt, 0, 0, isa.OpRem
+		return isa.OpRemainderInt64, 0, 0, isa.OpRemainderGeneral
 	default:
 		return 0, 0, 0, 0
 	}
@@ -647,11 +665,11 @@ func lookupStructFieldSliceSubOpPair(fieldType types.Type) (structFieldSliceSubO
 
 	switch basic.Kind() {
 	case types.Int, types.Int64:
-		return structFieldSliceSubOpPair{get: isa.SubOpGetStructFieldSliceInt, set: isa.SubOpSetStructFieldSliceInt, bank: isa.RegisterSliceInt}, true
+		return structFieldSliceSubOpPair{get: isa.SubOpGetStructFieldSliceInt64, set: isa.SubOpSetStructFieldSliceInt64, bank: isa.RegisterSliceInt64}, true
 	case types.Float64:
-		return structFieldSliceSubOpPair{get: isa.SubOpGetStructFieldSliceFloat, set: isa.SubOpSetStructFieldSliceFloat, bank: isa.RegisterSliceFloat}, true
+		return structFieldSliceSubOpPair{get: isa.SubOpGetStructFieldSliceFloat64, set: isa.SubOpSetStructFieldSliceFloat64, bank: isa.RegisterSliceFloat64}, true
 	case types.Uint, types.Uint64:
-		return structFieldSliceSubOpPair{get: isa.SubOpGetStructFieldSliceUint, set: isa.SubOpSetStructFieldSliceUint, bank: isa.RegisterSliceUint}, true
+		return structFieldSliceSubOpPair{get: isa.SubOpGetStructFieldSliceUint64, set: isa.SubOpSetStructFieldSliceUint64, bank: isa.RegisterSliceUint64}, true
 	case types.String:
 		return structFieldSliceSubOpPair{get: isa.SubOpGetStructFieldSliceString, set: isa.SubOpSetStructFieldSliceString, bank: isa.RegisterSliceString}, true
 	case types.Bool:
@@ -670,16 +688,16 @@ func lookupStructFieldSliceSubOpPair(fieldType types.Type) (structFieldSliceSubO
 // Returns the matching uint opcode and true, or (0, false) when no mapping exists.
 func intToUintArithOp(intOp isa.Opcode) (isa.Opcode, bool) {
 	switch intOp {
-	case isa.OpAddInt:
-		return isa.OpAddUint, true
-	case isa.OpSubInt:
-		return isa.OpSubUint, true
-	case isa.OpMulInt:
-		return isa.OpMulUint, true
-	case isa.OpDivInt:
-		return isa.OpDivUint, true
-	case isa.OpRemInt:
-		return isa.OpRemUint, true
+	case isa.OpAddInt64:
+		return isa.OpAddUint64, true
+	case isa.OpSubtractInt64:
+		return isa.OpSubtractUint64, true
+	case isa.OpMultiplyInt64:
+		return isa.OpMultiplyUint64, true
+	case isa.OpDivideInt64:
+		return isa.OpDivideUint64, true
+	case isa.OpRemainderInt64:
+		return isa.OpRemainderUint64, true
 	default:
 		return 0, false
 	}
@@ -693,14 +711,14 @@ func intToUintArithOp(intOp isa.Opcode) (isa.Opcode, bool) {
 // Returns the matching complex opcode and true, or (0, false) when no mapping exists.
 func intToComplexArithOp(intOp isa.Opcode) (isa.Opcode, bool) {
 	switch intOp {
-	case isa.OpAddInt:
-		return isa.OpAddComplex, true
-	case isa.OpSubInt:
-		return isa.OpSubComplex, true
-	case isa.OpMulInt:
-		return isa.OpMulComplex, true
-	case isa.OpDivInt:
-		return isa.OpDivComplex, true
+	case isa.OpAddInt64:
+		return isa.OpAddComplex128, true
+	case isa.OpSubtractInt64:
+		return isa.OpSubtractComplex128, true
+	case isa.OpMultiplyInt64:
+		return isa.OpMultiplyComplex128, true
+	case isa.OpDivideInt64:
+		return isa.OpDivideComplex128, true
 	default:
 		return 0, false
 	}

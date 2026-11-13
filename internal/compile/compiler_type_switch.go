@@ -99,7 +99,7 @@ func (c *Compiler) compileTypeSwitchChain(ctx context.Context,
 	assignName string,
 ) error {
 	var endJumps []int
-	okRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt)
+	okRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
 
 	clauseMark := c.Scopes.Alloc.Snapshot()
 	for _, cc := range cases {
@@ -175,7 +175,7 @@ func (c *Compiler) compileTypeSwitchCase(ctx context.Context,
 	assignName string,
 	okRegister uint8,
 ) (int, error) {
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLoadBool), okRegister, 0)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLoadBoolImmediateAsInt64), okRegister, 0)
 	destinationRegister := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
 
 	for _, typeExpr := range cc.List {
@@ -194,11 +194,11 @@ func (c *Compiler) compileTypeSwitchCase(ctx context.Context,
 			return 0, err
 		}
 
-		temporaryOk := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
+		temporaryOk := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
 		program.Emit(c.Function, isa.OpTypeAssert, destinationRegister, sourceLocation.Register, temporaryOk)
 		program.EmitExtension(c.Function, typeIndex, engine.TypeAssertModeTypeSwitch)
-		program.Emit(c.Function, isa.OpBitOr, okRegister, okRegister, temporaryOk)
-		c.Scopes.Alloc.FreeTemp(isa.RegisterInt, temporaryOk)
+		program.Emit(c.Function, isa.OpBitOrInt64, okRegister, okRegister, temporaryOk)
+		c.Scopes.Alloc.FreeTemp(isa.RegisterInt64, temporaryOk)
 	}
 
 	nextCaseJump := program.EmitJump(c.Function, isa.OpJumpIfFalse, okRegister)
@@ -257,14 +257,14 @@ func (c *Compiler) declareNarrowedTypeSwitchVar(ctx context.Context, assignName 
 			c.emitSpillStore(ctx, destinationRegister, isa.RegisterGeneral, location.SpillSlot)
 		} else {
 			scratch := c.Scopes.Alloc.AllocTemp(narrowedKind)
-			program.Emit(c.Function, isa.OpUnpackInterface, scratch, destinationRegister, uint8(narrowedKind))
+			program.Emit(c.Function, isa.OpUnboxFromInterface, scratch, destinationRegister, uint8(narrowedKind))
 			c.emitSpillStore(ctx, scratch, narrowedKind, location.SpillSlot)
 			c.Scopes.Alloc.FreeTemp(narrowedKind, scratch)
 		}
 	} else if narrowedKind == isa.RegisterGeneral {
 		program.Emit(c.Function, isa.OpMoveGeneral, location.Register, destinationRegister, generalMoveModeFor(narrowedType))
 	} else {
-		program.Emit(c.Function, isa.OpUnpackInterface, location.Register, destinationRegister, uint8(narrowedKind))
+		program.Emit(c.Function, isa.OpUnboxFromInterface, location.Register, destinationRegister, uint8(narrowedKind))
 	}
 }
 
@@ -298,15 +298,15 @@ func (c *Compiler) compileTypeSwitchDefault(ctx context.Context,
 // Gathers the explicit and embedded method names of the interface type a type-switch case
 // targets, or nil when the target is not an interface (or is the empty interface). The
 // returned slice is recorded in CompiledFunction.TypeTableInterfaceMethods so
-// handleTypeAssert can enforce method-set membership at runtime; pipit collapses every
-// interface type to typeFor[any]() during reflect synthesis (no reflect.InterfaceOf
-// exists), making the runtime Implements check useless for distinguishing `case error:`
-// from `case fmt.Stringer:` without this sidecar.
+// handleTypeAssert can enforce method-set membership at runtime. Pipit collapses every
+// interface type to reflect.TypeFor[any]() during reflect synthesis (no
+// reflect.InterfaceOf exists), making the runtime Implements check useless for
+// distinguishing `case error:` from `case fmt.Stringer:` without this sidecar.
 //
 // Takes target (types.Type) which is the case-clause target type.
 //
 // Returns []string with the sorted, deduplicated method names a value must expose to
-// satisfy the interface; nil for non-interfaces and for empty interface targets (any).
+// satisfy the interface.
 func interfaceTargetMethodNames(target types.Type) []string {
 	if target == nil {
 		return nil

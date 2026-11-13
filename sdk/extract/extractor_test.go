@@ -35,7 +35,7 @@ import (
 func TestExtractMathPackage(t *testing.T) {
 	t.Parallel()
 
-	pkgs, err := Extract([]string{"math"}, nil)
+	pkgs, err := Extract(t.Context(), []string{"math"}, nil)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
@@ -69,7 +69,7 @@ func TestExtractMathPackage(t *testing.T) {
 func TestExtractOsPackage(t *testing.T) {
 	t.Parallel()
 
-	pkgs, err := Extract([]string{"os"}, nil)
+	pkgs, err := Extract(t.Context(), []string{"os"}, nil)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
@@ -96,14 +96,14 @@ func TestExtractOsPackage(t *testing.T) {
 func TestExtractInvalidPackage(t *testing.T) {
 	t.Parallel()
 
-	_, err := Extract([]string{"nonexistent/fake/package"}, nil)
+	_, err := Extract(t.Context(), []string{"nonexistent/fake/package"}, nil)
 	require.Error(t, err)
 }
 
 func TestExtractMultiplePackages(t *testing.T) {
 	t.Parallel()
 
-	pkgs, err := Extract([]string{"fmt", "strings", "math"}, nil)
+	pkgs, err := Extract(t.Context(), []string{"fmt", "strings", "math"}, nil)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 3)
 
@@ -230,7 +230,7 @@ func TestGenerateTypesLoaderWASMFile(t *testing.T) {
 func TestGenerateTypesExportBlobsRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	pkgs, err := Extract([]string{"bufio", "io"}, nil)
+	pkgs, err := Extract(t.Context(), []string{"bufio", "io"}, nil)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 2)
 
@@ -315,7 +315,7 @@ func decodeTestBlob(fset *token.FileSet, imports map[string]*types.Package, blob
 func TestExtractEncodingJsonPackage(t *testing.T) {
 	t.Parallel()
 
-	pkgs, err := Extract([]string{"encoding/json"}, nil)
+	pkgs, err := Extract(t.Context(), []string{"encoding/json"}, nil)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
@@ -340,7 +340,7 @@ func TestExtractEncodingJsonPackage(t *testing.T) {
 func TestExtractSortPackage(t *testing.T) {
 	t.Parallel()
 
-	pkgs, err := Extract([]string{"sort"}, nil)
+	pkgs, err := Extract(t.Context(), []string{"sort"}, nil)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
@@ -368,7 +368,7 @@ func TestExtractWithGenericConfigPopulatesTypesPackage(t *testing.T) {
 		ElementTypes: []string{"string"},
 	}
 
-	pkgs, err := Extract([]string{"slices"}, map[string]PackageConfig{"slices": config})
+	pkgs, err := Extract(t.Context(), []string{"slices"}, map[string]PackageConfig{"slices": config})
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 

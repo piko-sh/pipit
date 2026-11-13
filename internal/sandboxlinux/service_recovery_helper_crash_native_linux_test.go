@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64) && !race
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64) && !race
 
 package sandboxlinux
 
@@ -138,7 +138,7 @@ func TestNativeServiceRecoveryHelperCrashChild(t *testing.T) {
 	if err := json.Unmarshal([]byte(encoded), &storage); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	claim, err := ClaimServiceRecovery(ctx, storage)
 	if err != nil {
@@ -175,7 +175,7 @@ func TestNativeServiceRecoveryHelperCrashChild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer claim.process.Close()
+	defer claim.process.Close(t.Context())
 	waitForRecoveryHelperReady(t, claim.process)
 	if err := claim.Close(); !errors.Is(err, ErrServiceBusy) {
 		t.Fatal("running recovery helper allowed claim closure:", err)

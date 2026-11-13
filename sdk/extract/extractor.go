@@ -292,21 +292,9 @@ type NativeBackedGenericTypeInfo struct {
 }
 
 // Extract loads the given Go packages and extracts their exported symbols, returning one
-// ExtractedPackage per import path.
-//
-// Takes importPaths ([]string) which lists the Go import paths to load and extract.
-// Takes genericConfigs (map[string]PackageConfig) which maps import paths to their
-// generic configuration.
-//
-// Returns a slice of ExtractedPackage values or an error if loading fails.
-func Extract(importPaths []string, genericConfigs map[string]PackageConfig) ([]ExtractedPackage, error) {
-	return ExtractContext(context.Background(), importPaths, genericConfigs)
-}
-
-// ExtractContext loads the given Go packages and extracts their exported symbols,
-// returning one ExtractedPackage per import path. The context is forwarded to
-// packages.Load and checked before and after loading and inside the per-package
-// extraction loop so a cancelled run aborts promptly.
+// ExtractedPackage per import path. The context is forwarded to packages.Load and checked
+// before and after loading and inside the per-package extraction loop so a cancelled run
+// aborts promptly.
 //
 // Takes importPaths ([]string) which lists the Go import paths to load and extract.
 // Takes genericConfigs (map[string]PackageConfig) which maps import paths to their
@@ -314,7 +302,7 @@ func Extract(importPaths []string, genericConfigs map[string]PackageConfig) ([]E
 //
 // Returns a slice of ExtractedPackage values or an error if loading fails or the context
 // is cancelled.
-func ExtractContext(ctx context.Context, importPaths []string, genericConfigs map[string]PackageConfig) ([]ExtractedPackage, error) {
+func Extract(ctx context.Context, importPaths []string, genericConfigs map[string]PackageConfig) ([]ExtractedPackage, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf(errExtractWrap, err)
 	}

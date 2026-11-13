@@ -78,8 +78,20 @@ func (rcv *TypeDescField) TypeDescriptor(obj *TypeDescriptor) *TypeDescriptor {
 	return nil
 }
 
+func (rcv *TypeDescField) Embedded() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(12))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *TypeDescField) MutateEmbedded(n bool) bool {
+	return rcv._tab.MutateBoolSlot(12, n)
+}
+
 func TypeDescFieldStart(builder *flatbuffers.Builder) {
-	builder.StartObject(4)
+	builder.StartObject(5)
 }
 func TypeDescFieldAddName(builder *flatbuffers.Builder, name flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(name), 0)
@@ -92,6 +104,9 @@ func TypeDescFieldAddPackagePath(builder *flatbuffers.Builder, packagePath flatb
 }
 func TypeDescFieldAddTypeDescriptor(builder *flatbuffers.Builder, typeDescriptor flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(3, flatbuffers.UOffsetT(typeDescriptor), 0)
+}
+func TypeDescFieldAddEmbedded(builder *flatbuffers.Builder, embedded bool) {
+	builder.PrependBoolSlot(4, embedded, false)
 }
 func TypeDescFieldEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

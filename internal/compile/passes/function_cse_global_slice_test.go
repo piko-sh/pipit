@@ -31,20 +31,20 @@ func TestGlobalSliceFieldReusePreservesMemoryBarriers(t *testing.T) {
 	chain := []isa.Instruction{
 		isa.NewInstruction(isa.OpGetGlobal, 1, 7, uint8(isa.RegisterGeneral)),
 		isa.NewTier1Instruction(isa.SubOpGetStructFieldSliceByte, 2, 1),
-		isa.NewInstruction(isa.OpExt, 3, 0, 0),
+		isa.NewInstruction(isa.OpExtension, 3, 0, 0),
 	}
 	tests := []struct {
 		name    string
 		between []isa.Instruction
 		reuse   bool
 	}{
-		{name: "byte element", between: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSliceSetByteDirect, 2, 0), isa.NewInstruction(isa.OpExt, 0, 0, 0)}, reuse: true},
+		{name: "byte element", between: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSetSliceByteElement, 2, 0), isa.NewInstruction(isa.OpExtension, 0, 0, 0)}, reuse: true},
 		{name: "call", between: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpCall, 0, 0)}, reuse: false},
 		{name: "global assignment", between: []isa.Instruction{isa.NewInstruction(isa.OpSetGlobal, 1, 7, uint8(isa.RegisterGeneral))}, reuse: false},
 		{name: "receiver overwrite", between: []isa.Instruction{isa.NewInstruction(isa.OpMoveGeneral, 1, 4, 1)}, reuse: false},
 		{name: "slice overwrite", between: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpMoveSliceByte, 2, 4)}, reuse: false},
-		{name: "field assignment", between: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSetStructFieldSliceByte, 1, 2), isa.NewInstruction(isa.OpExt, 3, 0, 0)}, reuse: false},
-		{name: "indirect store", between: []isa.Instruction{isa.NewInstruction(isa.OpIndexSet, 1, 0, 3)}, reuse: false},
+		{name: "field assignment", between: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSetStructFieldSliceByte, 1, 2), isa.NewInstruction(isa.OpExtension, 3, 0, 0)}, reuse: false},
+		{name: "indirect store", between: []isa.Instruction{isa.NewInstruction(isa.OpSetElement, 1, 0, 3)}, reuse: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -55,7 +55,7 @@ func TestGlobalSliceFieldReusePreservesMemoryBarriers(t *testing.T) {
 			body = append(body, chain...)
 			cf := &program.CompiledFunction{Body: body}
 			require.NoError(t, ElideRedundantStructFieldRead(t.Context(), cf, body))
-			reused := isCanonicalNop(body[second]) && isCanonicalNop(body[second+1]) && isCanonicalNop(body[second+2])
+			reused := isCanonicalNoOperation(body[second]) && isCanonicalNoOperation(body[second+1]) && isCanonicalNoOperation(body[second+2])
 			require.Equal(t, tt.reuse, reused)
 		})
 	}
@@ -67,11 +67,11 @@ func TestGlobalSliceFieldReuseRejectsBranchEntry(t *testing.T) {
 		body := []isa.Instruction{
 			isa.NewInstruction(isa.OpGetGlobal, 1, 7, uint8(isa.RegisterGeneral)),
 			isa.NewTier1Instruction(isa.SubOpGetStructFieldSliceByte, 2, 1),
-			isa.NewInstruction(isa.OpExt, 3, 0, 0),
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
+			isa.NewInstruction(isa.OpExtension, 3, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
 			isa.NewInstruction(isa.OpGetGlobal, 1, 7, uint8(isa.RegisterGeneral)),
 			isa.NewTier1Instruction(isa.SubOpGetStructFieldSliceByte, 2, 1),
-			isa.NewInstruction(isa.OpExt, 3, 0, 0),
+			isa.NewInstruction(isa.OpExtension, 3, 0, 0),
 		}
 		cf := &program.CompiledFunction{Body: body}
 		elideRepeatedGlobalSliceFieldRead(cf, body, 0, map[int]bool{target: true})

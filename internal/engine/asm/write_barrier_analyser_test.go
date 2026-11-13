@@ -26,11 +26,11 @@ import (
 )
 
 type wbArchitecture struct {
-	name string
+	name            string
 	contextRegister string
-	call string
-	unconditional string
-	wordMoves map[string]bool
+	call            string
+	unconditional   string
+	wordMoves       map[string]bool
 }
 
 var wbArchitectures = []wbArchitecture{
@@ -39,36 +39,32 @@ var wbArchitectures = []wbArchitecture{
 }
 
 type wbInstruction struct {
-	text string
-	op string
+	text     string
+	op       string
 	operands []string
-	labels []string
+	labels   []string
 }
 
 type wbOperand struct {
-	register string
-	base string
-	index string
-	symbol string
-	memory bool
+	register  string
+	base      string
+	index     string
+	symbol    string
+	memory    bool
 	immediate bool
 }
 
 type wbState struct {
-	tainted map[string]bool
-	barrierAddress map[string]bool
-	barrierFlag map[string]bool
+	tainted          map[string]bool
+	barrierAddress   map[string]bool
+	barrierFlag      map[string]bool
 	flagsTestBarrier bool
-	clear bool
+	clear            bool
 }
 
 type wbViolation struct {
 	handler string
-	text string
-}
-
-func (v wbViolation) String() string {
-	return v.handler + ": " + v.text
+	text    string
 }
 
 var (
@@ -81,6 +77,15 @@ var (
 )
 
 var wbExitMacros = map[string]bool{"DISPATCH_NEXT()": true, "DIV_BY_ZERO_EXIT()": true}
+
+type wbEdge struct {
+	target     int
+	barrierOff bool
+}
+
+func (v wbViolation) String() string {
+	return v.handler + ": " + v.text
+}
 
 func parseHandlers(content string) (map[string][]wbInstruction, error) {
 	handlers := map[string][]wbInstruction{}
@@ -210,11 +215,6 @@ func mergeState(existing, incoming wbState) (wbState, bool) {
 		len(merged.barrierFlag) != len(existing.barrierFlag) ||
 		merged.flagsTestBarrier != existing.flagsTestBarrier || merged.clear != existing.clear
 	return merged, changed
-}
-
-type wbEdge struct {
-	target int
-	barrierOff bool
 }
 
 func analyseHandler(arch wbArchitecture, bankBases map[string]bool, name string, instructions []wbInstruction) ([]wbViolation, int, error) {

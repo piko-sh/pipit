@@ -21,7 +21,6 @@
 package runner
 
 import (
-	"log/slog"
 	"os"
 	"time"
 
@@ -44,10 +43,6 @@ type Limits struct {
 	// BytecodeStore wires a directory store for SaveCompiled / LoadCompiled. Empty disables
 	// bytecode persistence.
 	BytecodeStore pipit.BytecodeStorePort
-
-	// Logger receives the library's diagnostics. Nil leaves the library on the process
-	// default logger.
-	Logger *slog.Logger
 
 	// Symbols registers extra host packages so scripts can import them. Nil leaves the
 	// interpreter with the default stdlib + Pipit symbol set.
@@ -97,9 +92,6 @@ func (limits Limits) Options() []pipit.Option {
 	}
 	if limits.BytecodeStore != nil {
 		options = append(options, pipit.WithBytecodeStore(limits.BytecodeStore))
-	}
-	if limits.Logger != nil {
-		options = append(options, pipit.WithLogger(limits.Logger))
 	}
 	return options
 }

@@ -85,8 +85,10 @@ func TestIndexingASliceThroughAPointerUsesTheDereferencingForm(t *testing.T) {
 		source string
 		want   isa.Opcode
 	}{
-		{name: "an integer element read", source: "func f(p *[]int, i int) int { return (*p)[i] }", want: isa.OpDerefSliceGetInt},
-		{name: "an integer element written", source: "func f(p *[]int, i, v int) { (*p)[i] = v }", want: isa.OpDerefSliceSetInt},
+		{name: "an integer element read", source: "func f(p *[]int, i int) int { return (*p)[i] }", want: isa.OpGetElementInt64ViaPointer},
+		{name: "an integer element written", source: "func f(p *[]int, i, v int) { (*p)[i] = v }", want: isa.OpSetElementInt64ViaPointer},
+		{name: "a sixty-four-bit element read", source: "func f(p *[]int64, i int) int64 { return (*p)[i] }", want: isa.OpGetElementInt64ViaPointer},
+		{name: "a named integer element written", source: "type word int\nfunc f(p *[]word, i int, v word) { (*p)[i] = v }", want: isa.OpSetElementInt64ViaPointer},
 	}
 
 	for _, tt := range tests {
@@ -96,6 +98,35 @@ func TestIndexingASliceThroughAPointerUsesTheDereferencingForm(t *testing.T) {
 
 			require.Truef(t, bodyContainsOpcode(findCompiledFunction(t, root, "f"), tt.want),
 				"the header is read through the pointer in one step, so %s must be emitted", tt.want)
+		})
+	}
+}
+
+func TestIndexingANarrowSliceThroughAPointerKeepsTheWidthCheckedForm(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		source string
+	}{
+		{name: "a thirty-two-bit element read", source: "func f(p *[]int32, i int) int32 { return (*p)[i] }"},
+		{name: "a thirty-two-bit element written", source: "func f(p *[]int32, i int, v int32) { (*p)[i] = v }"},
+		{name: "a sixteen-bit element written", source: "func f(p *[]int16, i int, v int16) { (*p)[i] = v }"},
+		{name: "an eight-bit element read", source: "func f(p *[]int8, i int) int8 { return (*p)[i] }"},
+		{name: "an eight-bit element written", source: "func f(p *[]int8, i int, v int8) { (*p)[i] = v }"},
+		{name: "a rune element written", source: "func f(p *[]rune, i int, v rune) { (*p)[i] = v }"},
+		{name: "a named narrow element written", source: "type half int32\nfunc f(p *[]half, i int, v half) { (*p)[i] = v }"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			function := findCompiledFunction(t, compileSnippet(t, "package main\n"+indexTypes+"\n"+tt.source+"\n"), "f")
+
+			require.False(t, bodyContainsOpcode(function, isa.OpGetElementInt64ViaPointer),
+				"the dereferencing read loads eight bytes per element, so a narrower element must not use it")
+			require.False(t, bodyContainsOpcode(function, isa.OpSetElementInt64ViaPointer),
+				"the dereferencing store writes eight bytes per element, so a narrower element must not use it")
 		})
 	}
 }
@@ -120,9 +151,9 @@ func TestIndexingAConstantStringIsFoldedToItsByte(t *testing.T) {
 			compiled := findCompiledFunction(t, root, "f")
 
 			require.True(t,
-				bodyContainsOpcode(compiled, isa.OpLoadUintConst) || bodyContainsTier1SubOp(compiled, isa.SubOpLoadUintConstSmall),
+				bodyContainsOpcode(compiled, isa.OpLoadUint64Constant) || bodyContainsTier1SubOp(compiled, isa.SubOpLoadUint64Immediate),
 				"both the string and the index are known here, so the byte is loaded as a constant")
-			require.False(t, bodyContainsOpcode(compiled, isa.OpStringIndex),
+			require.False(t, bodyContainsOpcode(compiled, isa.OpGetStringByte),
 				"a folded byte needs no runtime index at all")
 		})
 	}

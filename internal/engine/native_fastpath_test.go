@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
@@ -84,7 +85,7 @@ func TestNativeFastPath_IntToString(t *testing.T) {
 	regs.Ints[0] = 42
 
 	site := &program.CallSite{
-		Arguments: []program.VarLocation{{Register: 0, Kind: isa.RegisterInt}},
+		Arguments: []program.VarLocation{{Register: 0, Kind: isa.RegisterInt64}},
 		Returns:   []program.VarLocation{{Register: 0, Kind: isa.RegisterString}},
 	}
 	reflectedFunction := reflect.ValueOf(strconv.Itoa)
@@ -102,8 +103,8 @@ func TestNativeFastPath_FormatInt(t *testing.T) {
 
 	site := &program.CallSite{
 		Arguments: []program.VarLocation{
-			{Register: 0, Kind: isa.RegisterInt},
-			{Register: 1, Kind: isa.RegisterInt},
+			{Register: 0, Kind: isa.RegisterInt64},
+			{Register: 1, Kind: isa.RegisterInt64},
 		},
 		Returns: []program.VarLocation{{Register: 0, Kind: isa.RegisterString}},
 	}
@@ -162,7 +163,7 @@ func TestNativeFastPath_Variadic_Sprintf(t *testing.T) {
 		site := &program.CallSite{
 			Arguments: []program.VarLocation{
 				{Register: 0, Kind: isa.RegisterString},
-				{Register: 0, Kind: isa.RegisterInt},
+				{Register: 0, Kind: isa.RegisterInt64},
 			},
 			Returns: []program.VarLocation{{Register: 1, Kind: isa.RegisterString}},
 		}
@@ -185,8 +186,8 @@ func TestNativeFastPath_Variadic_Sprintf(t *testing.T) {
 			Arguments: []program.VarLocation{
 				{Register: 0, Kind: isa.RegisterString},
 				{Register: 1, Kind: isa.RegisterString},
-				{Register: 0, Kind: isa.RegisterInt},
-				{Register: 0, Kind: isa.RegisterFloat},
+				{Register: 0, Kind: isa.RegisterInt64},
+				{Register: 0, Kind: isa.RegisterFloat64},
 			},
 			Returns: []program.VarLocation{{Register: 2, Kind: isa.RegisterString}},
 		}
@@ -203,7 +204,7 @@ func TestNativeFastPath_Variadic_Sprintf(t *testing.T) {
 		site := &program.CallSite{
 			Arguments: []program.VarLocation{
 				{Register: 0, Kind: isa.RegisterString},
-				{Register: 0, Kind: isa.RegisterInt},
+				{Register: 0, Kind: isa.RegisterInt64},
 			},
 			Returns: []program.VarLocation{{Register: 1, Kind: isa.RegisterString}},
 		}
@@ -223,33 +224,26 @@ func TestNativeFastPath_Variadic_Sprintf(t *testing.T) {
 	})
 }
 
-func TestNativeFastPath_VariadicArgumentsAreFreshPerCall(t *testing.T) {
+func TestNativeFastPath_FormattingShapeServesOnlyFmt(t *testing.T) {
 	t.Parallel()
 
 	regs := makeRegisters()
 	site := &program.CallSite{
 		Arguments: []program.VarLocation{
 			{Register: 0, Kind: isa.RegisterString},
-			{Register: 0, Kind: isa.RegisterInt},
+			{Register: 0, Kind: isa.RegisterInt64},
 		},
 		Returns: []program.VarLocation{{Register: 1, Kind: isa.RegisterString}},
 	}
-	var kept [][]any
-	keep := func(format string, arguments ...any) string {
-		kept = append(kept, arguments)
-		return format
-	}
+	keep := func(format string, _ ...any) string { return format }
 
-	for _, value := range []int64{1, 2} {
-		regs.Strings[0] = "v=%d"
-		regs.Ints[0] = value
-		ok, _, _ := tryNativeFastPath(nil, site, keep, &regs)
-		require.True(t, ok)
-	}
-
-	require.Len(t, kept, 2)
-	require.Equal(t, "1", fmt.Sprint(kept[0]...), "a callee that keeps its variadic slice must not see a later call's arguments")
-	require.Equal(t, "2", fmt.Sprint(kept[1]...))
+	regs.Strings[0] = "v=%d"
+	regs.Ints[0] = 1
+	ok, tag, _ := tryNativeFastPath(nil, site, keep, &regs)
+	require.False(t, ok, "a non-fmt function of fmt's shape must take the ordinary path, which passes values as themselves")
+	require.Equal(t, fastPathTagNone, tag)
+	require.Equal(t, fastPathTagSprintfString, classifyNativeFastPath(fmt.Sprintf))
+	require.Equal(t, fastPathTagNone, classifyNativeFastPath(keep))
 }
 
 func TestNativeFastPath_Variadic_Errorf(t *testing.T) {
@@ -341,7 +335,7 @@ func TestNativeFastPath_ZeroArgInt(t *testing.T) {
 
 	site := &program.CallSite{
 		Arguments: nil,
-		Returns:   []program.VarLocation{{Register: 0, Kind: isa.RegisterInt}},
+		Returns:   []program.VarLocation{{Register: 0, Kind: isa.RegisterInt64}},
 	}
 
 	ok, _, _ := tryNativeFastPath(nil, site, reflectedFunction.Interface(), &regs)
@@ -451,7 +445,7 @@ func TestNativeFastPath_AnyToString(t *testing.T) {
 	regs.Ints[0] = 42
 
 	site := &program.CallSite{
-		Arguments: []program.VarLocation{{Register: 0, Kind: isa.RegisterInt}},
+		Arguments: []program.VarLocation{{Register: 0, Kind: isa.RegisterInt64}},
 		Returns:   []program.VarLocation{{Register: 0, Kind: isa.RegisterString}},
 	}
 	reflectedFunction := reflect.ValueOf(func(v any) string { return fmt.Sprint(v) })
@@ -468,7 +462,7 @@ func TestNativeFastPath_AnyToInt(t *testing.T) {
 
 	site := &program.CallSite{
 		Arguments: []program.VarLocation{{Register: 0, Kind: isa.RegisterString}},
-		Returns:   []program.VarLocation{{Register: 0, Kind: isa.RegisterInt}},
+		Returns:   []program.VarLocation{{Register: 0, Kind: isa.RegisterInt64}},
 	}
 	reflectedFunction := reflect.ValueOf(func(v any) int { return 99 })
 
@@ -483,8 +477,8 @@ func TestNativeFastPath_AnyToInt64(t *testing.T) {
 	regs.Floats[0] = 3.14
 
 	site := &program.CallSite{
-		Arguments: []program.VarLocation{{Register: 0, Kind: isa.RegisterFloat}},
-		Returns:   []program.VarLocation{{Register: 0, Kind: isa.RegisterInt}},
+		Arguments: []program.VarLocation{{Register: 0, Kind: isa.RegisterFloat64}},
+		Returns:   []program.VarLocation{{Register: 0, Kind: isa.RegisterInt64}},
 	}
 	reflectedFunction := reflect.ValueOf(func(v any) int64 { return 123 })
 
@@ -499,8 +493,8 @@ func TestNativeFastPath_AnyToFloat64(t *testing.T) {
 	regs.Ints[0] = 10
 
 	site := &program.CallSite{
-		Arguments: []program.VarLocation{{Register: 0, Kind: isa.RegisterInt}},
-		Returns:   []program.VarLocation{{Register: 0, Kind: isa.RegisterFloat}},
+		Arguments: []program.VarLocation{{Register: 0, Kind: isa.RegisterInt64}},
+		Returns:   []program.VarLocation{{Register: 0, Kind: isa.RegisterFloat64}},
 	}
 	reflectedFunction := reflect.ValueOf(func(v any) float64 { return 2.5 })
 
@@ -581,7 +575,7 @@ func TestNativeFastPath_Int64Void(t *testing.T) {
 	reflectedFunction := reflect.ValueOf(func(v int64) { received = v })
 
 	site := &program.CallSite{
-		Arguments: []program.VarLocation{{Register: 0, Kind: isa.RegisterInt}},
+		Arguments: []program.VarLocation{{Register: 0, Kind: isa.RegisterInt64}},
 		Returns:   nil,
 	}
 
@@ -596,8 +590,8 @@ func TestNativeFastPath_NoMatch(t *testing.T) {
 	reflectedFunction := reflect.ValueOf(func(a, b, c, d, e int) int { return a })
 
 	site := &program.CallSite{
-		Arguments: []program.VarLocation{{Register: 0, Kind: isa.RegisterInt}},
-		Returns:   []program.VarLocation{{Register: 1, Kind: isa.RegisterInt}},
+		Arguments: []program.VarLocation{{Register: 0, Kind: isa.RegisterInt64}},
+		Returns:   []program.VarLocation{{Register: 1, Kind: isa.RegisterInt64}},
 	}
 
 	ok, _, _ := tryNativeFastPath(nil, site, reflectedFunction.Interface(), new(makeRegisters()))
@@ -635,7 +629,7 @@ func TestNativeFastPath_BoundMethodNotStale(t *testing.T) {
 	site := &program.CallSite{
 		Arguments: []program.VarLocation{{Register: 0, Kind: isa.RegisterString}},
 		Returns: []program.VarLocation{
-			{Register: 0, Kind: isa.RegisterInt},
+			{Register: 0, Kind: isa.RegisterInt64},
 			{Register: 0, Kind: isa.RegisterGeneral},
 		},
 	}
@@ -683,17 +677,83 @@ func TestCachedNativeFastPathCallsTheFunctionInTheRegister(t *testing.T) {
 			site := &program.CallSite{
 				NativeRegister: 0,
 				Arguments:      nil,
-				Returns:        []program.VarLocation{{Register: 0, Kind: isa.RegisterInt}},
+				Returns:        []program.VarLocation{{Register: 0, Kind: isa.RegisterInt64}},
 			}
 			ok, tag, _ := tryNativeFastPath(nil, site, cached, &regs)
 			require.True(t, ok)
 
 			regs.Ints[0] = 0
 			regs.General[0] = tt.register
-			_, dispatched := dispatchCachedNativeFastPath(nil, site, &regs, &nativeFastPathEntry{fn: cached, tag: tag, receiverAddr: 0})
+			_, dispatched := dispatchCachedNativeFastPath(nil, site, &regs, &nativeFastPathEntry{fn: cached, tag: tag})
 
 			require.Equal(t, tt.wantDispatched, dispatched)
 			require.Equal(t, tt.wantResult, regs.Ints[0])
 		})
+	}
+}
+
+func TestFmtArgsScratchReusesOnlyForFmtCallees(t *testing.T) {
+	t.Parallel()
+	vm := &VM{}
+	scratch := fmtArgsScratchFor(vm, fmt.Sprintf)
+	first := scratch.take(3)
+	first[0], first[1], first[2] = "a", 1, 2.5
+	scratch.give(first)
+	require.Equal(t, 1, vm.fmtArgsIdleCount)
+	require.Equal(t, []any{nil, nil, nil}, first[:3], "a returned buffer keeps none of the call's arguments")
+
+	second := scratch.take(2)
+	require.Equal(t, reflect.ValueOf(first).Pointer(), reflect.ValueOf(second).Pointer(), "the idle buffer is lent again")
+	nested := fmtArgsScratchFor(vm, fmt.Errorf).take(2)
+	require.NotEqual(t, reflect.ValueOf(second).Pointer(), reflect.ValueOf(nested).Pointer(), "a nested call gets its own buffer")
+
+	var kept []any
+	retaining := func(format string, args ...any) string { kept = args; return format }
+	other := fmtArgsScratchFor(vm, retaining)
+	buffer := other.take(1)
+	buffer[0] = "held"
+	other.give(buffer)
+	_ = retaining("x", buffer...)
+	require.Equal(t, []any{"held"}, kept, "a callee that may keep its slice is never lent a reused buffer")
+	require.Nil(t, fmtArgsScratchFor(nil, fmt.Sprintf).vm)
+}
+
+func TestFmtArgsScratchBoundsWhatItKeeps(t *testing.T) {
+	t.Parallel()
+	vm := &VM{}
+	scratch := fmtArgsScratchFor(vm, fmt.Sprint)
+	scratch.give(make([]any, fmtArgsScratchMaxCap+1))
+	require.Zero(t, vm.fmtArgsIdleCount, "an oversized buffer is dropped")
+	for range fmtArgsScratchDepth + 2 {
+		scratch.give(make([]any, 1))
+	}
+	require.Equal(t, fmtArgsScratchDepth, vm.fmtArgsIdleCount)
+}
+
+func TestFmtFastPathFormatsWithoutAllocatingItsArguments(t *testing.T) {
+	registers := makeRegisters()
+	site := newSprintfSiteForScratchTest()
+	registers.Strings[0] = "%s-%s"
+	registers.Strings[1] = "a"
+	registers.Strings[2] = "b"
+	vm := &VM{}
+	fpDispatchSprintfString(vm, fmt.Sprintf, site, &registers)
+	require.Equal(t, "a-b", registers.Strings[3])
+	require.Equal(t, 1, vm.fmtArgsIdleCount, "the variadic buffer is kept for the next call")
+	require.Equal(t, []any{nil, nil}, vm.fmtArgsIdle[0][:2])
+}
+
+func TestTypeContainsPipitSynthesisedAnswersACachedTypeWithoutAllocating(t *testing.T) {
+	type plain struct{ A []int }
+	target := reflect.TypeFor[plain]()
+	require.False(t, typeContainsPipitSynthesised(target))
+	allocations := testing.AllocsPerRun(100, func() { _ = typeContainsPipitSynthesised(target) })
+	require.Zero(t, allocations)
+}
+
+func newSprintfSiteForScratchTest() *program.CallSite {
+	return &program.CallSite{
+		Arguments: []program.VarLocation{{Register: 0, Kind: isa.RegisterString}, {Register: 1, Kind: isa.RegisterString}, {Register: 2, Kind: isa.RegisterString}},
+		Returns:   []program.VarLocation{{Register: 3, Kind: isa.RegisterString}},
 	}
 }

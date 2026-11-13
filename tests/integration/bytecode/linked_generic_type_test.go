@@ -56,7 +56,7 @@ func TestLinkedGenericTypeInstantiatesAgainstUserDefinedType(t *testing.T) {
 			})),
 		},
 	})
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	service := app.NewService()
 	service.UseSymbols(symbols)
@@ -112,7 +112,7 @@ func TestLinkedGenericTypeAsSliceElement(t *testing.T) {
 			})),
 		},
 	})
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	service := app.NewService()
 	service.UseSymbols(symbols)

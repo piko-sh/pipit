@@ -20,30 +20,40 @@ package isa
 
 // tierSub2Specs holds the tier-2 rows (one-operand operations).
 var tierSub2Specs = []OpSpec{
-	sub2(SubOpTier2DrillTier3, "DRILL_TIER3").flags(specMeta),
-	sub2(SubOpTier2IncInt, "TIER2_INC_INT").cost(costCheap).handler("handleFlatSubOpTier2IncInt").asmIn("tier2JumpTable", "handlerSubOpTier2IncInt").pure(),
-	sub2(SubOpTier2DecInt, "TIER2_DEC_INT").cost(costCheap).handler("handleFlatSubOpTier2DecInt").asmIn("tier2JumpTable", "handlerSubOpTier2DecInt").pure(),
-	sub2(SubOpTier2IncUint, "TIER2_INC_UINT").cost(costCheap).handler("handleFlatSubOpTier2IncUint").asmIn("tier2JumpTable", "handlerSubOpTier2IncUint").pure(),
-	sub2(SubOpTier2DecUint, "TIER2_DEC_UINT").cost(costCheap).handler("handleFlatSubOpTier2DecUint").asmIn("tier2JumpTable", "handlerSubOpTier2DecUint").pure(),
-	sub2(SubOpTier2IncInt32, "TIER2_INC_INT32").cost(costCheap).handler("handleFlatSubOpTier2IncInt32").asmIn("tier2JumpTable", "handlerSubOpTier2IncInt32").pure(),
-	sub2(SubOpTier2DecInt32, "TIER2_DEC_INT32").cost(costCheap).handler("handleFlatSubOpTier2DecInt32").asmIn("tier2JumpTable", "handlerSubOpTier2DecInt32").pure(),
-	sub2(SubOpTier2Panic, "TIER2_PANIC").cost(costModerate).handler("handleFlatSubOpTier2Panic").pure(),
-	sub2(SubOpTier2Recover, "TIER2_RECOVER").cost(costModerate).handler("handleFlatSubOpTier2Recover").pure(),
-	sub2(SubOpTier2SetZero, "TIER2_SET_ZERO").cost(costFree).handler("handleFlatSubOpTier2SetZero").mutates(),
-	sub2(SubOpTier2ChannelClose, "TIER2_CHANNEL_CLOSE").cost(costModerate).handler("handleFlatSubOpTier2ChannelClose").mutates(),
-	sub2(SubOpTier2LoadNil, "TIER2_LOAD_NIL").cost(costFree).handler("handleFlatSubOpTier2LoadNil").pure(),
-	sub2(SubOpTier2Return, "TIER2_RETURN").cost(costCheap).handler("handleFlatSubOpTier2Return").asmIn("tier2JumpTable", "handlerReturnInline").pure(),
-	sub2(SubOpTier2MakeInterfaceMethodExpr, "MAKE_IFACE_METHOD_EXPR").cost(costModerate).handler("runMakeInterfaceMethodExpr").pure(),
-	sub2(SubOpTier2MakeMap, "MAKE_MAP").cost(costVeryHeavy).handler("handleFlatSubOpTier2MakeMap").pure(),
-	sub2(SubOpTier2RangeCheckUintJumpFalse, "RANGE_CHECK_UINT_JUMP_FALSE").cost(costCheap).handler("handleSubOpRangeCheckUintJumpFalse").
-		asmIn("tier2JumpTable", "handlerSubOpRangeCheckUintJumpFalse").flags(SpecJump).pure(),
-	sub2(SubOpTier2AllocStructLiteral, "ALLOC_STRUCT_LITERAL").cost(costVeryHeavy).handler("handleSubOpAllocStructLiteral").asmIn("tier2JumpTable", "handlerSubOpAllocStructLiteral").pure(),
-	sub2(SubOpTier2SyncClosureUpvalues, "SYNC_CLOSURE_UPVALUES").cost(costModerate).handler("handleSyncClosureUpvalues").shim("HandleSyncClosureUpvalues", "SyncClosureUpvalues").mutates(),
+	sub2(SubOpTier2DrillTier3).noGoHandler().flags(specMeta),
+	sub2(SubOpTier2IncrementInt64).cost(costCheap).asmIn("tier2JumpTable").pure(),
+	sub2(SubOpTier2DecrementInt64).cost(costCheap).asmIn("tier2JumpTable").pure(),
+	sub2(SubOpTier2IncrementUint64).cost(costCheap).asmIn("tier2JumpTable").pure(),
+	sub2(SubOpTier2DecrementUint64).cost(costCheap).asmIn("tier2JumpTable").pure(),
+	sub2(SubOpTier2IncrementInt32).cost(costCheap).asmIn("tier2JumpTable").pure(),
+	sub2(SubOpTier2DecrementInt32).cost(costCheap).asmIn("tier2JumpTable").pure(),
+	sub2(SubOpTier2Panic).cost(costModerate).pure().
+		publishes().copiesThenRevokes(routePanicCapture, HandOffUntracedContainer, HandOffHeapPassthrough, HandOffIdentityKept),
+	sub2(SubOpTier2Recover).cost(costModerate).pure(),
+	sub2(SubOpTier2SetZeroGeneral).cost(costFree).mutates().noHandOff(),
+	sub2(SubOpTier2CloseChannel).cost(costModerate).mutates().
+		noHandOff(),
+	sub2(SubOpTier2LoadNil).cost(costFree).pure(),
+	sub2(SubOpTier2Return).cost(costCheap).asmIn("tier2JumpTable").pure().
+		publishes().copiesThenRevokes(RouteHostReturn, HandOffUntracedContainer, HandOffHeapPassthrough, HandOffIdentityKept),
+	sub2(SubOpTier2MakeInterfaceMethodExpression).cost(costModerate).pure(),
+	sub2(SubOpTier2MakeMap).cost(costVeryHeavy).shim().pure(),
+	sub2(SubOpTier2InRangeUint64ThenJumpIfFalse).cost(costCheap).
+		asmIn("tier2JumpTable").flags(SpecJump).pure(),
+	sub2(SubOpTier2AllocateStructLiteral).cost(costVeryHeavy).asmIn("tier2JumpTable").pure(),
+	sub2(SubOpTier2SynchroniseClosureCapturedVariables).cost(costModerate).shim().mutates().
+		noHandOff(),
+	sub2(SubOpTier2PanicRangeFunctionContinuedInt64).cost(costCheap).pure(),
+	sub2(SubOpTier2CheckShiftCount).cost(costCheap).pure(),
+	sub2(SubOpTier2JumpIfFalseBool).cost(costCheap).asmIn("tier2JumpTable").flags(SpecJump).pure(),
+	sub2(SubOpTier2JumpIfTrueBool).cost(costCheap).asmIn("tier2JumpTable").flags(SpecJump).pure(),
 }
 
 // tierSub3Specs holds the tier-3 rows (zero-operand operations).
 var tierSub3Specs = []OpSpec{
-	sub3(SubOpTier3Nop, "TIER3_NOP").cost(costFree).handler("handleFlatSubOpTier3Nop").flags(specMeta).pure(),
-	sub3(SubOpTier3ReturnVoid, "TIER3_RETURN_VOID").cost(costCheap).handler("handleReturnVoid").asmIn("tier3JumpTable", "handlerReturnVoidInline").pure(),
-	sub3(SubOpTier3SyncIIFEUpvalues, "SYNC_IIFE_UPVALUES").cost(costModerate).handler("handleSyncIIFEUpvalues").mutates(),
+	sub3(SubOpTier3NoOperation).cost(costFree).flags(specMeta).pure(),
+	sub3(SubOpTier3ReturnVoid).cost(costCheap).asmIn("tier3JumpTable").pure().
+		publishes().copiesThenRevokes(RouteHostReturn, HandOffUntracedContainer, HandOffHeapPassthrough, HandOffIdentityKept),
+	sub3(SubOpTier3SynchroniseIIFECapturedVariables).cost(costModerate).mutates().
+		noHandOff(),
 }

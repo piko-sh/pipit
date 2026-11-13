@@ -24,514 +24,526 @@ import "pipit.sh/pipit/internal/isa"
 
 func flatDispatchSwitch(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	switch flatDispatchIndex(instr) {
-	case uint(isa.OpAdd):
-		return handleAdd(vm, frame, registers, instr)
-	case uint(isa.OpAddComplex):
-		return handleAddComplex(vm, frame, registers, instr)
-	case uint(isa.OpAddFloat):
-		return handleAddFloat(vm, frame, registers, instr)
-	case uint(isa.OpAddInt):
-		return handleAddInt(vm, frame, registers, instr)
+	case uint(isa.OpAddComplex128):
+		return handleAddComplex128(vm, frame, registers, instr)
+	case uint(isa.OpAddFloat64):
+		return handleAddFloat64(vm, frame, registers, instr)
+	case uint(isa.OpAddGeneral):
+		return handleAddGeneral(vm, frame, registers, instr)
 	case uint(isa.OpAddInt32):
 		return handleAddInt32(vm, frame, registers, instr)
-	case uint(isa.OpAddInt32Const):
-		return handleAddInt32Const(vm, frame, registers, instr)
-	case uint(isa.OpAddIntConst):
-		return handleAddIntConst(vm, frame, registers, instr)
-	case uint(isa.OpAddIntJump):
-		return handleAddIntJump(vm, frame, registers, instr)
-	case uint(isa.OpAddUint):
-		return handleAddUint(vm, frame, registers, instr)
+	case uint(isa.OpAddInt32Constant):
+		return handleAddInt32Constant(vm, frame, registers, instr)
+	case uint(isa.OpAddInt64):
+		return handleAddInt64(vm, frame, registers, instr)
+	case uint(isa.OpAddInt64Constant):
+		return handleAddInt64Constant(vm, frame, registers, instr)
+	case uint(isa.OpAddInt64ConstantThenJump):
+		return handleAddInt64ConstantThenJump(vm, frame, registers, instr)
+	case uint(isa.OpAddToMapInt64Int64):
+		return handleAddToMapInt64Int64(vm, frame, registers, instr)
+	case uint(isa.OpAddToMapStringInt64):
+		return handleAddToMapStringInt64(vm, frame, registers, instr)
 	case uint(isa.OpAddUint32):
 		return handleAddUint32(vm, frame, registers, instr)
-	case uint(isa.OpAddr):
-		return handleAddr(vm, frame, registers, instr)
-	case uint(isa.OpAllocIndirect):
-		return handleAllocIndirect(vm, frame, registers, instr)
+	case uint(isa.OpAddUint64):
+		return handleAddUint64(vm, frame, registers, instr)
+	case uint(isa.OpAddress):
+		return handleAddress(vm, frame, registers, instr)
+	case uint(isa.OpAllocateIndirect):
+		return handleAllocateIndirect(vm, frame, registers, instr)
 	case uint(isa.OpAppend):
 		return handleAppend(vm, frame, registers, instr)
-	case uint(isa.OpAppendByteFast):
-		return handleAppendByteFast(vm, frame, registers, instr)
-	case uint(isa.OpAppendByteFastInPlace):
-		return handleAppendByteFastInPlace(vm, frame, registers, instr)
-	case uint(isa.OpAppendFloatFast):
-		return handleAppendFloat(vm, frame, registers, instr)
+	case uint(isa.OpAppendByte):
+		return handleAppendByte(vm, frame, registers, instr)
+	case uint(isa.OpAppendByteInPlace):
+		return handleAppendByteInPlace(vm, frame, registers, instr)
+	case uint(isa.OpAppendFloat64):
+		return handleAppendFloat64(vm, frame, registers, instr)
 	case uint(isa.OpAppendInPlace):
 		return handleAppendInPlace(vm, frame, registers, instr)
-	case uint(isa.OpAppendIntFast):
-		return handleAppendInt(vm, frame, registers, instr)
+	case uint(isa.OpAppendInt64):
+		return handleAppendInt64(vm, frame, registers, instr)
 	case uint(isa.OpAppendSpread):
 		return handleAppendSpread(vm, frame, registers, instr)
 	case uint(isa.OpAppendSpreadInPlace):
 		return handleAppendSpreadInPlace(vm, frame, registers, instr)
-	case uint(isa.OpAppendStringFast):
+	case uint(isa.OpAppendString):
 		return handleAppendString(vm, frame, registers, instr)
-	case uint(isa.OpAppendStructFast):
-		return handleAppendStructFast(vm, frame, registers, instr)
+	case uint(isa.OpAppendStringToMapString):
+		return handleAppendStringToMapString(vm, frame, registers, instr)
+	case uint(isa.OpAppendStruct):
+		return handleAppendStruct(vm, frame, registers, instr)
 	case uint(isa.OpBindMethod):
 		return handleBindMethod(vm, frame, registers, instr)
-	case uint(isa.OpBitAnd):
-		return handleBitAnd(vm, frame, registers, instr)
-	case uint(isa.OpBitAndNot):
-		return handleBitAndNot(vm, frame, registers, instr)
-	case uint(isa.OpBitAndNotUint):
-		return handleBitAndNotUint(vm, frame, registers, instr)
-	case uint(isa.OpBitAndUint):
-		return handleBitAndUint(vm, frame, registers, instr)
-	case uint(isa.OpBitOr):
-		return handleBitOr(vm, frame, registers, instr)
-	case uint(isa.OpBitOrUint):
-		return handleBitOrUint(vm, frame, registers, instr)
-	case uint(isa.OpBitXor):
-		return handleBitXor(vm, frame, registers, instr)
-	case uint(isa.OpBitXorUint):
-		return handleBitXorUint(vm, frame, registers, instr)
-	case uint(isa.OpBuildComplex):
-		return handleBuildComplex(vm, frame, registers, instr)
-	case uint(isa.OpChannelSend):
-		return HandleChannelSend(vm, frame, registers, instr)
-	case uint(isa.OpConcatRuneString):
-		return handleConcatRuneString(vm, frame, registers, instr)
-	case uint(isa.OpConcatString):
-		return handleConcatString(vm, frame, registers, instr)
-	case uint(isa.OpConvert):
-		return handleConvert(vm, frame, registers, instr)
-	case uint(isa.OpCopy):
-		return handleCopy(vm, frame, registers, instr)
-	case uint(isa.OpCopyStructFieldGeneralT0):
-		return handleCopyStructFieldGeneralT0(vm, frame, registers, instr)
+	case uint(isa.OpBitAndInt64):
+		return handleBitAndInt64(vm, frame, registers, instr)
+	case uint(isa.OpBitAndNotInt64):
+		return handleBitAndNotInt64(vm, frame, registers, instr)
+	case uint(isa.OpBitAndNotUint64):
+		return handleBitAndNotUint64(vm, frame, registers, instr)
+	case uint(isa.OpBitAndUint64):
+		return handleBitAndUint64(vm, frame, registers, instr)
+	case uint(isa.OpBitOrInt64):
+		return handleBitOrInt64(vm, frame, registers, instr)
+	case uint(isa.OpBitOrUint64):
+		return handleBitOrUint64(vm, frame, registers, instr)
+	case uint(isa.OpBitXorInt64):
+		return handleBitXorInt64(vm, frame, registers, instr)
+	case uint(isa.OpBitXorUint64):
+		return handleBitXorUint64(vm, frame, registers, instr)
+	case uint(isa.OpBoxAsInterface):
+		return handleBoxAsInterface(vm, frame, registers, instr)
+	case uint(isa.OpBoxAsType):
+		return handleBoxAsType(vm, frame, registers, instr)
+	case uint(isa.OpConcatenateString):
+		return handleConcatenateString(vm, frame, registers, instr)
+	case uint(isa.OpConcatenateStringRune):
+		return handleConcatenateStringRune(vm, frame, registers, instr)
+	case uint(isa.OpConvertGeneral):
+		return handleConvertGeneral(vm, frame, registers, instr)
+	case uint(isa.OpCopyGeneral):
+		return handleCopyGeneral(vm, frame, registers, instr)
+	case uint(isa.OpCopyStructFieldGeneral):
+		return handleCopyStructFieldGeneral(vm, frame, registers, instr)
 	case uint(isa.OpDefer):
 		return handleDefer(vm, frame, registers, instr)
-	case uint(isa.OpDeref):
-		return handleDeref(vm, frame, registers, instr)
-	case uint(isa.OpDerefSliceGetInt):
-		return handleDerefSliceGetInt(vm, frame, registers, instr)
-	case uint(isa.OpDerefSliceSetInt):
-		return handleDerefSliceSetInt(vm, frame, registers, instr)
-	case uint(isa.OpDiv):
-		return handleDiv(vm, frame, registers, instr)
-	case uint(isa.OpDivComplex):
-		return handleDivComplex(vm, frame, registers, instr)
-	case uint(isa.OpDivFloat):
-		return handleDivFloat(vm, frame, registers, instr)
-	case uint(isa.OpDivInt):
-		return handleDivInt(vm, frame, registers, instr)
-	case uint(isa.OpDivUint):
-		return handleDivUint(vm, frame, registers, instr)
-	case uint(isa.OpEqComplex):
-		return handleEqComplex(vm, frame, registers, instr)
-	case uint(isa.OpEqFloat):
-		return handleEqFloat(vm, frame, registers, instr)
-	case uint(isa.OpEqGeneral):
-		return handleEqGeneral(vm, frame, registers, instr)
-	case uint(isa.OpEqInt):
-		return handleEqInt(vm, frame, registers, instr)
-	case uint(isa.OpEqString):
-		return handleEqString(vm, frame, registers, instr)
-	case uint(isa.OpEqUint):
-		return handleEqUint(vm, frame, registers, instr)
-	case uint(isa.OpExt):
-		return handleExt(vm, frame, registers, instr)
-	case uint(isa.OpGeFloat):
-		return handleGeFloat(vm, frame, registers, instr)
-	case uint(isa.OpGeGeneral):
-		return handleGeGeneral(vm, frame, registers, instr)
-	case uint(isa.OpGeInt):
-		return handleGeInt(vm, frame, registers, instr)
-	case uint(isa.OpGeString):
-		return handleGeString(vm, frame, registers, instr)
-	case uint(isa.OpGeUint):
-		return handleGeUint(vm, frame, registers, instr)
+	case uint(isa.OpDereference):
+		return handleDereference(vm, frame, registers, instr)
+	case uint(isa.OpDivideComplex128):
+		return handleDivideComplex128(vm, frame, registers, instr)
+	case uint(isa.OpDivideFloat64):
+		return handleDivideFloat64(vm, frame, registers, instr)
+	case uint(isa.OpDivideGeneral):
+		return handleDivideGeneral(vm, frame, registers, instr)
+	case uint(isa.OpDivideInt64):
+		return handleDivideInt64(vm, frame, registers, instr)
+	case uint(isa.OpDivideUint64):
+		return handleDivideUint64(vm, frame, registers, instr)
+	case uint(isa.OpEqualComplex128):
+		return handleEqualComplex128(vm, frame, registers, instr)
+	case uint(isa.OpEqualFloat64):
+		return handleEqualFloat64(vm, frame, registers, instr)
+	case uint(isa.OpEqualGeneral):
+		return handleEqualGeneral(vm, frame, registers, instr)
+	case uint(isa.OpEqualInt64):
+		return handleEqualInt64(vm, frame, registers, instr)
+	case uint(isa.OpEqualString):
+		return handleEqualString(vm, frame, registers, instr)
+	case uint(isa.OpEqualUint64):
+		return handleEqualUint64(vm, frame, registers, instr)
+	case uint(isa.OpExtension):
+		return handleExtension(vm, frame, registers, instr)
+	case uint(isa.OpGetCapturedVariable):
+		return handleGetCapturedVariable(vm, frame, registers, instr)
+	case uint(isa.OpGetElement):
+		return handleGetElement(vm, frame, registers, instr)
+	case uint(isa.OpGetElementBool):
+		return handleGetElementBool(vm, frame, registers, instr)
+	case uint(isa.OpGetElementFieldBool):
+		return handleGetElementFieldBool(vm, frame, registers, instr)
+	case uint(isa.OpGetElementFieldFloat64):
+		return handleGetElementFieldFloat64(vm, frame, registers, instr)
+	case uint(isa.OpGetElementFieldInt64):
+		return handleGetElementFieldInt64(vm, frame, registers, instr)
+	case uint(isa.OpGetElementFieldString):
+		return handleGetElementFieldString(vm, frame, registers, instr)
+	case uint(isa.OpGetElementFieldUint64):
+		return handleGetElementFieldUint64(vm, frame, registers, instr)
+	case uint(isa.OpGetElementFloat64):
+		return handleGetElementFloat64(vm, frame, registers, instr)
+	case uint(isa.OpGetElementInt64):
+		return handleGetElementInt64(vm, frame, registers, instr)
+	case uint(isa.OpGetElementInt64Unchecked):
+		return handleGetElementInt64Unchecked(vm, frame, registers, instr)
+	case uint(isa.OpGetElementInt64ViaPointer):
+		return handleGetElementInt64ViaPointer(vm, frame, registers, instr)
+	case uint(isa.OpGetElementString):
+		return handleGetElementString(vm, frame, registers, instr)
+	case uint(isa.OpGetElementUint64):
+		return handleGetElementUint64(vm, frame, registers, instr)
 	case uint(isa.OpGetField):
 		return handleGetField(vm, frame, registers, instr)
-	case uint(isa.OpGetFieldInt):
-		return handleGetFieldInt(vm, frame, registers, instr)
+	case uint(isa.OpGetFieldInt64):
+		return handleGetFieldInt64(vm, frame, registers, instr)
 	case uint(isa.OpGetGlobal):
 		return handleGetGlobal(vm, frame, registers, instr)
+	case uint(isa.OpGetMap):
+		return handleGetMap(vm, frame, registers, instr)
+	case uint(isa.OpGetMapInt64General):
+		return handleGetMapInt64General(vm, frame, registers, instr)
+	case uint(isa.OpGetMapInt64GeneralOk):
+		return handleGetMapInt64GeneralOk(vm, frame, registers, instr)
+	case uint(isa.OpGetMapInt64GeneralOkThenJumpIfFalse):
+		return handleGetMapInt64GeneralOkThenJumpIfFalse(vm, frame, registers, instr)
+	case uint(isa.OpGetMapInt64Int64):
+		return handleGetMapInt64Int64(vm, frame, registers, instr)
+	case uint(isa.OpGetMapInt64Int64Ok):
+		return handleGetMapInt64Int64Ok(vm, frame, registers, instr)
+	case uint(isa.OpGetMapInt64Int64OkThenJumpIfFalse):
+		return handleGetMapInt64Int64OkThenJumpIfFalse(vm, frame, registers, instr)
+	case uint(isa.OpGetMapInt64String):
+		return handleGetMapInt64String(vm, frame, registers, instr)
+	case uint(isa.OpGetMapInt64StringOk):
+		return handleGetMapInt64StringOk(vm, frame, registers, instr)
+	case uint(isa.OpGetMapInt64StringOkThenJumpIfFalse):
+		return handleGetMapInt64StringOkThenJumpIfFalse(vm, frame, registers, instr)
+	case uint(isa.OpGetMapOk):
+		return handleGetMapOk(vm, frame, registers, instr)
+	case uint(isa.OpGetMapStringGeneral):
+		return handleGetMapStringGeneral(vm, frame, registers, instr)
+	case uint(isa.OpGetMapStringGeneralOk):
+		return handleGetMapStringGeneralOk(vm, frame, registers, instr)
+	case uint(isa.OpGetMapStringGeneralOkThenJumpIfFalse):
+		return handleGetMapStringGeneralOkThenJumpIfFalse(vm, frame, registers, instr)
+	case uint(isa.OpGetMapStringInt64):
+		return handleGetMapStringInt64(vm, frame, registers, instr)
+	case uint(isa.OpGetMapStringInt64Ok):
+		return handleGetMapStringInt64Ok(vm, frame, registers, instr)
+	case uint(isa.OpGetMapStringInt64OkThenJumpIfFalse):
+		return handleGetMapStringInt64OkThenJumpIfFalse(vm, frame, registers, instr)
+	case uint(isa.OpGetMapStringString):
+		return handleGetMapStringString(vm, frame, registers, instr)
+	case uint(isa.OpGetMapStringStringOk):
+		return handleGetMapStringStringOk(vm, frame, registers, instr)
+	case uint(isa.OpGetMapStringStringOkThenJumpIfFalse):
+		return handleGetMapStringStringOkThenJumpIfFalse(vm, frame, registers, instr)
+	case uint(isa.OpGetSliceInt64Element):
+		return handleGetSliceInt64Element(vm, frame, registers, instr)
+	case uint(isa.OpGetSliceInt64ElementUnchecked):
+		return handleGetSliceInt64ElementUnchecked(vm, frame, registers, instr)
+	case uint(isa.OpGetStringByte):
+		return handleGetStringByte(vm, frame, registers, instr)
+	case uint(isa.OpGetStringByteAsInt64):
+		return handleGetStringByteAsInt64(vm, frame, registers, instr)
 	case uint(isa.OpGetStructFieldBool):
-		return handleGetStructFieldBoolT0(vm, frame, registers, instr)
-	case uint(isa.OpGetStructFieldFloat):
-		return handleGetStructFieldFloatT0(vm, frame, registers, instr)
+		return handleGetStructFieldBool(vm, frame, registers, instr)
+	case uint(isa.OpGetStructFieldElementField):
+		return handleGetStructFieldElementField(vm, frame, registers, instr)
+	case uint(isa.OpGetStructFieldElementGeneral):
+		return handleGetStructFieldElementGeneral(vm, frame, registers, instr)
+	case uint(isa.OpGetStructFieldFloat64):
+		return handleGetStructFieldFloat64(vm, frame, registers, instr)
 	case uint(isa.OpGetStructFieldGeneral):
-		return handleGetStructFieldGeneralT0(vm, frame, registers, instr)
-	case uint(isa.OpGetStructFieldIndexGeneral):
-		return handleGetStructFieldIndexGeneral(vm, frame, registers, instr)
-	case uint(isa.OpGetStructFieldIntT0):
-		return handleGetStructFieldIntT0(vm, frame, registers, instr)
-	case uint(isa.OpGetStructFieldRawPointerT0):
-		return handleGetStructFieldRawPointerT0(vm, frame, registers, instr)
-	case uint(isa.OpGetStructFieldSliceIndexScalar):
-		return handleGetStructFieldSliceIndexScalar(vm, frame, registers, instr)
-	case uint(isa.OpGetStructFieldSliceLen):
-		return handleGetStructFieldSliceLen(vm, frame, registers, instr)
-	case uint(isa.OpGetStructFieldUint):
-		return handleGetStructFieldUintT0(vm, frame, registers, instr)
-	case uint(isa.OpGetUpvalue):
-		return handleGetUpvalue(vm, frame, registers, instr)
+		return handleGetStructFieldGeneral(vm, frame, registers, instr)
+	case uint(isa.OpGetStructFieldInt64):
+		return handleGetStructFieldInt64(vm, frame, registers, instr)
+	case uint(isa.OpGetStructFieldRawPointer):
+		return handleGetStructFieldRawPointer(vm, frame, registers, instr)
+	case uint(isa.OpGetStructFieldUint64):
+		return handleGetStructFieldUint64(vm, frame, registers, instr)
 	case uint(isa.OpGo):
 		return handleGo(vm, frame, registers, instr)
-	case uint(isa.OpGtFloat):
-		return handleGtFloat(vm, frame, registers, instr)
-	case uint(isa.OpGtGeneral):
-		return handleGtGeneral(vm, frame, registers, instr)
-	case uint(isa.OpGtInt):
-		return handleGtInt(vm, frame, registers, instr)
-	case uint(isa.OpGtString):
-		return handleGtString(vm, frame, registers, instr)
-	case uint(isa.OpGtUint):
-		return handleGtUint(vm, frame, registers, instr)
-	case uint(isa.OpIndex):
-		return handleIndex(vm, frame, registers, instr)
-	case uint(isa.OpIndexSet):
-		return handleIndexSet(vm, frame, registers, instr)
+	case uint(isa.OpGreaterOrEqualFloat64):
+		return handleGreaterOrEqualFloat64(vm, frame, registers, instr)
+	case uint(isa.OpGreaterOrEqualGeneral):
+		return handleGreaterOrEqualGeneral(vm, frame, registers, instr)
+	case uint(isa.OpGreaterOrEqualInt64):
+		return handleGreaterOrEqualInt64(vm, frame, registers, instr)
+	case uint(isa.OpGreaterOrEqualString):
+		return handleGreaterOrEqualString(vm, frame, registers, instr)
+	case uint(isa.OpGreaterOrEqualUint64):
+		return handleGreaterOrEqualUint64(vm, frame, registers, instr)
+	case uint(isa.OpGreaterThanFloat64):
+		return handleGreaterThanFloat64(vm, frame, registers, instr)
+	case uint(isa.OpGreaterThanGeneral):
+		return handleGreaterThanGeneral(vm, frame, registers, instr)
+	case uint(isa.OpGreaterThanInt64):
+		return handleGreaterThanInt64(vm, frame, registers, instr)
+	case uint(isa.OpGreaterThanString):
+		return handleGreaterThanString(vm, frame, registers, instr)
+	case uint(isa.OpGreaterThanUint64):
+		return handleGreaterThanUint64(vm, frame, registers, instr)
 	case uint(isa.OpJumpIfFalse):
 		return handleJumpIfFalse(vm, frame, registers, instr)
+	case uint(isa.OpJumpIfNil):
+		return handleJumpIfNil(vm, frame, registers, instr)
+	case uint(isa.OpJumpIfNotNil):
+		return handleJumpIfNotNil(vm, frame, registers, instr)
 	case uint(isa.OpJumpIfTrue):
 		return handleJumpIfTrue(vm, frame, registers, instr)
-	case uint(isa.OpLeFloat):
-		return handleLeFloat(vm, frame, registers, instr)
-	case uint(isa.OpLeGeneral):
-		return handleLeGeneral(vm, frame, registers, instr)
-	case uint(isa.OpLeInt):
-		return handleLeInt(vm, frame, registers, instr)
-	case uint(isa.OpLeString):
-		return handleLeString(vm, frame, registers, instr)
-	case uint(isa.OpLeUint):
-		return handleLeUint(vm, frame, registers, instr)
-	case uint(isa.OpLoadComplexConst):
-		return handleLoadComplexConst(vm, frame, registers, instr)
-	case uint(isa.OpLoadCompositeZeroReuse):
-		return handleLoadCompositeZeroReuse(vm, frame, registers, instr)
-	case uint(isa.OpLoadFloatConst):
-		return handleLoadFloatConst(vm, frame, registers, instr)
-	case uint(isa.OpLoadGeneralConst):
-		return handleLoadGeneralConst(vm, frame, registers, instr)
-	case uint(isa.OpLoadIntConst):
-		return handleLoadIntConst(vm, frame, registers, instr)
-	case uint(isa.OpLoadStringConst):
-		return handleLoadStringConst(vm, frame, registers, instr)
-	case uint(isa.OpLoadUintConst):
-		return handleLoadUintConst(vm, frame, registers, instr)
-	case uint(isa.OpLtFloat):
-		return handleLtFloat(vm, frame, registers, instr)
-	case uint(isa.OpLtGeneral):
-		return handleLtGeneral(vm, frame, registers, instr)
-	case uint(isa.OpLtInt):
-		return handleLtInt(vm, frame, registers, instr)
-	case uint(isa.OpLtString):
-		return handleLtString(vm, frame, registers, instr)
-	case uint(isa.OpLtUint):
-		return handleLtUint(vm, frame, registers, instr)
+	case uint(isa.OpLengthStructField):
+		return handleLengthStructField(vm, frame, registers, instr)
+	case uint(isa.OpLessOrEqualFloat64):
+		return handleLessOrEqualFloat64(vm, frame, registers, instr)
+	case uint(isa.OpLessOrEqualGeneral):
+		return handleLessOrEqualGeneral(vm, frame, registers, instr)
+	case uint(isa.OpLessOrEqualInt64):
+		return handleLessOrEqualInt64(vm, frame, registers, instr)
+	case uint(isa.OpLessOrEqualString):
+		return handleLessOrEqualString(vm, frame, registers, instr)
+	case uint(isa.OpLessOrEqualUint64):
+		return handleLessOrEqualUint64(vm, frame, registers, instr)
+	case uint(isa.OpLessThanFloat64):
+		return handleLessThanFloat64(vm, frame, registers, instr)
+	case uint(isa.OpLessThanGeneral):
+		return handleLessThanGeneral(vm, frame, registers, instr)
+	case uint(isa.OpLessThanInt64):
+		return handleLessThanInt64(vm, frame, registers, instr)
+	case uint(isa.OpLessThanString):
+		return handleLessThanString(vm, frame, registers, instr)
+	case uint(isa.OpLessThanUint64):
+		return handleLessThanUint64(vm, frame, registers, instr)
+	case uint(isa.OpLoadComplex128Constant):
+		return handleLoadComplex128Constant(vm, frame, registers, instr)
+	case uint(isa.OpLoadCompositeZeroInPlace):
+		return handleLoadCompositeZeroInPlace(vm, frame, registers, instr)
+	case uint(isa.OpLoadFloat64Constant):
+		return handleLoadFloat64Constant(vm, frame, registers, instr)
+	case uint(isa.OpLoadGeneralConstant):
+		return handleLoadGeneralConstant(vm, frame, registers, instr)
+	case uint(isa.OpLoadInt64Constant):
+		return handleLoadInt64Constant(vm, frame, registers, instr)
+	case uint(isa.OpLoadStringConstant):
+		return handleLoadStringConstant(vm, frame, registers, instr)
+	case uint(isa.OpLoadUint64Constant):
+		return handleLoadUint64Constant(vm, frame, registers, instr)
 	case uint(isa.OpMakeClosure):
 		return handleMakeClosure(vm, frame, registers, instr)
+	case uint(isa.OpMakeComplex128):
+		return handleMakeComplex128(vm, frame, registers, instr)
 	case uint(isa.OpMakeSlice):
 		return handleMakeSlice(vm, frame, registers, instr)
-	case uint(isa.OpMapAddIntInt):
-		return handleMapAddIntInt(vm, frame, registers, instr)
-	case uint(isa.OpMapAddStringInt):
-		return handleMapAddStringInt(vm, frame, registers, instr)
-	case uint(isa.OpMapGetIntGeneral):
-		return handleMapGetIntGeneral(vm, frame, registers, instr)
-	case uint(isa.OpMapGetIntInt):
-		return handleMapGetIntInt(vm, frame, registers, instr)
-	case uint(isa.OpMapGetIntString):
-		return handleMapGetIntString(vm, frame, registers, instr)
-	case uint(isa.OpMapGetStringGeneral):
-		return handleMapGetStringGeneral(vm, frame, registers, instr)
-	case uint(isa.OpMapGetStringInt):
-		return handleMapGetStringInt(vm, frame, registers, instr)
-	case uint(isa.OpMapGetStringString):
-		return handleMapGetStringString(vm, frame, registers, instr)
-	case uint(isa.OpMapIndex):
-		return handleMapIndex(vm, frame, registers, instr)
-	case uint(isa.OpMapIndexOk):
-		return handleMapIndexOk(vm, frame, registers, instr)
-	case uint(isa.OpMapIndexOkIntGeneral):
-		return handleMapIndexOkIntGeneral(vm, frame, registers, instr)
-	case uint(isa.OpMapIndexOkIntInt):
-		return handleMapIndexOkIntInt(vm, frame, registers, instr)
-	case uint(isa.OpMapIndexOkIntString):
-		return handleMapIndexOkIntString(vm, frame, registers, instr)
-	case uint(isa.OpMapIndexOkJumpIfFalseIntGeneral):
-		return handleMapIndexOkJumpIfFalseIntGeneral(vm, frame, registers, instr)
-	case uint(isa.OpMapIndexOkJumpIfFalseIntInt):
-		return handleMapIndexOkJumpIfFalseIntInt(vm, frame, registers, instr)
-	case uint(isa.OpMapIndexOkJumpIfFalseIntString):
-		return handleMapIndexOkJumpIfFalseIntString(vm, frame, registers, instr)
-	case uint(isa.OpMapIndexOkJumpIfFalseStringGeneral):
-		return handleMapIndexOkJumpIfFalseStringGeneral(vm, frame, registers, instr)
-	case uint(isa.OpMapIndexOkJumpIfFalseStringInt):
-		return handleMapIndexOkJumpIfFalseStringInt(vm, frame, registers, instr)
-	case uint(isa.OpMapIndexOkJumpIfFalseStringString):
-		return handleMapIndexOkJumpIfFalseStringString(vm, frame, registers, instr)
-	case uint(isa.OpMapIndexOkStringGeneral):
-		return handleMapIndexOkStringGeneral(vm, frame, registers, instr)
-	case uint(isa.OpMapIndexOkStringInt):
-		return handleMapIndexOkStringInt(vm, frame, registers, instr)
-	case uint(isa.OpMapIndexOkStringString):
-		return handleMapIndexOkStringString(vm, frame, registers, instr)
-	case uint(isa.OpMapSet):
-		return handleMapSet(vm, frame, registers, instr)
-	case uint(isa.OpMapSetIntGeneral):
-		return handleMapSetIntGeneral(vm, frame, registers, instr)
-	case uint(isa.OpMapSetIntInt):
-		return handleMapSetIntInt(vm, frame, registers, instr)
-	case uint(isa.OpMapSetIntString):
-		return handleMapSetIntString(vm, frame, registers, instr)
-	case uint(isa.OpMapSetStringGeneral):
-		return handleMapSetStringGeneral(vm, frame, registers, instr)
-	case uint(isa.OpMapSetStringInt):
-		return handleMapSetStringInt(vm, frame, registers, instr)
-	case uint(isa.OpMapSetStringString):
-		return handleMapSetStringString(vm, frame, registers, instr)
 	case uint(isa.OpMathPow):
 		return handleMathPow(vm, frame, registers, instr)
 	case uint(isa.OpMoveGeneral):
 		return handleMoveGeneral(vm, frame, registers, instr)
-	case uint(isa.OpMul):
-		return handleMul(vm, frame, registers, instr)
-	case uint(isa.OpMulComplex):
-		return handleMulComplex(vm, frame, registers, instr)
-	case uint(isa.OpMulFloat):
-		return handleMulFloat(vm, frame, registers, instr)
-	case uint(isa.OpMulInt):
-		return handleMulInt(vm, frame, registers, instr)
-	case uint(isa.OpMulInt32):
-		return handleMulInt32(vm, frame, registers, instr)
-	case uint(isa.OpMulIntConst):
-		return handleMulIntConst(vm, frame, registers, instr)
-	case uint(isa.OpMulUint):
-		return handleMulUint(vm, frame, registers, instr)
-	case uint(isa.OpNeComplex):
-		return handleNeComplex(vm, frame, registers, instr)
-	case uint(isa.OpNeFloat):
-		return handleNeFloat(vm, frame, registers, instr)
-	case uint(isa.OpNeGeneral):
-		return handleNeGeneral(vm, frame, registers, instr)
-	case uint(isa.OpNeInt):
-		return handleNeInt(vm, frame, registers, instr)
-	case uint(isa.OpNeString):
-		return handleNeString(vm, frame, registers, instr)
-	case uint(isa.OpNeUint):
-		return handleNeUint(vm, frame, registers, instr)
-	case uint(isa.OpPackInterface):
-		return handlePackInterface(vm, frame, registers, instr)
-	case uint(isa.OpPackTyped):
-		return handlePackTyped(vm, frame, registers, instr)
+	case uint(isa.OpMultiplyComplex128):
+		return handleMultiplyComplex128(vm, frame, registers, instr)
+	case uint(isa.OpMultiplyFloat64):
+		return handleMultiplyFloat64(vm, frame, registers, instr)
+	case uint(isa.OpMultiplyGeneral):
+		return handleMultiplyGeneral(vm, frame, registers, instr)
+	case uint(isa.OpMultiplyInt32):
+		return handleMultiplyInt32(vm, frame, registers, instr)
+	case uint(isa.OpMultiplyInt64):
+		return handleMultiplyInt64(vm, frame, registers, instr)
+	case uint(isa.OpMultiplyInt64Constant):
+		return handleMultiplyInt64Constant(vm, frame, registers, instr)
+	case uint(isa.OpMultiplyInt64ConstantThenAdd):
+		return handleMultiplyInt64ConstantThenAdd(vm, frame, registers, instr)
+	case uint(isa.OpMultiplyUint32):
+		return handleMultiplyUint32(vm, frame, registers, instr)
+	case uint(isa.OpMultiplyUint64):
+		return handleMultiplyUint64(vm, frame, registers, instr)
+	case uint(isa.OpNotEqualComplex128):
+		return handleNotEqualComplex128(vm, frame, registers, instr)
+	case uint(isa.OpNotEqualFloat64):
+		return handleNotEqualFloat64(vm, frame, registers, instr)
+	case uint(isa.OpNotEqualGeneral):
+		return handleNotEqualGeneral(vm, frame, registers, instr)
+	case uint(isa.OpNotEqualInt64):
+		return handleNotEqualInt64(vm, frame, registers, instr)
+	case uint(isa.OpNotEqualString):
+		return handleNotEqualString(vm, frame, registers, instr)
+	case uint(isa.OpNotEqualUint64):
+		return handleNotEqualUint64(vm, frame, registers, instr)
 	case uint(isa.OpRangeNextSliceByte):
 		return handleRangeNextSliceByte(vm, frame, registers, instr)
-	case uint(isa.OpRangeNextSliceInt):
-		return handleRangeNextSliceInt(vm, frame, registers, instr)
-	case uint(isa.OpRem):
-		return handleRem(vm, frame, registers, instr)
-	case uint(isa.OpRemInt):
-		return handleRemInt(vm, frame, registers, instr)
-	case uint(isa.OpRemUint):
-		return handleRemUint(vm, frame, registers, instr)
+	case uint(isa.OpRangeNextSliceInt64):
+		return handleRangeNextSliceInt64(vm, frame, registers, instr)
+	case uint(isa.OpRemainderGeneral):
+		return handleRemainderGeneral(vm, frame, registers, instr)
+	case uint(isa.OpRemainderInt64):
+		return handleRemainderInt64(vm, frame, registers, instr)
+	case uint(isa.OpRemainderUint64):
+		return handleRemainderUint64(vm, frame, registers, instr)
+	case uint(isa.OpSendToChannel):
+		return handleSendToChannel(vm, frame, registers, instr)
+	case uint(isa.OpSetCapturedVariable):
+		return handleSetCapturedVariable(vm, frame, registers, instr)
+	case uint(isa.OpSetElement):
+		return handleSetElement(vm, frame, registers, instr)
+	case uint(isa.OpSetElementBool):
+		return handleSetElementBool(vm, frame, registers, instr)
+	case uint(isa.OpSetElementFieldFloat64):
+		return handleSetElementFieldFloat64(vm, frame, registers, instr)
+	case uint(isa.OpSetElementFieldInt64):
+		return handleSetElementFieldInt64(vm, frame, registers, instr)
+	case uint(isa.OpSetElementFloat64):
+		return handleSetElementFloat64(vm, frame, registers, instr)
+	case uint(isa.OpSetElementInt64):
+		return handleSetElementInt64(vm, frame, registers, instr)
+	case uint(isa.OpSetElementInt64Unchecked):
+		return handleSetElementInt64Unchecked(vm, frame, registers, instr)
+	case uint(isa.OpSetElementInt64ViaPointer):
+		return handleSetElementInt64ViaPointer(vm, frame, registers, instr)
+	case uint(isa.OpSetElementString):
+		return handleSetElementString(vm, frame, registers, instr)
+	case uint(isa.OpSetElementUint64):
+		return handleSetElementUint64(vm, frame, registers, instr)
 	case uint(isa.OpSetField):
 		return handleSetField(vm, frame, registers, instr)
-	case uint(isa.OpSetFieldInt):
-		return handleSetFieldInt(vm, frame, registers, instr)
+	case uint(isa.OpSetFieldInt64):
+		return handleSetFieldInt64(vm, frame, registers, instr)
 	case uint(isa.OpSetGlobal):
 		return handleSetGlobal(vm, frame, registers, instr)
+	case uint(isa.OpSetMap):
+		return handleSetMap(vm, frame, registers, instr)
+	case uint(isa.OpSetMapInt64General):
+		return handleSetMapInt64General(vm, frame, registers, instr)
+	case uint(isa.OpSetMapInt64Int64):
+		return handleSetMapInt64Int64(vm, frame, registers, instr)
+	case uint(isa.OpSetMapInt64String):
+		return handleSetMapInt64String(vm, frame, registers, instr)
+	case uint(isa.OpSetMapStringGeneral):
+		return handleSetMapStringGeneral(vm, frame, registers, instr)
+	case uint(isa.OpSetMapStringInt64):
+		return handleSetMapStringInt64(vm, frame, registers, instr)
+	case uint(isa.OpSetMapStringString):
+		return handleSetMapStringString(vm, frame, registers, instr)
+	case uint(isa.OpSetSliceInt64Element):
+		return handleSetSliceInt64Element(vm, frame, registers, instr)
+	case uint(isa.OpSetSliceInt64ElementUnchecked):
+		return handleSetSliceInt64ElementUnchecked(vm, frame, registers, instr)
 	case uint(isa.OpSetStructFieldBool):
-		return handleSetStructFieldBoolT0(vm, frame, registers, instr)
-	case uint(isa.OpSetStructFieldFloat):
-		return handleSetStructFieldFloatT0(vm, frame, registers, instr)
+		return handleSetStructFieldBool(vm, frame, registers, instr)
+	case uint(isa.OpSetStructFieldElementGeneral):
+		return handleSetStructFieldElementGeneral(vm, frame, registers, instr)
+	case uint(isa.OpSetStructFieldFloat64):
+		return handleSetStructFieldFloat64(vm, frame, registers, instr)
 	case uint(isa.OpSetStructFieldGeneral):
-		return handleSetStructFieldGeneralT0(vm, frame, registers, instr)
-	case uint(isa.OpSetStructFieldIndexGeneral):
-		return handleSetStructFieldIndexGeneral(vm, frame, registers, instr)
-	case uint(isa.OpSetStructFieldIntT0):
-		return handleSetStructFieldIntT0(vm, frame, registers, instr)
-	case uint(isa.OpSetStructFieldUint):
-		return handleSetStructFieldUintT0(vm, frame, registers, instr)
-	case uint(isa.OpSetUpvalue):
-		return handleSetUpvalue(vm, frame, registers, instr)
-	case uint(isa.OpShiftLeft):
-		return handleShiftLeft(vm, frame, registers, instr)
-	case uint(isa.OpShiftLeftUint):
-		return handleShiftLeftUint(vm, frame, registers, instr)
-	case uint(isa.OpShiftRight):
-		return handleShiftRight(vm, frame, registers, instr)
-	case uint(isa.OpShiftRightUint):
-		return handleShiftRightUint(vm, frame, registers, instr)
-	case uint(isa.OpSliceGetBool):
-		return handleSliceGetBool(vm, frame, registers, instr)
-	case uint(isa.OpSliceGetFloat):
-		return handleSliceGetFloat(vm, frame, registers, instr)
-	case uint(isa.OpSliceGetInt):
-		return handleSliceGetInt(vm, frame, registers, instr)
-	case uint(isa.OpSliceGetIntDirect):
-		return handleSliceGetIntDirect(vm, frame, registers, instr)
-	case uint(isa.OpSliceGetIntDirectUnchecked):
-		return handleSliceGetIntDirectUnchecked(vm, frame, registers, instr)
-	case uint(isa.OpSliceGetIntUnchecked):
-		return handleSliceGetIntUnchecked(vm, frame, registers, instr)
-	case uint(isa.OpSliceGetString):
-		return handleSliceGetString(vm, frame, registers, instr)
-	case uint(isa.OpSliceGetUint):
-		return handleSliceGetUint(vm, frame, registers, instr)
-	case uint(isa.OpSliceIndexStructFieldBool):
-		return handleSliceIndexStructFieldBool(vm, frame, registers, instr)
-	case uint(isa.OpSliceIndexStructFieldFloat):
-		return handleSliceIndexStructFieldFloat(vm, frame, registers, instr)
-	case uint(isa.OpSliceIndexStructFieldInt):
-		return handleSliceIndexStructFieldInt(vm, frame, registers, instr)
-	case uint(isa.OpSliceIndexStructFieldString):
-		return handleSliceIndexStructFieldString(vm, frame, registers, instr)
-	case uint(isa.OpSliceIndexStructFieldUint):
-		return handleSliceIndexStructFieldUint(vm, frame, registers, instr)
-	case uint(isa.OpSliceSetBool):
-		return handleSliceSetBool(vm, frame, registers, instr)
-	case uint(isa.OpSliceSetFloat):
-		return handleSliceSetFloat(vm, frame, registers, instr)
-	case uint(isa.OpSliceSetInt):
-		return handleSliceSetInt(vm, frame, registers, instr)
-	case uint(isa.OpSliceSetIntDirect):
-		return handleSliceSetIntDirect(vm, frame, registers, instr)
-	case uint(isa.OpSliceSetIntDirectUnchecked):
-		return handleSliceSetIntDirectUnchecked(vm, frame, registers, instr)
-	case uint(isa.OpSliceSetIntUnchecked):
-		return handleSliceSetIntUnchecked(vm, frame, registers, instr)
-	case uint(isa.OpSliceSetString):
-		return handleSliceSetString(vm, frame, registers, instr)
-	case uint(isa.OpSliceSetUint):
-		return handleSliceSetUint(vm, frame, registers, instr)
+		return handleSetStructFieldGeneral(vm, frame, registers, instr)
+	case uint(isa.OpSetStructFieldInt64):
+		return handleSetStructFieldInt64(vm, frame, registers, instr)
+	case uint(isa.OpSetStructFieldUint64):
+		return handleSetStructFieldUint64(vm, frame, registers, instr)
+	case uint(isa.OpShiftLeftInt64):
+		return handleShiftLeftInt64(vm, frame, registers, instr)
+	case uint(isa.OpShiftLeftUint64):
+		return handleShiftLeftUint64(vm, frame, registers, instr)
+	case uint(isa.OpShiftRightInt64):
+		return handleShiftRightInt64(vm, frame, registers, instr)
+	case uint(isa.OpShiftRightUint64):
+		return handleShiftRightUint64(vm, frame, registers, instr)
 	case uint(isa.OpSliceString):
 		return handleSliceString(vm, frame, registers, instr)
-	case uint(isa.OpStrContains):
-		return handleStrContains(vm, frame, registers, instr)
-	case uint(isa.OpStrContainsRune):
-		return handleStrContainsRune(vm, frame, registers, instr)
-	case uint(isa.OpStrCount):
-		return handleStrCount(vm, frame, registers, instr)
-	case uint(isa.OpStrEqualFold):
-		return handleStrEqualFold(vm, frame, registers, instr)
-	case uint(isa.OpStrHasPrefix):
-		return handleStrHasPrefix(vm, frame, registers, instr)
-	case uint(isa.OpStrHasSuffix):
-		return handleStrHasSuffix(vm, frame, registers, instr)
-	case uint(isa.OpStrIndex):
-		return handleStrIndex(vm, frame, registers, instr)
-	case uint(isa.OpStrIndexRune):
-		return handleStrIndexRune(vm, frame, registers, instr)
-	case uint(isa.OpStrJoin):
-		return handleStrJoin(vm, frame, registers, instr)
-	case uint(isa.OpStrLastIndex):
-		return handleStrLastIndex(vm, frame, registers, instr)
-	case uint(isa.OpStrRepeat):
-		return handleStrRepeat(vm, frame, registers, instr)
-	case uint(isa.OpStrReplaceAll):
-		return handleStrReplaceAll(vm, frame, registers, instr)
-	case uint(isa.OpStrSplit):
-		return handleStrSplit(vm, frame, registers, instr)
-	case uint(isa.OpStrTrim):
-		return handleStrTrim(vm, frame, registers, instr)
-	case uint(isa.OpStrTrimPrefix):
-		return handleStrTrimPrefix(vm, frame, registers, instr)
-	case uint(isa.OpStrTrimSuffix):
-		return handleStrTrimSuffix(vm, frame, registers, instr)
-	case uint(isa.OpStringIndex):
-		return handleStringIndex(vm, frame, registers, instr)
-	case uint(isa.OpStringIndexToInt):
-		return handleStringIndexToInt(vm, frame, registers, instr)
-	case uint(isa.OpSub):
-		return handleSub(vm, frame, registers, instr)
-	case uint(isa.OpSubComplex):
-		return handleSubComplex(vm, frame, registers, instr)
-	case uint(isa.OpSubFloat):
-		return handleSubFloat(vm, frame, registers, instr)
-	case uint(isa.OpSubInt):
-		return handleSubInt(vm, frame, registers, instr)
-	case uint(isa.OpSubInt32):
-		return handleSubInt32(vm, frame, registers, instr)
-	case uint(isa.OpSubInt32Const):
-		return handleSubInt32Const(vm, frame, registers, instr)
-	case uint(isa.OpSubIntConst):
-		return handleSubIntConst(vm, frame, registers, instr)
-	case uint(isa.OpSubUint):
-		return handleSubUint(vm, frame, registers, instr)
-	case uint(isa.OpSwapStructFieldsGeneralT0):
-		return handleSwapStructFieldsGeneralT0(vm, frame, registers, instr)
-	case uint(isa.OpTestNilJumpFalse):
-		return handleTestNilJumpFalse(vm, frame, registers, instr)
-	case uint(isa.OpTestNilJumpTrue):
-		return handleTestNilJumpTrue(vm, frame, registers, instr)
-	case uint(isa.OpTruncateNarrow):
-		return HandleTruncateNarrow(vm, frame, registers, instr)
+	case uint(isa.OpStringsContains):
+		return handleStringsContains(vm, frame, registers, instr)
+	case uint(isa.OpStringsContainsRune):
+		return handleStringsContainsRune(vm, frame, registers, instr)
+	case uint(isa.OpStringsCount):
+		return handleStringsCount(vm, frame, registers, instr)
+	case uint(isa.OpStringsEqualFold):
+		return handleStringsEqualFold(vm, frame, registers, instr)
+	case uint(isa.OpStringsHasPrefix):
+		return handleStringsHasPrefix(vm, frame, registers, instr)
+	case uint(isa.OpStringsHasSuffix):
+		return handleStringsHasSuffix(vm, frame, registers, instr)
+	case uint(isa.OpStringsIndex):
+		return handleStringsIndex(vm, frame, registers, instr)
+	case uint(isa.OpStringsIndexRune):
+		return handleStringsIndexRune(vm, frame, registers, instr)
+	case uint(isa.OpStringsJoin):
+		return handleStringsJoin(vm, frame, registers, instr)
+	case uint(isa.OpStringsLastIndex):
+		return handleStringsLastIndex(vm, frame, registers, instr)
+	case uint(isa.OpStringsRepeat):
+		return handleStringsRepeat(vm, frame, registers, instr)
+	case uint(isa.OpStringsReplaceAll):
+		return handleStringsReplaceAll(vm, frame, registers, instr)
+	case uint(isa.OpStringsSplit):
+		return handleStringsSplit(vm, frame, registers, instr)
+	case uint(isa.OpStringsTrim):
+		return handleStringsTrim(vm, frame, registers, instr)
+	case uint(isa.OpStringsTrimPrefix):
+		return handleStringsTrimPrefix(vm, frame, registers, instr)
+	case uint(isa.OpStringsTrimSuffix):
+		return handleStringsTrimSuffix(vm, frame, registers, instr)
+	case uint(isa.OpSubtractComplex128):
+		return handleSubtractComplex128(vm, frame, registers, instr)
+	case uint(isa.OpSubtractFloat64):
+		return handleSubtractFloat64(vm, frame, registers, instr)
+	case uint(isa.OpSubtractGeneral):
+		return handleSubtractGeneral(vm, frame, registers, instr)
+	case uint(isa.OpSubtractInt32):
+		return handleSubtractInt32(vm, frame, registers, instr)
+	case uint(isa.OpSubtractInt32Constant):
+		return handleSubtractInt32Constant(vm, frame, registers, instr)
+	case uint(isa.OpSubtractInt64):
+		return handleSubtractInt64(vm, frame, registers, instr)
+	case uint(isa.OpSubtractInt64Constant):
+		return handleSubtractInt64Constant(vm, frame, registers, instr)
+	case uint(isa.OpSubtractUint32):
+		return handleSubtractUint32(vm, frame, registers, instr)
+	case uint(isa.OpSubtractUint64):
+		return handleSubtractUint64(vm, frame, registers, instr)
+	case uint(isa.OpSwapStructFieldsGeneral):
+		return handleSwapStructFieldsGeneral(vm, frame, registers, instr)
+	case uint(isa.OpTruncateToWidth):
+		return handleTruncateToWidth(vm, frame, registers, instr)
 	case uint(isa.OpTypeAssert):
 		return handleTypeAssert(vm, frame, registers, instr)
-	case uint(isa.OpUnpackInterface):
-		return handleUnpackInterface(vm, frame, registers, instr)
+	case uint(isa.OpUnboxFromInterface):
+		return handleUnboxFromInterface(vm, frame, registers, instr)
 	case uint(isa.OpUnsafeAdd):
 		return handleUnsafeAdd(vm, frame, registers, instr)
 	case uint(isa.OpUnsafeSlice):
 		return handleUnsafeSlice(vm, frame, registers, instr)
 	case uint(isa.OpUnsafeString):
 		return handleUnsafeString(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAddUintConst):
-		return handleFlatSubOpAddUintConst(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAdoptGeneralToSlicesBool):
-		return handleSubOpAdoptGeneralToSlicesBool(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAdoptGeneralToSlicesByte):
-		return handleSubOpAdoptGeneralToSlicesByte(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAdoptGeneralToSlicesFloat):
-		return handleFlatSubOpAdoptGeneralToSlicesFloat(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAdoptGeneralToSlicesInt):
-		return handleSubOpAdoptGeneralToSlicesInt(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAdoptGeneralToSlicesString):
-		return handleSubOpAdoptGeneralToSlicesString(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAdoptGeneralToSlicesUint):
-		return handleSubOpAdoptGeneralToSlicesUint(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAppendBool):
-		return handleSubOpAppendBool(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAppendByteSpreadInPlace):
-		return handleSubOpAppendByteSpreadInPlace(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAppendFloat):
-		return handleSubOpAppendFloat(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAppendInt):
-		return handleSubOpAppendInt(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAppendSliceBoolDirect):
-		return handleSubOpAppendSliceBoolDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAppendSliceByteDirect):
-		return handleSubOpAppendSliceByteDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAppendSliceFloatDirect):
-		return handleSubOpAppendSliceFloatDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAppendSliceIntDirect):
-		return handleSubOpAppendSliceIntDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAppendSliceStringDirect):
-		return handleSubOpAppendSliceStringDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAppendSliceUintDirect):
-		return handleSubOpAppendSliceUintDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAppendString):
-		return handleSubOpAppendString(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAppendUint):
-		return handleSubOpAppendUint(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpAppendUintInPlace):
-		return handleSubOpAppendUintInPlace(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpBitAndUintConst):
-		return handleFlatSubOpBitAndUintConst(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpBitNot):
-		return handleFlatSubOpBitNot(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpBitNotUint):
-		return handleFlatSubOpBitNotUint(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpBoolToInt):
-		return handleFlatSubOpBoolToInt(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAddUint32Constant):
+		return handleAddUint32Constant(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAddUint64Constant):
+		return handleAddUint64Constant(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAddressField):
+		return handleAddressField(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAppendBoolWide):
+		return handleAppendBoolWide(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAppendByteViaPointer):
+		return handleAppendByteViaPointer(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAppendFloat64Wide):
+		return handleAppendFloat64Wide(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAppendInt64Wide):
+		return handleAppendInt64Wide(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAppendSliceBool):
+		return handleAppendSliceBool(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAppendSliceByte):
+		return handleAppendSliceByte(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAppendSliceFloat64):
+		return handleAppendSliceFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAppendSliceInt64):
+		return handleAppendSliceInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAppendSliceString):
+		return handleAppendSliceString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAppendSliceUint64):
+		return handleAppendSliceUint64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAppendSpreadByteInPlace):
+		return handleAppendSpreadByteInPlace(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAppendSpreadByteViaPointer):
+		return handleAppendSpreadByteViaPointer(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAppendStringWide):
+		return handleAppendStringWide(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAppendUint64Wide):
+		return handleAppendUint64Wide(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpAppendUint64WideInPlace):
+		return handleAppendUint64WideInPlace(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpBindMethodByName):
+		return handleBindMethodByName(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpBitAndUint64Constant):
+		return handleBitAndUint64Constant(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpBitNotInt64):
+		return handleBitNotInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpBitNotUint64):
+		return handleBitNotUint64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpBoxFloat64):
+		return handleBoxFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpBoxInt64):
+		return handleBoxInt64(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpBoxSliceBool):
-		return handleSubOpBoxSliceBool(vm, frame, registers, instr)
+		return handleBoxSliceBool(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpBoxSliceByte):
-		return handleSubOpBoxSliceByte(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpBoxSliceFloat):
-		return handleSubOpBoxSliceFloat(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpBoxSliceInt):
-		return handleSubOpBoxSliceInt(vm, frame, registers, instr)
+		return handleBoxSliceByte(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpBoxSliceFloat64):
+		return handleBoxSliceFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpBoxSliceInt64):
+		return handleBoxSliceInt64(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpBoxSliceString):
-		return handleSubOpBoxSliceString(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpBoxSliceUint):
-		return handleSubOpBoxSliceUint(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpBytesToString):
-		return handleFlatSubOpBytesToString(vm, frame, registers, instr)
+		return handleBoxSliceString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpBoxSliceUint64):
+		return handleBoxSliceUint64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpBoxString):
+		return handleBoxString(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpCall):
 		return handleCall(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpCallBuiltin):
@@ -546,398 +558,426 @@ func flatDispatchSwitch(vm *VM, frame *CallFrame, registers *Registers, instr is
 		return handleCallNative(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpCallScalar):
 		return handleCallScalar(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpCap):
-		return handleFlatSubOpCap(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpCapSliceBoolDirect):
-		return handleSubOpCapSliceBoolDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpCapSliceByteDirect):
-		return handleSubOpCapSliceByteDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpCapSliceFloatDirect):
-		return handleSubOpCapSliceFloatDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpCapSliceIntDirect):
-		return handleSubOpCapSliceIntDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpCapSliceStringDirect):
-		return handleSubOpCapSliceStringDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpCapSliceUintDirect):
-		return handleSubOpCapSliceUintDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpChannelReceive):
-		return handleFlatSubOpChannelReceive(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpCopySliceBoolDirect):
-		return handleSubOpCopySliceBoolDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpCopySliceByteDirect):
-		return handleSubOpCopySliceByteDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpCopySliceFloatDirect):
-		return handleSubOpCopySliceFloatDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpCopySliceIntDirect):
-		return handleSubOpCopySliceIntDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpCopySliceStringDirect):
-		return handleSubOpCopySliceStringDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpCopySliceUintDirect):
-		return handleSubOpCopySliceUintDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpDecStructFieldInt):
-		return handleSubOpDecStructFieldInt(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpDecStructFieldUint):
-		return handleSubOpDecStructFieldUint(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpEqIntConstJumpFalse):
-		return handleEqIntConstJumpFalse(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpEqIntConstJumpTrue):
-		return handleEqIntConstJumpTrue(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpEqIntJumpFalse):
-		return handleEqIntJumpFalse(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpEqInterfaceNil):
-		return handleEqInterfaceNil(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpEqInterfaceStrict):
-		return handleSubOpEqInterfaceStrict(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpEqStringConstJumpFalse):
-		return handleEqStringConstJumpFalse(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpEqUintConstJumpFalse):
-		return handleSubOpEqUintConstJumpFalse(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpFieldAddr):
-		return handleSubOpFieldAddr(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpFloatToInt):
-		return handleFlatSubOpFloatToInt(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpFloatToUint):
-		return handleFlatSubOpFloatToUint(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpGeIntConstJumpFalse):
-		return handleGeIntConstJumpFalse(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpGeIntJumpFalse):
-		return handleGeIntJumpFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpCapacityGeneral):
+		return handleCapacityGeneral(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpCapacitySliceBool):
+		return handleCapacitySliceBool(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpCapacitySliceByte):
+		return handleCapacitySliceByte(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpCapacitySliceFloat64):
+		return handleCapacitySliceFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpCapacitySliceInt64):
+		return handleCapacitySliceInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpCapacitySliceString):
+		return handleCapacitySliceString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpCapacitySliceUint64):
+		return handleCapacitySliceUint64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpConvertBoolToInt64):
+		return handleConvertBoolToInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpConvertBytesToString):
+		return handleConvertBytesToString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpConvertFloat64ToInt64):
+		return handleConvertFloat64ToInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpConvertFloat64ToUint64):
+		return handleConvertFloat64ToUint64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpConvertInt64ToBool):
+		return handleConvertInt64ToBool(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpConvertInt64ToFloat64):
+		return handleConvertInt64ToFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpConvertInt64ToUint64):
+		return handleConvertInt64ToUint64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpConvertRuneToString):
+		return handleConvertRuneToString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpConvertSliceByteToString):
+		return handleConvertSliceByteToString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpConvertStringToBytes):
+		return handleConvertStringToBytes(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpConvertUint64ToFloat64):
+		return handleConvertUint64ToFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpConvertUint64ToInt64):
+		return handleConvertUint64ToInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpCopySliceBool):
+		return handleCopySliceBool(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpCopySliceByte):
+		return handleCopySliceByte(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpCopySliceFloat64):
+		return handleCopySliceFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpCopySliceInt64):
+		return handleCopySliceInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpCopySliceString):
+		return handleCopySliceString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpCopySliceUint64):
+		return handleCopySliceUint64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpDecrementStructFieldInt64):
+		return handleDecrementStructFieldInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpDecrementStructFieldUint64):
+		return handleDecrementStructFieldUint64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpDeleteFromMap):
+		return handleDeleteFromMap(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpEqualInt64ConstantThenJumpIfFalse):
+		return handleEqualInt64ConstantThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpEqualInt64ConstantThenJumpIfTrue):
+		return handleEqualInt64ConstantThenJumpIfTrue(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpEqualInt64ThenJumpIfFalse):
+		return handleEqualInt64ThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpEqualInterfaceNil):
+		return handleEqualInterfaceNil(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpEqualInterfaceStrict):
+		return handleEqualInterfaceStrict(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpEqualStringConstantThenJumpIfFalse):
+		return handleEqualStringConstantThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpEqualUint64ImmediateThenJumpIfFalse):
+		return handleEqualUint64ImmediateThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpEqualUint64ThenJumpIfFalse):
+		return handleEqualUint64ThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetElementFieldUint64Run):
+		return handleGetElementFieldUint64Run(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpGetGlobalWide):
 		return handleGetGlobalWide(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpGetMethod):
-		return handleFlatSubOpGetMethod(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldBool):
-		return handleGetStructFieldUnsafeBool(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldFloat):
-		return handleGetStructFieldUnsafeFloat(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldInt):
-		return handleGetStructFieldUnsafeInt(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetSliceBoolElement):
+		return handleGetSliceBoolElement(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetSliceByteElement):
+		return handleGetSliceByteElement(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetSliceByteElementInt64):
+		return handleGetSliceByteElementInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetSliceFloat64Element):
+		return handleGetSliceFloat64Element(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetSliceStringElement):
+		return handleGetSliceStringElement(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetSliceUint64Element):
+		return handleGetSliceUint64Element(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldBoolWide):
+		return handleGetStructFieldBoolWide(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldFloat64Wide):
+		return handleGetStructFieldFloat64Wide(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldInt64Wide):
+		return handleGetStructFieldInt64Wide(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldSliceBool):
-		return handleGetStructFieldUnsafeSliceBool(vm, frame, registers, instr)
+		return handleGetStructFieldSliceBool(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldSliceByte):
-		return handleGetStructFieldUnsafeSliceByte(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldSliceFloat):
-		return handleGetStructFieldUnsafeSliceFloat(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldSliceInt):
-		return handleGetStructFieldUnsafeSliceInt(vm, frame, registers, instr)
+		return handleGetStructFieldSliceByte(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldSliceFloat64):
+		return handleGetStructFieldSliceFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldSliceInt64):
+		return handleGetStructFieldSliceInt64(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldSliceString):
-		return handleGetStructFieldUnsafeSliceString(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldSliceUint):
-		return handleGetStructFieldUnsafeSliceUint(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldString):
-		return handleGetStructFieldUnsafeString(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldUint):
-		return handleGetStructFieldUnsafeUint(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpGtIntConstJumpFalse):
-		return handleGtIntConstJumpFalse(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpGtIntJumpFalse):
-		return handleGtIntJumpFalse(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpImagComplex):
-		return handleFlatSubOpImagComplex(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpIncIntJumpLt):
-		return handleFlatSubOpIncIntJumpLt(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpIncStructFieldInt):
-		return handleSubOpIncStructFieldInt(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpIncStructFieldUint):
-		return handleSubOpIncStructFieldUint(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpIntToBool):
-		return handleFlatSubOpIntToBool(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpIntToFloat):
-		return handleFlatSubOpIntToFloat(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpIntToUint):
-		return handleFlatSubOpIntToUint(vm, frame, registers, instr)
+		return handleGetStructFieldSliceString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldSliceUint64):
+		return handleGetStructFieldSliceUint64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldStringWide):
+		return handleGetStructFieldStringWide(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldUint64Run):
+		return handleGetStructFieldUint64Run(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGetStructFieldUint64Wide):
+		return handleGetStructFieldUint64Wide(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGreaterOrEqualInt64ConstantThenJumpIfFalse):
+		return handleGreaterOrEqualInt64ConstantThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGreaterOrEqualInt64ThenJumpIfFalse):
+		return handleGreaterOrEqualInt64ThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGreaterThanInt64ConstantThenJumpIfFalse):
+		return handleGreaterThanInt64ConstantThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpGreaterThanInt64ThenJumpIfFalse):
+		return handleGreaterThanInt64ThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpImaginaryPartComplex128):
+		return handleImaginaryPartComplex128(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpIncrementInt64ThenJumpIfLessOrEqual):
+		return handleIncrementInt64ThenJumpIfLessOrEqual(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpIncrementInt64ThenJumpIfLessThan):
+		return handleIncrementInt64ThenJumpIfLessThan(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpIncrementInt64ThenJumpIfLessThanConstant):
+		return handleIncrementInt64ThenJumpIfLessThanConstant(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpIncrementStructFieldInt64):
+		return handleIncrementStructFieldInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpIncrementStructFieldUint64):
+		return handleIncrementStructFieldUint64(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpJump):
 		return handleJump(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLeIntConstJumpFalse):
-		return handleLeIntConstJumpFalse(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLeIntJumpFalse):
-		return handleLeIntJumpFalse(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLen):
-		return handleFlatSubOpLen(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLenSliceBoolDirect):
-		return handleSubOpLenSliceBoolDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLenSliceByteDirect):
-		return handleSubOpLenSliceByteDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLenSliceFloatDirect):
-		return handleSubOpLenSliceFloatDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLenSliceIntDirect):
-		return handleSubOpLenSliceIntDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLenSliceStringDirect):
-		return handleSubOpLenSliceStringDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLenSliceUintDirect):
-		return handleSubOpLenSliceUintDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLenString):
-		return handleFlatSubOpLenString(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLenStringLtJumpFalse):
-		return handleFlatSubOpLenStringLtJumpFalse(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLoadBool):
-		return handleFlatSubOpLoadIntConstSmall(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLoadBoolConst):
-		return handleLoadBoolConst(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLoadIntConstSmall):
-		return handleFlatSubOpLoadIntConstSmall(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLoadUintConstSmall):
-		return handleFlatSubOpLoadUintConstSmall(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLengthGeneral):
+		return handleLengthGeneral(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLengthSliceBool):
+		return handleLengthSliceBool(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLengthSliceByte):
+		return handleLengthSliceByte(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLengthSliceFloat64):
+		return handleLengthSliceFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLengthSliceInt64):
+		return handleLengthSliceInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLengthSliceString):
+		return handleLengthSliceString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLengthSliceUint64):
+		return handleLengthSliceUint64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLengthString):
+		return handleLengthString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLessOrEqualInt64ConstantThenJumpIfFalse):
+		return handleLessOrEqualInt64ConstantThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLessOrEqualInt64ThenJumpIfFalse):
+		return handleLessOrEqualInt64ThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLessThanInt64ConstantThenJumpIfFalse):
+		return handleLessThanInt64ConstantThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLessThanInt64ThenJumpIfFalse):
+		return handleLessThanInt64ThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLessThanLengthStringThenJumpIfFalse):
+		return handleLessThanLengthStringThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLoadBoolConstant):
+		return handleLoadBoolConstant(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLoadBoolImmediateAsInt64):
+		return handleLoadBoolImmediateAsInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLoadInt64Immediate):
+		return handleLoadInt64Immediate(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpLoadUint64Immediate):
+		return handleLoadUint64Immediate(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpLoadZero):
-		return handleFlatSubOpLoadZero(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLtIntConstJumpFalse):
-		return handleLtIntConstJumpFalse(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpLtIntJumpFalse):
-		return handleLtIntJumpFalse(vm, frame, registers, instr)
+		return handleLoadZero(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMakeChannel):
-		return handleFlatSubOpMakeChannel(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMakeMethodExpr):
-		return runMakeMethodExpr(vm, frame, registers, instr)
+		return handleMakeChannel(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpMakeMethodExpression):
+		return handleMakeMethodExpression(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMakeSliceBool):
-		return handleSubOpMakeSliceBool(vm, frame, registers, instr)
+		return handleMakeSliceBool(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMakeSliceByte):
-		return handleSubOpMakeSliceByte(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMakeSliceFloat):
-		return handleSubOpMakeSliceFloat(vm, frame, registers, instr)
+		return handleMakeSliceByte(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpMakeSliceFloat64):
+		return handleMakeSliceFloat64(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMakeSliceHeap):
-		return handleSubOpMakeSliceHeap(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMakeSliceInt):
-		return handleSubOpMakeSliceInt(vm, frame, registers, instr)
+		return handleMakeSliceHeap(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpMakeSliceInt64):
+		return handleMakeSliceInt64(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMakeSliceString):
-		return handleSubOpMakeSliceString(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMakeSliceUint):
-		return handleSubOpMakeSliceUint(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMapDelete):
-		return handleFlatSubOpMapDelete(vm, frame, registers, instr)
+		return handleMakeSliceString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpMakeSliceUint64):
+		return handleMakeSliceUint64(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMathAbs):
-		return handleFlatSubOpMathAbs(vm, frame, registers, instr)
+		return handleMathAbs(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMathCeil):
-		return handleFlatSubOpMathCeil(vm, frame, registers, instr)
+		return handleMathCeil(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMathCos):
-		return handleFlatSubOpMathCos(vm, frame, registers, instr)
+		return handleMathCos(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMathExp):
-		return handleFlatSubOpMathExp(vm, frame, registers, instr)
+		return handleMathExp(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMathFloor):
-		return handleFlatSubOpMathFloor(vm, frame, registers, instr)
+		return handleMathFloor(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMathMod):
-		return handleFlatSubOpMathMod(vm, frame, registers, instr)
+		return handleMathMod(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMathRound):
-		return handleFlatSubOpMathRound(vm, frame, registers, instr)
+		return handleMathRound(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMathSin):
-		return handleFlatSubOpMathSin(vm, frame, registers, instr)
+		return handleMathSin(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMathSqrt):
-		return handleFlatSubOpMathSqrt(vm, frame, registers, instr)
+		return handleMathSqrt(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMathTan):
-		return handleFlatSubOpMathTan(vm, frame, registers, instr)
+		return handleMathTan(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMathTrunc):
-		return handleFlatSubOpMathTrunc(vm, frame, registers, instr)
+		return handleMathTrunc(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMoveBool):
-		return handleFlatSubOpMoveBool(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMoveComplex):
-		return handleFlatSubOpMoveComplex(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMoveFloat):
-		return handleFlatSubOpMoveFloat(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMoveFloatToGeneral):
-		return handleFlatSubOpMoveFloatToGeneral(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMoveGeneralToFloat):
-		return handleFlatSubOpMoveGeneralToFloat(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMoveGeneralToInt):
-		return handleFlatSubOpMoveGeneralToInt(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMoveGeneralToString):
-		return handleFlatSubOpMoveGeneralToString(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMoveInt):
-		return handleFlatSubOpMoveInt(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMoveIntToGeneral):
-		return handleFlatSubOpMoveIntToGeneral(vm, frame, registers, instr)
+		return handleMoveBool(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpMoveComplex128):
+		return handleMoveComplex128(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpMoveFloat64):
+		return handleMoveFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpMoveInt64):
+		return handleMoveInt64(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMoveSliceBool):
-		return handleFlatSubOpMoveSliceBool(vm, frame, registers, instr)
+		return handleMoveSliceBool(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMoveSliceByte):
-		return handleFlatSubOpMoveSliceByte(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMoveSliceFloat):
-		return handleFlatSubOpMoveSliceFloat(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMoveSliceInt):
-		return handleFlatSubOpMoveSliceInt(vm, frame, registers, instr)
+		return handleMoveSliceByte(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpMoveSliceFloat64):
+		return handleMoveSliceFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpMoveSliceInt64):
+		return handleMoveSliceInt64(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMoveSliceString):
-		return handleFlatSubOpMoveSliceString(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMoveSliceUint):
-		return handleFlatSubOpMoveSliceUint(vm, frame, registers, instr)
+		return handleMoveSliceString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpMoveSliceUint64):
+		return handleMoveSliceUint64(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpMoveString):
-		return handleFlatSubOpMoveString(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMoveStringToGeneral):
-		return handleFlatSubOpMoveStringToGeneral(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpMoveUint):
-		return handleFlatSubOpMoveUint(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpNeIntJumpFalse):
-		return handleNeIntJumpFalse(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpNeInterfaceNil):
-		return handleNeInterfaceNil(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpNeInterfaceStrict):
-		return handleSubOpNeInterfaceStrict(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpNegComplex):
-		return handleFlatSubOpNegComplex(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpNegFloat):
-		return handleFlatSubOpNegFloat(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpNegInt):
-		return handleFlatSubOpNegInt(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpNot):
-		return handleFlatSubOpNot(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpRangeInit):
-		return handleRangeInit(vm, frame, registers, instr)
+		return handleMoveString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpMoveUint64):
+		return handleMoveUint64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpNegateComplex128):
+		return handleNegateComplex128(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpNegateFloat64):
+		return handleNegateFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpNegateInt64):
+		return handleNegateInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpNotEqualInt64ThenJumpIfFalse):
+		return handleNotEqualInt64ThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpNotEqualInterfaceNil):
+		return handleNotEqualInterfaceNil(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpNotEqualInterfaceStrict):
+		return handleNotEqualInterfaceStrict(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpNotEqualUint64ThenJumpIfFalse):
+		return handleNotEqualUint64ThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpNotInt64):
+		return handleNotInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpRangeInitialise):
+		return handleRangeInitialise(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpRangeNext):
 		return handleRangeNext(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpRealComplex):
-		return handleFlatSubOpRealComplex(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpRealPartComplex128):
+		return handleRealPartComplex128(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpReceiveFromChannel):
+		return handleReceiveFromChannel(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpReload):
-		return handleFlatSubOpReload(vm, frame, registers, instr)
+		return handleReload(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpResetSharedCell):
 		return handleResetSharedCell(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpRoundComplex64):
-		return handleFlatSubOpRoundComplex64(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpRoundFloat32):
-		return handleFlatSubOpRoundFloat32(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpRuneToString):
-		return handleFlatSubOpRuneToString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpRoundToComplex64):
+		return handleRoundToComplex64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpRoundToFloat32):
+		return handleRoundToFloat32(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpSelect):
 		return handleSelect(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpSetGlobalWide):
 		return handleSetGlobalWide(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldBool):
-		return handleSetStructFieldUnsafeBool(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldFloat):
-		return handleSetStructFieldUnsafeFloat(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldInt):
-		return handleSetStructFieldUnsafeInt(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSetSharedCell):
+		return handleSetSharedCell(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSetSliceBoolElement):
+		return handleSetSliceBoolElement(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSetSliceByteElement):
+		return handleSetSliceByteElement(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSetSliceByteElementRun):
+		return handleSetSliceByteElementRun(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSetSliceFloat64Element):
+		return handleSetSliceFloat64Element(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSetSliceStringElement):
+		return handleSetSliceStringElement(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSetSliceUint64Element):
+		return handleSetSliceUint64Element(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldBoolWide):
+		return handleSetStructFieldBoolWide(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldFloat64Wide):
+		return handleSetStructFieldFloat64Wide(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldInt64Wide):
+		return handleSetStructFieldInt64Wide(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldSliceBool):
-		return handleSetStructFieldUnsafeSliceBool(vm, frame, registers, instr)
+		return handleSetStructFieldSliceBool(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldSliceByte):
-		return handleSetStructFieldUnsafeSliceByte(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldSliceFloat):
-		return handleSetStructFieldUnsafeSliceFloat(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldSliceInt):
-		return handleSetStructFieldUnsafeSliceInt(vm, frame, registers, instr)
+		return handleSetStructFieldSliceByte(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldSliceFloat64):
+		return handleSetStructFieldSliceFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldSliceInt64):
+		return handleSetStructFieldSliceInt64(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldSliceString):
-		return handleSetStructFieldUnsafeSliceString(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldSliceUint):
-		return handleSetStructFieldUnsafeSliceUint(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldString):
-		return handleSetStructFieldUnsafeString(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldUint):
-		return handleSetStructFieldUnsafeUint(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSimdAddSliceFloat64):
-		return handleFlatSubOpSimdAddSliceFloat64(vm, frame, registers, instr)
+		return handleSetStructFieldSliceString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldSliceUint64):
+		return handleSetStructFieldSliceUint64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldStringWide):
+		return handleSetStructFieldStringWide(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSetStructFieldUint64Wide):
+		return handleSetStructFieldUint64Wide(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSimdAddFloat64):
+		return handleSimdAddFloat64(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpSimdDotProductFloat64):
-		return handleFlatSubOpSimdDotProductFloat64(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSimdScaleSliceFloat64):
-		return handleFlatSubOpSimdScaleSliceFloat64(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSimdSumSliceFloat64):
-		return handleFlatSubOpSimdSumSliceFloat64(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceByteSlice):
-		return handleSubOpSliceByteSlice(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceByteToString):
-		return handleSubOpSliceByteToString(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceGetBoolDirect):
-		return handleSubOpSliceGetBoolDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceGetByteDirect):
-		return handleSliceGetByteDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceGetFloatDirect):
-		return handleSubOpSliceGetFloatDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceGetStringDirect):
-		return handleSubOpSliceGetStringDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceGetUintDirect):
-		return handleSubOpSliceGetUintDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceOp):
-		return handleSliceOp(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceSetBoolDirect):
-		return handleSubOpSliceSetBoolDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceSetByteDirect):
-		return handleSliceSetByteDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceSetFloatDirect):
-		return handleSubOpSliceSetFloatDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceSetStringDirect):
-		return handleSubOpSliceSetStringDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceSetUintDirect):
-		return handleSubOpSliceSetUintDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceSliceBoolDirect):
-		return handleSubOpSliceSliceBoolDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceSliceFloatDirect):
-		return handleSubOpSliceSliceFloatDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceSliceIntDirect):
-		return handleSubOpSliceSliceIntDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceSliceStringDirect):
-		return handleSubOpSliceSliceStringDirect(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSliceSliceUintDirect):
-		return handleSubOpSliceSliceUintDirect(vm, frame, registers, instr)
+		return handleSimdDotProductFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSimdScaleFloat64):
+		return handleSimdScaleFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSimdSumFloat64):
+		return handleSimdSumFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSliceGeneral):
+		return handleSliceGeneral(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSliceSliceBool):
+		return handleSliceSliceBool(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSliceSliceByte):
+		return handleSliceSliceByte(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSliceSliceFloat64):
+		return handleSliceSliceFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSliceSliceInt64):
+		return handleSliceSliceInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSliceSliceString):
+		return handleSliceSliceString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSliceSliceUint64):
+		return handleSliceSliceUint64(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpSpill):
-		return handleFlatSubOpSpill(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpStarAppendByteFast):
-		return handleSubOpStarAppendByteFast(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpStarAppendByteSpread):
-		return handleSubOpStarAppendByteSpread(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpStrToLower):
-		return handleFlatSubOpStrToLower(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpStrToUpper):
-		return handleFlatSubOpStrToUpper(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpStrTrimSpace):
-		return handleFlatSubOpStrTrimSpace(vm, frame, registers, instr)
+		return handleSpill(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpStrconvFormatBool):
-		return handleFlatSubOpStrconvFormatBool(vm, frame, registers, instr)
+		return handleStrconvFormatBool(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpStrconvFormatInt):
-		return handleFlatSubOpStrconvFormatInt(vm, frame, registers, instr)
+		return handleStrconvFormatInt(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpStrconvItoa):
-		return handleFlatSubOpStrconvItoa(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpStringToBytes):
-		return handleFlatSubOpStringToBytes(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpSubUintConst):
-		return handleFlatSubOpSubUintConst(vm, frame, registers, instr)
+		return handleStrconvItoa(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpStringsToLower):
+		return handleStringsToLower(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpStringsToUpper):
+		return handleStringsToUpper(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpStringsTrimSpace):
+		return handleStringsTrimSpace(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSubtractUint32Constant):
+		return handleSubtractUint32Constant(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpSubtractUint64Constant):
+		return handleSubtractUint64Constant(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpTailCall):
 		return handleTailCall(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpTypeSwitchJump):
-		return handleSubOpTypeSwitchJump(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpUintToFloat):
-		return handleFlatSubOpUintToFloat(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpUintToInt):
-		return handleFlatSubOpUintToInt(vm, frame, registers, instr)
+		return handleTypeSwitchJump(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpUnboxFloat64):
+		return handleUnboxFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpUnboxInt64):
+		return handleUnboxInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpUnboxSliceBool):
+		return handleUnboxSliceBool(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpUnboxSliceByte):
+		return handleUnboxSliceByte(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpUnboxSliceFloat64):
+		return handleUnboxSliceFloat64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpUnboxSliceInt64):
+		return handleUnboxSliceInt64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpUnboxSliceString):
+		return handleUnboxSliceString(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpUnboxSliceUint64):
+		return handleUnboxSliceUint64(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpUnboxString):
+		return handleUnboxString(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpUnsafeSliceData):
-		return handleFlatSubOpUnsafeSliceData(vm, frame, registers, instr)
+		return handleUnsafeSliceData(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpUnsafeStringData):
-		return handleFlatSubOpUnsafeStringData(vm, frame, registers, instr)
-	case flatHandlerTier1Base + uint(isa.SubOpWriteSharedCell):
-		return handleWriteSharedCell(vm, frame, registers, instr)
-	case flatHandlerTier2Base + uint(isa.SubOpTier2AllocStructLiteral):
-		return handleSubOpAllocStructLiteral(vm, frame, registers, instr)
-	case flatHandlerTier2Base + uint(isa.SubOpTier2ChannelClose):
-		return handleFlatSubOpTier2ChannelClose(vm, frame, registers, instr)
-	case flatHandlerTier2Base + uint(isa.SubOpTier2DecInt):
-		return handleFlatSubOpTier2DecInt(vm, frame, registers, instr)
-	case flatHandlerTier2Base + uint(isa.SubOpTier2DecInt32):
-		return handleFlatSubOpTier2DecInt32(vm, frame, registers, instr)
-	case flatHandlerTier2Base + uint(isa.SubOpTier2DecUint):
-		return handleFlatSubOpTier2DecUint(vm, frame, registers, instr)
-	case flatHandlerTier2Base + uint(isa.SubOpTier2IncInt):
-		return handleFlatSubOpTier2IncInt(vm, frame, registers, instr)
-	case flatHandlerTier2Base + uint(isa.SubOpTier2IncInt32):
-		return handleFlatSubOpTier2IncInt32(vm, frame, registers, instr)
-	case flatHandlerTier2Base + uint(isa.SubOpTier2IncUint):
-		return handleFlatSubOpTier2IncUint(vm, frame, registers, instr)
+		return handleUnsafeStringData(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2AllocateStructLiteral):
+		return handleAllocateStructLiteral(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2CheckShiftCount):
+		return handleCheckShiftCount(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2CloseChannel):
+		return handleCloseChannel(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2DecrementInt32):
+		return handleDecrementInt32(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2DecrementInt64):
+		return handleDecrementInt64(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2DecrementUint64):
+		return handleDecrementUint64(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2InRangeUint64ThenJumpIfFalse):
+		return handleInRangeUint64ThenJumpIfFalse(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2IncrementInt32):
+		return handleIncrementInt32(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2IncrementInt64):
+		return handleIncrementInt64(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2IncrementUint64):
+		return handleIncrementUint64(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2JumpIfFalseBool):
+		return handleJumpIfFalseBool(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2JumpIfTrueBool):
+		return handleJumpIfTrueBool(vm, frame, registers, instr)
 	case flatHandlerTier2Base + uint(isa.SubOpTier2LoadNil):
-		return handleFlatSubOpTier2LoadNil(vm, frame, registers, instr)
-	case flatHandlerTier2Base + uint(isa.SubOpTier2MakeInterfaceMethodExpr):
-		return runMakeInterfaceMethodExpr(vm, frame, registers, instr)
+		return handleLoadNil(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2MakeInterfaceMethodExpression):
+		return handleMakeInterfaceMethodExpression(vm, frame, registers, instr)
 	case flatHandlerTier2Base + uint(isa.SubOpTier2MakeMap):
-		return handleFlatSubOpTier2MakeMap(vm, frame, registers, instr)
+		return handleMakeMap(vm, frame, registers, instr)
 	case flatHandlerTier2Base + uint(isa.SubOpTier2Panic):
-		return handleFlatSubOpTier2Panic(vm, frame, registers, instr)
-	case flatHandlerTier2Base + uint(isa.SubOpTier2RangeCheckUintJumpFalse):
-		return handleSubOpRangeCheckUintJumpFalse(vm, frame, registers, instr)
+		return handlePanic(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2PanicRangeFunctionContinuedInt64):
+		return handlePanicRangeFunctionContinuedInt64(vm, frame, registers, instr)
 	case flatHandlerTier2Base + uint(isa.SubOpTier2Recover):
-		return handleFlatSubOpTier2Recover(vm, frame, registers, instr)
+		return handleRecover(vm, frame, registers, instr)
 	case flatHandlerTier2Base + uint(isa.SubOpTier2Return):
-		return handleFlatSubOpTier2Return(vm, frame, registers, instr)
-	case flatHandlerTier2Base + uint(isa.SubOpTier2SetZero):
-		return handleFlatSubOpTier2SetZero(vm, frame, registers, instr)
-	case flatHandlerTier2Base + uint(isa.SubOpTier2SyncClosureUpvalues):
-		return handleSyncClosureUpvalues(vm, frame, registers, instr)
-	case flatHandlerTier3Base + uint(isa.SubOpTier3Nop):
-		return handleFlatSubOpTier3Nop(vm, frame, registers, instr)
+		return handleReturn(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2SetZeroGeneral):
+		return handleSetZeroGeneral(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2SynchroniseClosureCapturedVariables):
+		return handleSynchroniseClosureCapturedVariables(vm, frame, registers, instr)
+	case flatHandlerTier3Base + uint(isa.SubOpTier3NoOperation):
+		return handleNoOperation(vm, frame, registers, instr)
 	case flatHandlerTier3Base + uint(isa.SubOpTier3ReturnVoid):
 		return handleReturnVoid(vm, frame, registers, instr)
-	case flatHandlerTier3Base + uint(isa.SubOpTier3SyncIIFEUpvalues):
-		return handleSyncIIFEUpvalues(vm, frame, registers, instr)
+	case flatHandlerTier3Base + uint(isa.SubOpTier3SynchroniseIIFECapturedVariables):
+		return handleSynchroniseIIFECapturedVariables(vm, frame, registers, instr)
 	}
 	switch index := flatDispatchIndex(instr); {
 	case index < flatHandlerTier1Base:

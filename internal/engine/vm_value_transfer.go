@@ -37,9 +37,9 @@ import (
 // copyRegisterSlot shares one register set; this crosses frames.
 func copySameKind(destination, source *Registers, kind isa.RegisterKind, destinationRegister, sourceRegister uint8) {
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		destination.Ints[destinationRegister] = source.Ints[sourceRegister]
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		destination.Floats[destinationRegister] = source.Floats[sourceRegister]
 	case isa.RegisterString:
 		destination.Strings[destinationRegister] = source.Strings[sourceRegister]
@@ -47,19 +47,19 @@ func copySameKind(destination, source *Registers, kind isa.RegisterKind, destina
 		destination.General[destinationRegister] = source.General[sourceRegister]
 	case isa.RegisterBool:
 		destination.Bools[destinationRegister] = source.Bools[sourceRegister]
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		destination.Uints[destinationRegister] = source.Uints[sourceRegister]
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		destination.Complex[destinationRegister] = source.Complex[sourceRegister]
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		destination.SlicesInt[destinationRegister] = source.SlicesInt[sourceRegister]
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		destination.slicesFloat[destinationRegister] = source.slicesFloat[sourceRegister]
 	case isa.RegisterSliceString:
 		destination.slicesString[destinationRegister] = source.slicesString[sourceRegister]
 	case isa.RegisterSliceBool:
 		destination.slicesBool[destinationRegister] = source.slicesBool[sourceRegister]
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		destination.slicesUint[destinationRegister] = source.slicesUint[sourceRegister]
 	case isa.RegisterSliceByte:
 		destination.slicesByte[destinationRegister] = source.slicesByte[sourceRegister]
@@ -93,27 +93,27 @@ func copyReturnFromGeneral(callerFrame *CallFrame, reflectValue reflect.Value, d
 // Takes destination (VarLocation) which specifies the register location to zero.
 func zeroTypedRegister(registers *Registers, destination program.VarLocation) {
 	switch destination.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		registers.Ints[destination.Register] = 0
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.Floats[destination.Register] = 0
 	case isa.RegisterString:
 		registers.Strings[destination.Register] = ""
 	case isa.RegisterBool:
 		registers.Bools[destination.Register] = false
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[destination.Register] = 0
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.Complex[destination.Register] = 0
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		registers.SlicesInt[destination.Register] = nil
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		registers.slicesFloat[destination.Register] = nil
 	case isa.RegisterSliceString:
 		registers.slicesString[destination.Register] = nil
 	case isa.RegisterSliceBool:
 		registers.slicesBool[destination.Register] = nil
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		registers.slicesUint[destination.Register] = nil
 	case isa.RegisterSliceByte:
 		registers.slicesByte[destination.Register] = nil
@@ -141,27 +141,27 @@ func zeroTypedRegister(registers *Registers, destination program.VarLocation) {
 //nolint:revive // cyclomatic: one dense isa.RegisterKind switch, compiled to a jump table
 func unpackGeneralToTyped(registers *Registers, v reflect.Value, destination program.VarLocation) {
 	switch destination.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		if v.Kind() == reflect.Bool {
 			registers.Ints[destination.Register] = boolToInt64(v.Bool())
 		} else {
 			registers.Ints[destination.Register] = v.Int()
 		}
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.Floats[destination.Register] = v.Float()
 	case isa.RegisterString:
 		registers.Strings[destination.Register] = v.String()
 	case isa.RegisterBool:
 		registers.Bools[destination.Register] = v.Bool()
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[destination.Register] = v.Uint()
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.Complex[destination.Register] = v.Complex()
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		if slice, ok := sliceFromReflectField[int64](v); ok {
 			registers.SlicesInt[destination.Register] = slice
 		}
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		if slice, ok := sliceFromReflectField[float64](v); ok {
 			registers.slicesFloat[destination.Register] = slice
 		}
@@ -173,7 +173,7 @@ func unpackGeneralToTyped(registers *Registers, v reflect.Value, destination pro
 		if slice, ok := sliceFromReflectField[bool](v); ok {
 			registers.slicesBool[destination.Register] = slice
 		}
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		if slice, ok := sliceFromReflectField[uint64](v); ok {
 			registers.slicesUint[destination.Register] = slice
 		}
@@ -183,6 +183,66 @@ func unpackGeneralToTyped(registers *Registers, v reflect.Value, destination pro
 		}
 	default:
 	}
+}
+
+// copyResultToGeneral boxes a callee's typed result into the caller's general register as
+// the result's declared type when the callee recorded one, and as its bank's storage
+// otherwise.
+//
+// The typed banks store []int as []int64 and []uint as []uint64, so boxing the bank's
+// storage would hand the caller a value of another type, and a native that takes the
+// declared type would then convert it into a copy and lose its writes (sort.Ints on a
+// slice returned by a method called for two results).
+//
+// Takes arena (*RegisterArena) which provides boxes and slice headers. It may be nil.
+// Takes callerFrame (*CallFrame) which receives the value.
+// Takes calleeFrame (*CallFrame) which holds the result and its function.
+// Takes index (int) which is the result position.
+// Takes kind (isa.RegisterKind) which is the result's bank.
+// Takes sourceRegister (uint8) which is the result's slot in that bank.
+// Takes destinationRegister (uint8) which is the caller's general register.
+func copyResultToGeneral(arena *RegisterArena, callerFrame, calleeFrame *CallFrame, index int, kind isa.RegisterKind, sourceRegister, destinationRegister uint8) {
+	if calleeFrame.Function != nil {
+		resultType := resultReflectTypeHint(calleeFrame.Function, index)
+		if boxed, ok := boxTypedAsDeclaredType(arena, resultType, &calleeFrame.Registers, kind, sourceRegister); ok {
+			callerFrame.Registers.General[destinationRegister] = boxed
+			return
+		}
+	}
+	copyReturnToGeneral(callerFrame, &calleeFrame.Registers, kind, sourceRegister, destinationRegister)
+}
+
+// boxTypedAsDeclaredType boxes a typed register value as the Go type it was declared
+// with, for a transfer into a general register.
+//
+// A typed-slice bank keeps []int and []int64 alike as []int64, and []uint and []uint64
+// alike as []uint64, so the bank's storage type is not the value's type. A slice whose
+// element has the bank's width is reinterpreted in place, so the boxed value shares the
+// backing array. boxing the storage instead would make any later conversion to the
+// declared type copy the elements.
+//
+// Takes arena (*RegisterArena) which provides boxes and slice headers. It may be nil.
+// Takes declaredType (reflect.Type) which is the value's static type. It may be nil.
+// Takes registers (*Registers) which holds the source bank.
+// Takes kind (isa.RegisterKind) which selects the source bank.
+// Takes sourceRegister (uint8) which is the slot within the bank.
+//
+// Returns the boxed value and true, or false when no type was declared or the declared
+// type does not travel in kind's bank, leaving the caller to box the storage as it is.
+func boxTypedAsDeclaredType(arena *RegisterArena, declaredType reflect.Type, registers *Registers, kind isa.RegisterKind, sourceRegister uint8) (reflect.Value, bool) {
+	if declaredType == nil || kind == isa.RegisterGeneral {
+		return reflect.Value{}, false
+	}
+	if isa.IsTypedSliceKind(kind) {
+		if declaredType.Kind() != reflect.Slice {
+			return reflect.Value{}, false
+		}
+		return boxTypedSliceAs(arena, declaredType, registers, sourceRegister, kind)
+	}
+	if declaredType.Kind() == reflect.Interface || scalarBankOrGeneral(kind, declaredType) != kind {
+		return reflect.Value{}, false
+	}
+	return boxTypedToGeneral(arena, declaredType, registers, sourceRegister, kind), true
 }
 
 // copyReturnToGeneral boxes a typed register value into a reflect.Value and stores it in
@@ -201,27 +261,27 @@ func unpackGeneralToTyped(registers *Registers, v reflect.Value, destination pro
 // index.
 func copyReturnToGeneral(callerFrame *CallFrame, sourceRegisters *Registers, kind isa.RegisterKind, sourceRegister, destinationRegister uint8) {
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		callerFrame.Registers.General[destinationRegister] = reflect.ValueOf(int(sourceRegisters.Ints[sourceRegister]))
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		callerFrame.Registers.General[destinationRegister] = reflect.ValueOf(sourceRegisters.Floats[sourceRegister])
 	case isa.RegisterString:
 		callerFrame.Registers.General[destinationRegister] = reflect.ValueOf(sourceRegisters.Strings[sourceRegister])
 	case isa.RegisterBool:
 		callerFrame.Registers.General[destinationRegister] = reflect.ValueOf(sourceRegisters.Bools[sourceRegister])
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		callerFrame.Registers.General[destinationRegister] = reflect.ValueOf(sourceRegisters.Uints[sourceRegister])
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		callerFrame.Registers.General[destinationRegister] = reflect.ValueOf(sourceRegisters.Complex[sourceRegister])
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		callerFrame.Registers.General[destinationRegister] = reflect.ValueOf(sourceRegisters.SlicesInt[sourceRegister])
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		callerFrame.Registers.General[destinationRegister] = reflect.ValueOf(sourceRegisters.slicesFloat[sourceRegister])
 	case isa.RegisterSliceString:
 		callerFrame.Registers.General[destinationRegister] = reflect.ValueOf(sourceRegisters.slicesString[sourceRegister])
 	case isa.RegisterSliceBool:
 		callerFrame.Registers.General[destinationRegister] = reflect.ValueOf(sourceRegisters.slicesBool[sourceRegister])
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		callerFrame.Registers.General[destinationRegister] = reflect.ValueOf(sourceRegisters.slicesUint[sourceRegister])
 	case isa.RegisterSliceByte:
 		callerFrame.Registers.General[destinationRegister] = reflect.ValueOf(sourceRegisters.slicesByte[sourceRegister])
@@ -274,48 +334,48 @@ func assignReflectParams(registers *Registers, parameterKinds []isa.RegisterKind
 //nolint:revive // cyclomatic, cognitive-complexity: one dense isa.RegisterKind switch
 func assignReflectArg(registers *Registers, kind isa.RegisterKind, register uint8, argument reflect.Value) {
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		registers.Ints[register] = argument.Int()
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.Floats[register] = argument.Float()
 	case isa.RegisterString:
 		registers.Strings[register] = argument.String()
 	case isa.RegisterBool:
 		registers.Bools[register] = argument.Bool()
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[register] = argument.Uint()
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.Complex[register] = argument.Complex()
-	case isa.RegisterSliceInt:
-		if slice, ok := reflect.TypeAssert[[]int64](argument); ok {
+	case isa.RegisterSliceInt64:
+		if slice, ok := typedSliceOf[int64](argument); ok {
 			registers.SlicesInt[register] = slice
 		} else if slice, ok := sliceFromReflectField[int64](argument); ok {
 			registers.SlicesInt[register] = slice
 		}
-	case isa.RegisterSliceFloat:
-		if slice, ok := reflect.TypeAssert[[]float64](argument); ok {
+	case isa.RegisterSliceFloat64:
+		if slice, ok := typedSliceOf[float64](argument); ok {
 			registers.slicesFloat[register] = slice
 		} else if slice, ok := sliceFromReflectField[float64](argument); ok {
 			registers.slicesFloat[register] = slice
 		}
 	case isa.RegisterSliceString:
-		if slice, ok := reflect.TypeAssert[[]string](argument); ok {
+		if slice, ok := typedSliceOf[string](argument); ok {
 			registers.slicesString[register] = slice
 		} else if slice, ok := sliceFromReflectField[string](argument); ok {
 			registers.slicesString[register] = slice
 		}
 	case isa.RegisterSliceBool:
-		if slice, ok := reflect.TypeAssert[[]bool](argument); ok {
+		if slice, ok := typedSliceOf[bool](argument); ok {
 			registers.slicesBool[register] = slice
 		}
-	case isa.RegisterSliceUint:
-		if slice, ok := reflect.TypeAssert[[]uint64](argument); ok {
+	case isa.RegisterSliceUint64:
+		if slice, ok := typedSliceOf[uint64](argument); ok {
 			registers.slicesUint[register] = slice
 		} else if slice, ok := sliceFromReflectField[uint64](argument); ok {
 			registers.slicesUint[register] = slice
 		}
 	case isa.RegisterSliceByte:
-		if slice, ok := reflect.TypeAssert[[]byte](argument); ok {
+		if slice, ok := typedSliceOf[byte](argument); ok {
 			registers.slicesByte[register] = slice
 		} else if argument.Kind() == reflect.Slice && argument.Type().Elem().Kind() == reflect.Uint8 {
 			registers.slicesByte[register] = argument.Bytes()
@@ -362,9 +422,9 @@ func buildReflectResults(allResults []any, functionType reflect.Type) []reflect.
 // Takes location (VarLocation) which specifies the register location to write to.
 func syncCellToRegister(registers *Registers, cell *program.UpvalueCell, location program.VarLocation) {
 	switch location.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		registers.Ints[location.Register] = cell.IntValue
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.Floats[location.Register] = cell.FloatValue
 	case isa.RegisterString:
 		registers.Strings[location.Register] = cell.StringValue
@@ -372,19 +432,19 @@ func syncCellToRegister(registers *Registers, cell *program.UpvalueCell, locatio
 		registers.General[location.Register] = cell.GeneralValue
 	case isa.RegisterBool:
 		registers.Bools[location.Register] = cell.BoolValue
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[location.Register] = cell.UintValue
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.Complex[location.Register] = cell.ComplexValue
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		registers.SlicesInt[location.Register] = cell.SliceIntValue
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		registers.slicesFloat[location.Register] = cell.SliceFloatValue
 	case isa.RegisterSliceString:
 		registers.slicesString[location.Register] = cell.SliceStringValue
 	case isa.RegisterSliceBool:
 		registers.slicesBool[location.Register] = cell.SliceBoolValue
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		registers.slicesUint[location.Register] = cell.SliceUintValue
 	case isa.RegisterSliceByte:
 		registers.slicesByte[location.Register] = cell.SliceByteValue

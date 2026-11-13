@@ -35,8 +35,15 @@ import (
 // unrelated tree does not scan to the filesystem root.
 const maxGoModAncestors = 32
 
-// errLocalPackageEmpty reports a local import that names a directory without Go files.
-var errLocalPackageEmpty = errors.New("modloader: local package has no Go files for this platform")
+var (
+	// errLocalPackageEmpty reports a local import that names a directory without Go files.
+	errLocalPackageEmpty = errors.New("modloader: local package has no Go files for this platform")
+
+	// errLocalImportPathInvalid reports a local import whose part below the module path is
+	// not a clean relative path, such as one containing "..", which would read Go source
+	// from outside the module.
+	errLocalImportPathInvalid = errors.New("modloader: local import path does not name a package inside its module")
+)
 
 // localModule is a module whose sources come from a directory rather than GOPROXY: the
 // main module a go.mod declares, or the target of a directory replace directive.
@@ -82,11 +89,13 @@ func (set *localModuleSet) match(importPath string) (localModule, string, bool) 
 type packageReader interface {
 	// readPackage returns the package's sources by file name.
 	//
-	// Takes dir (string) which is the absolute package directory.
+	// Takes moduleDir (string) which is the absolute module root.
+	// Takes relPath (string) which is the package directory below the root, as a clean
+	// slash-separated path, or "" for the root package.
 	//
 	// Returns map[string]string which maps file name to contents.
 	// Returns error when the directory cannot be read.
-	readPackage(dir string) (map[string]string, error)
+	readPackage(moduleDir, relPath string) (map[string]string, error)
 }
 
 // newPackageReader selects the reader for the invocation.
@@ -101,22 +110,32 @@ func newPackageReader(snapshot *SourceSnapshot) packageReader {
 	return livePackageReader{}
 }
 
-// livePackageReader reads packages from the filesystem, confined to the package directory
-// so a symlink cannot lead the read elsewhere.
+// livePackageReader reads packages from the filesystem, opening each package beneath its
+// module root so neither the import path nor a symlink can lead the read outside the
+// module.
 type livePackageReader struct{}
 
 // readPackage implements [packageReader] over os.Root.
 //
-// Takes dir (string) which is the absolute package directory.
+// Takes moduleDir (string) which is the absolute module root.
+// Takes relPath (string) which is the package directory below the root.
 //
 // Returns map[string]string which maps file name to contents.
 // Returns error when the directory or a file cannot be read.
-func (livePackageReader) readPackage(dir string) (map[string]string, error) {
-	root, err := os.OpenRoot(dir)
+func (livePackageReader) readPackage(moduleDir, relPath string) (map[string]string, error) {
+	moduleRoot, err := os.OpenRoot(moduleDir)
 	if err != nil {
 		return nil, err
 	}
-	defer root.Close()
+	defer func() { _ = moduleRoot.Close() }()
+	root := moduleRoot
+	if relPath != "" {
+		root, err = moduleRoot.OpenRoot(relPath)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = root.Close() }()
+	}
 	entries, err := fs.ReadDir(root.FS(), ".")
 	if err != nil {
 		return nil, err
@@ -146,11 +165,13 @@ type snapshotPackageReader struct {
 
 // readPackage implements [packageReader] over the snapshot.
 //
-// Takes dir (string) which is the absolute package directory.
+// Takes moduleDir (string) which is the absolute module root.
+// Takes relPath (string) which is the package directory below the root.
 //
 // Returns map[string]string which maps file name to contents.
 // Returns error when the directory lies outside the approved source root.
-func (reader snapshotPackageReader) readPackage(dir string) (map[string]string, error) {
+func (reader snapshotPackageReader) readPackage(moduleDir, relPath string) (map[string]string, error) {
+	dir := filepath.Join(moduleDir, filepath.FromSlash(relPath))
 	sources, err := reader.snapshot.PackageSources(dir)
 	if err != nil {
 		return nil, fmt.Errorf("%s is outside the approved source snapshot: %w", dir, err)
@@ -197,7 +218,10 @@ func (state *localResolution) visit(importPath string) ([]string, error) {
 	if !ok {
 		return nil, fmt.Errorf("modloader: %s is not in a local module", importPath)
 	}
-	sources, err := state.reader.readPackage(filepath.Join(module.Dir, filepath.FromSlash(relPath)))
+	if !validLocalPackagePath(relPath) {
+		return nil, fmt.Errorf("%w: %s", errLocalImportPathInvalid, importPath)
+	}
+	sources, err := state.reader.readPackage(module.Dir, relPath)
 	if err != nil {
 		return nil, fmt.Errorf("modloader: reading local package %s: %w", importPath, err)
 	}
@@ -209,7 +233,16 @@ func (state *localResolution) visit(importPath string) ([]string, error) {
 		state.deps[module.Path] = make(map[string]struct{})
 	}
 	state.packages[module.Path][relPath] = sources
+	return state.classifyPackageImports(module, sources), nil
+}
 
+// classifyPackageImports records what one local package imports.
+//
+// Takes module (localModule) which owns the package.
+// Takes sources (map[string]string) which maps the package's file names to contents.
+//
+// Returns []string which lists the local imports still to visit.
+func (state *localResolution) classifyPackageImports(module localModule, sources map[string]string) []string {
 	var discovered []string
 	for _, imported := range collectImportPathsFromFiles(sources) {
 		if _, ok := state.stdlib[imported]; ok {
@@ -226,7 +259,7 @@ func (state *localResolution) visit(importPath string) ([]string, error) {
 			state.remote[imported] = struct{}{}
 		}
 	}
-	return discovered, nil
+	return discovered
 }
 
 // ordered turns the accumulated packages into dependency-ordered resolved modules.
@@ -247,9 +280,9 @@ func (state *localResolution) ordered() ([]ResolvedModule, error) {
 	return ordered, err
 }
 
-// ImportsNeedResolution reports whether any import must go through the module resolver: a
-// package of a local module named by the nearest go.mod, or a hostname-shaped path
-// fetched from GOPROXY. Host-provided packages never do.
+// ImportsNeedResolution reports whether any import must go through the module resolver,
+// which holds for a package of a local module named by the nearest go.mod and for a
+// hostname-shaped path fetched from GOPROXY. Host-provided packages never do.
 //
 // Takes scriptDir (string) which is the directory holding the script or package.
 // Takes imports ([]string) which is the union of the program's imports.
@@ -296,8 +329,8 @@ func nearestGoMod(scriptDir string, snapshot *SourceSnapshot) (string, goModFile
 	return "", goModFile{}, false
 }
 
-// discoverLocalModules builds the local module set for a script: the main module named by
-// the nearest go.mod plus every directory replacement it declares.
+// discoverLocalModules builds the local module set for a script, which is the main module
+// named by the nearest go.mod plus every directory replacement it declares.
 //
 // Takes scriptDir (string) which is the directory holding the script or package.
 // Takes snapshot (*SourceSnapshot) which is nil for the trusted direct-read path.
@@ -371,7 +404,7 @@ func compilableForHost(name, content string) bool {
 
 // resolveLocalModules reads every local package reachable from seeds and orders the local
 // modules so each one's local dependencies load first. Only reachable packages are
-// compiled: an unrelated `cmd/` tree in the same module, with its own imports, never
+// compiled, so an unrelated `cmd/` tree in the same module, with its own imports, never
 // costs a fetch.
 //
 // Takes locals (*localModuleSet) which names the directory-backed modules.
@@ -416,4 +449,18 @@ func resolveLocalModules(
 		return nil, nil, err
 	}
 	return ordered, sortedKeys(state.remote), nil
+}
+
+// validLocalPackagePath reports whether the part of a local import below its module path
+// names a directory inside the module. It must be empty, for the module's root package,
+// or a clean slash-separated relative path with no "." or ".." element and no backslash.
+//
+// Takes relPath (string) which is the import path with the module path removed.
+//
+// Returns bool which is true when the path stays inside the module.
+func validLocalPackagePath(relPath string) bool {
+	if relPath == "" {
+		return true
+	}
+	return fs.ValidPath(relPath) && !strings.Contains(relPath, `\`)
 }

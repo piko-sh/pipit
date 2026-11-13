@@ -80,6 +80,7 @@
 #define FN_STRUCT_LAYOUT_TABLE_LEN  928
 #define FN_TYPE_TABLE               488
 #define FN_TYPE_TABLE_LEN           496
+#define FN_FIELD_STORE_GRANTS       112
 #define FN_RESULT_KINDS             344
 #define FN_RESULT_KINDS_LEN         352
 #define FN_STRUCT_LITERAL_TABLE     1200
@@ -89,6 +90,17 @@
 #define SLE_BYTES                   8
 #define SLE_ALIGN_MASK              16
 #define SLE_FLAG                    24
+#define ROUTE_LOCAL_BLIND           104
+#define ROUTE_NOTE_SEQ              0
+#define ROUTE_NOTES_UNTRACED        72
+#define ROUTE_NOTES_BLIND           96
+#define FN_GLOBAL_BASES             8
+#define GS_SHARED                   288
+#define GS_INTS                     192
+#define GS_FLOATS                   168
+#define GS_BOOLS                    96
+#define GS_UINTS                    48
+#define GS_GENERAL                  72
 #define CF_SHARED_CELLS             8
 #define CF_UPVALUES_PTR             344
 #define CF_RETURNDEST_PTR           368
@@ -148,6 +160,8 @@
 #define CTX_ARENA_GENERIC_HDR     704
 #define CTX_ARENA_GENERIC_IDX_PTR 712
 #define CTX_ARENA_GENERIC_CHARGED 720
+#define CTX_ARENA_ROUTE_STATE     728
+#define CTX_GLOBALS               736
 #define CTX_ASM_CI_PTRS           264
 #define CTX_DISPATCH_SAVES        272
 #define CTX_STRINGS_BASE          280
@@ -234,9 +248,11 @@
 #define REFLECT_FLOAT64 14
 #define REFLECT_INTERFACE 20
 #define REFLECT_POINTER 22
+#define REFLECT_SLICE   23
 
 // reflect.Value flag bits, pinned by TestReflectValueFlagConstants.
 #define FLAG_KIND_MASK 0x1F
+#define FLAG_RO        0x60
 #define FLAG_INDIR     0x80
 #define FLAG_ADDR      0x100
 
@@ -253,12 +269,13 @@
 #define CELL_BOOL_VALUE  256
 #define CELL_IS_INDIRECT 258
 
-// registerKind values for the GET_UPVALUE destination bank, pinned by
+// registerKind values for the GET_CAPTURED_VARIABLE and GET_GLOBAL destination banks, pinned by
 // TestRegisterKindConstants.
-#define REGKIND_INT   0
-#define REGKIND_FLOAT 1
-#define REGKIND_BOOL  4
-#define REGKIND_UINT  5
+#define REGKIND_INT     0
+#define REGKIND_FLOAT   1
+#define REGKIND_GENERAL 3
+#define REGKIND_BOOL    4
+#define REGKIND_UINT    5
 
 // asmDispatchSave field offsets, pinned by TestASMDispatchSaveOffsets.
 #define DS_CODE_BASE     0
@@ -269,6 +286,23 @@
 #define DS_BOOL_CONSTS   40
 #define DS_UINT_CONSTS   48
 #define DS_SIZE_SHIFT    6
+
+// typedElementShape field offsets and typedContainer values, pinned by
+// TestTypedElementShapeOffsets. The element kind is a reflect.Kind word whose low byte the
+// handlers read (both ports are little-endian).
+#define TES_COLLECTION_TYPE 0
+#define TES_ELEMENT_SIZE    8
+#define TES_ARRAY_LENGTH    16
+#define TES_ELEMENT_KIND    24
+#define TES_CONTAINER       32
+#define TES_CONTAINER_SLICE         1
+#define TES_CONTAINER_ARRAY         2
+#define TES_CONTAINER_ARRAY_POINTER 3
+
+// typedElementShapeSlot's hash: the slot is (type * TES_HASH_MULTIPLIER) >> TES_SLOT_SHIFT,
+// pinned by TestTypedElementShapeOffsets.
+#define TES_HASH_MULTIPLIER 0x9E3779B97F4A7C15
+#define TES_SLOT_SHIFT      54
 
 // asmCallInfo field offsets, pinned by TestASMCallInfoOffsets.
 #define ACI_CALLEE_FUNCTION      0

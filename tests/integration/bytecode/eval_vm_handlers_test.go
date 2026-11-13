@@ -1810,7 +1810,7 @@ func main() {}
 	require.Equal(t, 42, result)
 }
 
-func TestVMIndexSetInterfaceSlice(t *testing.T) {
+func TestVMSetElementInterfaceSlice(t *testing.T) {
 	t.Parallel()
 
 	service := app.NewService()

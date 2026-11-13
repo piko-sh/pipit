@@ -742,13 +742,13 @@ func TestRegisterArenaSlabGrowth(t *testing.T) {
 	}
 
 	uintRegs := [isa.NumRegisterKinds]uint32{}
-	uintRegs[isa.RegisterUint] = 8
+	uintRegs[isa.RegisterUint64] = 8
 	for range 20 {
 		arena.AllocRegisters(uintRegs)
 	}
 
 	complexRegs := [isa.NumRegisterKinds]uint32{}
-	complexRegs[isa.RegisterComplex] = 8
+	complexRegs[isa.RegisterComplex128] = 8
 	for range 12 {
 		arena.AllocRegisters(complexRegs)
 	}

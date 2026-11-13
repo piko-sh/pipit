@@ -27,24 +27,6 @@ import (
 	"pipit.sh/pipit/internal/fault"
 )
 
-// Deadlock detection.
-//
-// Goroutines are host goroutines and channels are host channels, so the Go runtime's own
-// "all goroutines are asleep" check never fires for interpreted code: from the runtime's
-// point of view the interpreter is alive, parked in reflect.Select. This file
-// approximates the check for the interpreted program. Every VM goroutine parking on an
-// operation that only another VM goroutine can complete (a send or receive on a channel
-// the program made, a select whose every case is such a channel, or an empty select)
-// counts itself as blocked. When every live VM goroutine is blocked that way a grace
-// timer is armed; if nothing has unblocked by the time it fires, the execution is
-// cancelled with fault.ErrDeadlock.
-//
-// The check is deliberately conservative. A goroutine parked in a native call
-// (sync.WaitGroup.Wait, a mutex, a socket) or on a channel the runtime owns (time.After,
-// a context's Done) is not counted, because something the interpreter cannot see may
-// still wake it. The grace period covers wakers the interpreter cannot see at all, such
-// as a time.AfterFunc callback that sends on a program channel.
-
 // blockToken records whether a parked goroutine was counted towards the deadlock check,
 // so leaveBlocking undoes exactly what enterBlocking did.
 type blockToken struct {
@@ -52,10 +34,21 @@ type blockToken struct {
 	counted bool
 }
 
+// channelCleanup carries the data a runtime cleanup needs to forget a collected channel.
+// It holds the store weakly so a global channel does not root the store for the life of
+// the process.
+type channelCleanup struct {
+	// store is the store that noted the channel, or nil once the store itself is gone.
+	store weak.Pointer[GlobalStore]
+
+	// key is the channel address the store recorded.
+	key uintptr
+}
+
 // enterBlocking records that this goroutine is about to park.
 //
 // Takes countable (bool) which is true when only another VM goroutine can complete the
-// operation (see the file comment).
+// operation.
 //
 // Returns blockToken which must be handed to leaveBlocking when the goroutine resumes.
 func (vm *VM) enterBlocking(countable bool) blockToken {
@@ -84,10 +77,12 @@ func (vm *VM) leaveBlocking(token blockToken) {
 }
 
 // interruptibleSleep implements time.Sleep for interpreted code so a deadline cancels the
-// sleep instead of waiting it out. A sleeping goroutine is never counted as deadlocked:
-// its timer is a waker.
+// sleep instead of waiting it out, and a sibling goroutine's recorded panic or abort ends
+// it; during unwinding only the defer's wall deadline does.
 //
-// The interpreter lock is not touched here: time.Sleep is a BlocksHostGoroutine call
+// A sleeping goroutine is never counted as deadlocked. Its timer is a waker.
+//
+// The interpreter lock is not touched here. time.Sleep is a BlocksHostGoroutine call
 // site, so handleCallNative has already released the lock around the call and re-acquires
 // it on return.
 //
@@ -98,8 +93,11 @@ func (vm *VM) interruptibleSleep(duration time.Duration) OpResult {
 	if duration <= 0 {
 		return opContinue
 	}
+	vm.parkGates()
+	defer vm.unparkGates()
 	done := vm.blockingDone()
-	if done == nil {
+	panicWake := vm.panicWakeChan()
+	if done == nil && panicWake == nil {
 		time.Sleep(duration)
 		return opContinue
 	}
@@ -110,6 +108,9 @@ func (vm *VM) interruptibleSleep(duration time.Duration) OpResult {
 	case <-done:
 		timer.Stop()
 		return vm.surfaceContextCancellation()
+	case <-panicWake:
+		timer.Stop()
+		return vm.surfaceGoroutinePanicAbort()
 	}
 }
 
@@ -155,17 +156,6 @@ func (g *GlobalStore) noteInterpretedChannel(channel reflect.Value) {
 	g.interpretedChannels[key] = struct{}{}
 	g.channelsMu.Unlock()
 	runtime.AddCleanup((*byte)(pointer), forgetInterpretedChannel, channelCleanup{store: weak.Make(g), key: key})
-}
-
-// channelCleanup carries the data a runtime cleanup needs to forget a collected channel.
-// It holds the store weakly so a global channel does not root the store for the life of
-// the process.
-type channelCleanup struct {
-	// store is the store that noted the channel, or nil once the store itself is gone.
-	store weak.Pointer[GlobalStore]
-
-	// key is the channel address the store recorded.
-	key uintptr
 }
 
 // forgetInterpretedChannel runs when a noted channel is collected and removes it from the

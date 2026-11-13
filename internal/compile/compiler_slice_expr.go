@@ -56,7 +56,7 @@ func (c *Compiler) compileSliceExpression(ctx context.Context, expression *ast.S
 }
 
 // compileStringSlice compiles s[lo:hi] for a string operand via isa.OpSliceString plus an
-// isa.OpExt extension word carrying the low and high registers.
+// isa.OpExtension extension word carrying the low and high registers.
 //
 // Takes expression (*ast.SliceExpr) which is the slice expression.
 // Takes collectionLocation (VarLocation) which is the string operand location.
@@ -86,12 +86,13 @@ func (c *Compiler) compileStringSlice(ctx context.Context, expression *ast.Slice
 
 	c.setDebugPosition(ctx, expression.Lbrack)
 	program.Emit(c.Function, isa.OpSliceString, dest, collectionLocation.Register, flags)
-	program.Emit(c.Function, isa.OpExt, lowRegister, highRegister, 0)
+	program.Emit(c.Function, isa.OpExtension, lowRegister, highRegister, 0)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterString}, nil
 }
 
 // compileGeneralSlice compiles a[lo:hi] or a[lo:hi:max] for a non-string collection via
-// isa.SubOpSliceOp with one or two isa.OpExt extension words holding the bounds.
+// isa.SubOpSliceGeneral with one or two isa.OpExtension extension words holding the
+// bounds.
 //
 // Takes expression (*ast.SliceExpr) which is the slice expression.
 // Takes collectionLocation (VarLocation) which is the collection operand location.
@@ -135,22 +136,16 @@ func (c *Compiler) compileGeneralSlice(ctx context.Context, expression *ast.Slic
 	}
 
 	c.setDebugPosition(ctx, expression.Lbrack)
-	program.EmitTier1(c.Function, isa.SubOpSliceOp, dest, collectionLocation.Register)
-	program.Emit(c.Function, isa.OpExt, flags, lowRegister, highRegister)
+	program.EmitTier1(c.Function, isa.SubOpSliceGeneral, dest, collectionLocation.Register)
+	program.Emit(c.Function, isa.OpExtension, flags, lowRegister, highRegister)
 	if expression.Max != nil {
-		program.Emit(c.Function, isa.OpExt, maxRegister, 0, 0)
+		program.Emit(c.Function, isa.OpExtension, maxRegister, 0, 0)
 	}
 
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, nil
 }
 
 // tryCompileTypedDirectSlice emits a typed-bank-direct sub-slice opcode.
-//
-// The opcode handles three-way slicing for collections on the typed-slice bank. The
-// destination location stays on the same typed bank as the source, with no reflect
-// boxing. Encoding mirrors isa.SubOpSliceByteSlice: an isa.OpDrillTier1 carrying directOp
-// with destination/source in B/C, an isa.OpExt with flags plus low and high registers,
-// and an optional trailing isa.OpExt carrying maxReg when isa.SliceMaxBitFlag is set.
 //
 // Takes expression (*ast.SliceExpr).
 // Takes collectionLocation (VarLocation) which is the typed-bank source location.
@@ -189,9 +184,9 @@ func (c *Compiler) tryCompileTypedDirectSlice(ctx context.Context, expression *a
 	}
 
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(directOp), dest, collectionLocation.Register)
-	program.Emit(c.Function, isa.OpExt, flags, lowRegister, highRegister)
+	program.Emit(c.Function, isa.OpExtension, flags, lowRegister, highRegister)
 	if expression.Max != nil {
-		program.Emit(c.Function, isa.OpExt, maxRegister, 0, 0)
+		program.Emit(c.Function, isa.OpExtension, maxRegister, 0, 0)
 	}
 
 	return program.VarLocation{Register: dest, Kind: collectionLocation.Kind}, true, nil
@@ -222,31 +217,19 @@ func (c *Compiler) compileSliceBound(ctx context.Context, boundExpr ast.Expr) (u
 // Takes expression (*ast.SelectorExpr) which carries the field selection.
 // Takes selection (*types.Selection) which provides the field's type and index path.
 //
-// Returns (location, true, nil) on a successful fusion; (zero, false, nil) when the AST
-// shape does not match; or (zero, false, err) when sub-expression compilation fails.
+// Returns program.VarLocation which holds the fused result on success.
+// Returns bool which is true when the fusion succeeds.
+// Returns error which reports a sub-expression compilation or index conversion failure.
 func (c *Compiler) tryCompileSliceIndexStructField(ctx context.Context, expression *ast.SelectorExpr, selection *types.Selection) (program.VarLocation, bool, error) {
 	classified, eligible := c.classifySliceIndexStructField(ctx, expression, selection)
 	if !eligible {
 		return program.VarLocation{}, false, nil
 	}
-	sliceLocation, err := c.compileExpression(ctx, classified.indexExpr.X)
+	elementField, err := c.compileSliceElementFieldTarget(ctx, classified, 0)
 	if err != nil {
 		return program.VarLocation{}, false, err
 	}
-	c.boxToGeneral(ctx, &sliceLocation)
-
-	indexLocation, err := c.compileExpression(ctx, classified.indexExpr.Index)
-	if err != nil {
-		return program.VarLocation{}, false, err
-	}
-	if indexLocation.Kind != isa.RegisterInt {
-		return program.VarLocation{}, false, nil
-	}
-
-	dest := c.Scopes.Alloc.Alloc(classified.resultKind)
-	program.Emit(c.Function, classified.op, dest, sliceLocation.Register, indexLocation.Register)
-	c.emitStructFieldLayoutExtension(classified.layoutIdx)
-	return program.VarLocation{Register: dest, Kind: classified.resultKind}, true, nil
+	return c.emitSliceElementFieldRead(elementField, c.Scopes.Alloc.Alloc(classified.resultKind)), true, nil
 }
 
 // classifySliceIndexStructField inspects an AST `slice[i].Field` selector and reports

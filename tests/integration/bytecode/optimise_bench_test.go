@@ -38,10 +38,10 @@ func buildOptimiseBenchFunction() *program.CompiledFunction {
 	builder := newBytecodeBuilder()
 	builder.intRegisters(8).returnInt()
 	for i := range 16 {
-		builder.Emit(isa.OpAddInt, uint8(i%4), uint8((i+1)%4), uint8((i+2)%4))
+		builder.Emit(isa.OpAddInt64, uint8(i%4), uint8((i+1)%4), uint8((i+2)%4))
 	}
 	for i := range 8 {
-		builder.Emit(isa.OpMulInt, uint8(i%4), uint8((i+1)%4), uint8((i+2)%4))
+		builder.Emit(isa.OpMultiplyInt64, uint8(i%4), uint8((i+1)%4), uint8((i+2)%4))
 	}
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	return builder.build()
@@ -64,7 +64,7 @@ func buildInlinerBenchFunction() *program.CompiledFunction {
 		Name: "caller",
 		Body: []isa.Instruction{
 			makeOpCallSlot(0),
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
 			isa.NewInstruction(
 				isa.OpDrillTier1,
 				byte(isa.SubOpDrillTier2),
@@ -75,12 +75,12 @@ func buildInlinerBenchFunction() *program.CompiledFunction {
 		CallSites: []program.CallSite{
 			{
 				CachedCallee: callee,
-				Arguments:    []program.VarLocation{{Register: 5, Kind: isa.RegisterInt}},
-				Returns:      []program.VarLocation{{Register: 6, Kind: isa.RegisterInt}},
+				Arguments:    []program.VarLocation{{Register: 5, Kind: isa.RegisterInt64}},
+				Returns:      []program.VarLocation{{Register: 6, Kind: isa.RegisterInt64}},
 			},
 		},
-		ResultKinds:  []isa.RegisterKind{isa.RegisterInt},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 7},
+		ResultKinds:  []isa.RegisterKind{isa.RegisterInt64},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 7},
 		Functions:    []*program.CompiledFunction{callee},
 	}
 }

@@ -24,10 +24,8 @@ import (
 )
 
 const (
-	// BytecodeVersion is the on-disk bytecode schema version produced by the embedded
-	// interpreter. Stored separately so consumers can communicate compatibility without
-	// importing internal packages.
-	BytecodeVersion = "v12"
+	// BytecodeVersion identifies the major format of saved bytecode.
+	BytecodeVersion = "v13"
 
 	// modulePath is this module's path as it appears in a binary's build info.
 	modulePath = "pipit.sh/pipit"

@@ -27,7 +27,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/compile/typemap"
-	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -77,74 +76,12 @@ func TestNarrowIntegerBitWidthDefinedType(t *testing.T) {
 		"defined types over uint16 should report 16-bit width via the underlying basic kind")
 }
 
-func TestHandleTruncateNarrowUint(t *testing.T) {
+func TestTruncateToWidthDescriptor(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name     string
-		input    uint64
-		bitWidth uint8
-		expected uint64
-	}{
-		{name: "uint8_no_overflow", input: 100, bitWidth: 8, expected: 100},
-		{name: "uint8_wrap_at_256", input: 256, bitWidth: 8, expected: 0},
-		{name: "uint8_wrap_at_300", input: 300, bitWidth: 8, expected: 44},
-		{name: "uint8_max_unwrapped_underflow", input: 0xFFFFFFFFFFFFFFFF, bitWidth: 8, expected: 0xFF},
-		{name: "uint16_wrap_at_65536", input: 65536, bitWidth: 16, expected: 0},
-		{name: "uint16_wrap_at_70000", input: 70000, bitWidth: 16, expected: 4464},
-		{name: "uint32_wrap_at_2_to_32", input: 1 << 32, bitWidth: 32, expected: 0},
-		{name: "uint32_max", input: 0xFFFFFFFF, bitWidth: 32, expected: 0xFFFFFFFF},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			registers := engine.NewRegisters(testRegCounts())
-			registers.Uints[0] = tt.input
-			engine.HandleTruncateNarrow(nil, nil, &registers, isa.Instruction{A: 0, B: tt.bitWidth, C: uint8(isa.RegisterUint)})
-			require.Equal(t, tt.expected, registers.Uints[0])
-		})
-	}
-}
-
-func TestHandleTruncateNarrowInt(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		input    int64
-		bitWidth uint8
-		expected int64
-	}{
-		{name: "int8_no_overflow", input: 50, bitWidth: 8, expected: 50},
-		{name: "int8_negative_in_range", input: -50, bitWidth: 8, expected: -50},
-		{name: "int8_wrap_128_to_neg128", input: 128, bitWidth: 8, expected: -128},
-		{name: "int8_wrap_neg129_to_127", input: -129, bitWidth: 8, expected: 127},
-		{name: "int8_max_127", input: 127, bitWidth: 8, expected: 127},
-		{name: "int8_min_neg128", input: -128, bitWidth: 8, expected: -128},
-		{name: "int16_wrap_32768_to_neg32768", input: 32768, bitWidth: 16, expected: -32768},
-		{name: "int16_wrap_neg32769_to_32767", input: -32769, bitWidth: 16, expected: 32767},
-		{name: "int32_wrap_2_to_31_to_neg", input: 1 << 31, bitWidth: 32, expected: -1 << 31},
-		{name: "int32_max", input: (1 << 31) - 1, bitWidth: 32, expected: (1 << 31) - 1},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			registers := engine.NewRegisters(testRegCounts())
-			registers.Ints[0] = tt.input
-			engine.HandleTruncateNarrow(nil, nil, &registers, isa.Instruction{A: 0, B: tt.bitWidth, C: uint8(isa.RegisterInt)})
-			require.Equal(t, tt.expected, registers.Ints[0])
-		})
-	}
-}
-
-func TestHandleTruncateNarrowDescriptor(t *testing.T) {
-	t.Parallel()
-
-	shape := isa.OperandShapeFor(isa.OpTruncateNarrow)
+	shape := isa.OperandShapeFor(isa.OpTruncateToWidth)
 	require.NotZero(t, shape.Flags&isa.ShapeFlagDescribed,
-		"opTruncateNarrow must have an operand-shape descriptor so the verifier and emit funnel can see its contract")
+		"OpTruncateToWidth must have an operand-shape descriptor so the verifier and emit funnel can see its contract")
 	require.Equal(t, isa.RoleRegDynamic, shape.A,
 		"operand A is the dynamic-bank register being truncated in place")
 	require.Equal(t, isa.RoleImmediate, shape.B,

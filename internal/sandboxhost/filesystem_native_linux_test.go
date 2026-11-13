@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxhost_test
 
 import (
@@ -35,6 +35,7 @@ import (
 
 	"pipit.sh/pipit/internal/sandboxhost"
 	"pipit.sh/pipit/internal/sandboxtest"
+	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 func testIsolatedFilesystemNative(t *testing.T, workerConfig sandboxhost.IsolatedConfig) {
@@ -42,7 +43,8 @@ func testIsolatedFilesystemNative(t *testing.T, workerConfig sandboxhost.Isolate
 	executable := sandboxtest.RequiredBinary(t, "PIPIT_TEST_FILESYSTEM_BROKER_BINARY", "the approved static broker fixture")
 	image, err := os.ReadFile(executable)
 	require.NoError(t, err)
-	for _, mode := range []string{"success", "write", "denied-write", "source-approval-failure", "state-permissions", "recovery-retry"} {
+	for _, mode := range []string{"success", "write", "denied-write", "source-approval-failure", "state-permissions", "recovery-retry",
+		"caller-cancelled-close"} {
 		t.Run(mode, func(t *testing.T) {
 			root := t.TempDir()
 			require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600))
@@ -63,9 +65,9 @@ func testIsolatedFilesystemNative(t *testing.T, workerConfig sandboxhost.Isolate
 				config.Roots[0].Rights |= sandboxhost.FilesystemWrite
 			}
 			before := filesystemNativeGroups(t, workerConfig.LinuxCgroupParent)
-			worker, err := sandboxhost.NewIsolatedFilesystemWorker(context.Background(), config)
+			worker, err := sandboxhost.NewIsolatedFilesystemWorker(t.Context(), config)
 			if worker != nil {
-				defer worker.Close()
+				defer worker.Close(t.Context())
 			}
 			if mode == "source-approval-failure" || mode == "state-permissions" {
 
@@ -93,6 +95,10 @@ func testIsolatedFilesystemNative(t *testing.T, workerConfig sandboxhost.Isolate
 			if mode == "success" {
 				assertFilesystemAdmissionHeld(t, config)
 			}
+			if mode == "caller-cancelled-close" {
+				testCloseAfterCallerCancel(t, worker, workerConfig.LinuxCgroupParent, before, state)
+				return
+			}
 			if mode == "recovery-retry" {
 				testPublicRecoveryRetry(t, worker, journal, root, workerConfig.LinuxCgroupParent, before, config)
 				return
@@ -101,10 +107,10 @@ func testIsolatedFilesystemNative(t *testing.T, workerConfig sandboxhost.Isolate
 			config.Roots[0].HostPath = t.TempDir()
 			switch mode {
 			case "denied-write":
-				_, err := worker.Eval("import \"pipit/fs\"\nfs.Write(\"data\",\"file\",[]byte(\"bad\"))")
+				_, err := worker.Eval(t.Context(), "import \"pipit/fs\"\nfs.Write(\"data\",\"file\",[]byte(\"bad\"))")
 				require.Error(t, err, "the write grant is not widened")
 			case "write":
-				result, err := worker.EvalFile(`package main
+				result, err := worker.EvalFile(t.Context(), `package main
 import "pipit/fs"
 func answer() string {
  if err := fs.Write("data","file",[]byte("new")); err != nil { return "failed" }
@@ -115,7 +121,7 @@ func answer() string {
 
 				assertLaunchRecordsClean(t, state)
 			default:
-				result, err := worker.EvalFile(`package main
+				result, err := worker.EvalFile(t.Context(), `package main
 import "pipit/fs"
 import "math"
 func answer() string {
@@ -126,10 +132,10 @@ func answer() string {
 }`, "answer")
 				require.NoError(t, err, "public result: %+v", result)
 				require.Equal(t, `"original"`, string(result.Value))
-				require.NoError(t, worker.Close(), "successful cleanup")
+				require.NoError(t, worker.Close(t.Context()), "successful cleanup")
 				assertLaunchRecordsClean(t, state)
 			}
-			_, err = worker.Eval("1")
+			_, err = worker.Eval(t.Context(), "1")
 			require.ErrorIs(t, err, sandboxhost.ErrIsolatedUsed, "owner reused")
 			assertFilesystemGroupsClean(t, workerConfig.LinuxCgroupParent, before)
 			data, err := os.ReadFile(filepath.Join(root, "file"))
@@ -143,6 +149,19 @@ func answer() string {
 	}
 }
 
+func testCloseAfterCallerCancel(t *testing.T, worker *sandboxhost.IsolatedFilesystemWorker, parent string, before map[string]bool, state string) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	started := time.Now()
+	err := worker.Close(ctx)
+	require.Less(t, time.Since(started), 3*sandboxwire.CleanupTimeout, "cleanup is bounded")
+	require.NotErrorIs(t, err, sandboxwire.ErrCleanupTimedOut, "no cleanup reached its bound")
+	require.NotErrorIs(t, err, context.DeadlineExceeded, "no cleanup reached its bound")
+	assertFilesystemGroupsClean(t, parent, before)
+	assertLaunchRecordsClean(t, state)
+}
+
 func testPublicRecoveryRetry(t *testing.T, worker *sandboxhost.IsolatedFilesystemWorker, journal, root, parent string, before map[string]bool,
 	config sandboxhost.IsolatedFilesystemConfig,
 ) {
@@ -153,7 +172,7 @@ func testPublicRecoveryRetry(t *testing.T, worker *sandboxhost.IsolatedFilesyste
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		result, err := worker.EvalFile(`package main
+		result, err := worker.EvalFile(t.Context(), `package main
 import "pipit/fs"
 func main() {
  fs.Write("data","file",[]byte("new"))
@@ -211,18 +230,18 @@ func main() {
 	require.NotEmpty(t, blocker, "a failed recovery keeps its aggregate")
 	require.NoError(t, os.Mkdir(blocker, 0700))
 	defer os.Remove(blocker)
-	require.Error(t, worker.Close(), "aggregate cleanup notices a retained child")
+	require.Error(t, worker.Close(t.Context()), "aggregate cleanup notices a retained child")
 	require.Len(t, filesystemNativeGroups(t, parent), len(before)+1, "a failed parent cleanup keeps aggregate ownership")
 	assertFilesystemAdmissionHeld(t, config)
 	require.NoError(t, os.Remove(blocker))
-	_ = worker.Close()
+	_ = worker.Close(t.Context())
 	assertFilesystemGroupsClean(t, parent, before)
 	config.Worker.LinuxCgroupParent = filepath.Join(t.TempDir(), "missing")
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	next, launchErr := sandboxhost.NewIsolatedFilesystemWorker(ctx, config)
 	if next != nil {
-		_ = next.Close()
+		_ = next.Close(t.Context())
 	}
 	require.Nil(t, next, "a successful retry does not keep aggregate admission")
 	require.ErrorIs(t, launchErr, sandboxhost.ErrIsolatedUnavailable)
@@ -234,11 +253,11 @@ func main() {
 func assertFilesystemAdmissionHeld(t *testing.T, config sandboxhost.IsolatedFilesystemConfig) {
 	t.Helper()
 	config.Worker.LinuxCgroupParent = filepath.Join(t.TempDir(), "missing")
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()
 	next, err := sandboxhost.NewIsolatedFilesystemWorker(ctx, config)
 	if next != nil {
-		_ = next.Close()
+		_ = next.Close(t.Context())
 	}
 	require.Nil(t, next, "an occupied aggregate refuses native preparation")
 	require.ErrorIs(t, err, context.DeadlineExceeded)

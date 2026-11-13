@@ -135,6 +135,44 @@ func isUnsafePointerConversion(source, destination types.Type) bool {
 		(destinationOk && destinationBasic.Kind() == types.UnsafePointer)
 }
 
+// admitsUnsafePointer reports whether a type or its constraint admits unsafe.Pointer.
+//
+// Takes typ (types.Type) which is the type to test.
+//
+// Returns bool which is true when the type admits unsafe.Pointer.
+func admitsUnsafePointer(typ types.Type) bool {
+	if parameter, ok := typ.(*types.TypeParam); ok {
+		constraint, isInterface := parameter.Constraint().Underlying().(*types.Interface)
+		return isInterface && constraintAdmitsUnsafePointer(constraint)
+	}
+	basic, ok := typ.Underlying().(*types.Basic)
+	return ok && basic.Kind() == types.UnsafePointer
+}
+
+// constraintAdmitsUnsafePointer reports whether a constraint lists a type that admits
+// unsafe.Pointer, alone or as a term of a union.
+//
+// Takes constraint (*types.Interface) which is the type parameter's constraint.
+//
+// Returns bool which is true when one of its types admits unsafe.Pointer.
+func constraintAdmitsUnsafePointer(constraint *types.Interface) bool {
+	for embedded := range constraint.EmbeddedTypes() {
+		union, isUnion := embedded.(*types.Union)
+		if !isUnion {
+			if admitsUnsafePointer(embedded) {
+				return true
+			}
+			continue
+		}
+		for term := range union.Terms() {
+			if admitsUnsafePointer(term.Type()) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // isSliceToArrayConversion reports whether the conversion is from a slice type to an
 // array type or to a pointer-to-array type.
 //

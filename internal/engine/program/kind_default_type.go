@@ -35,17 +35,17 @@ import (
 // Returns reflect.Type which is the default Go type for that kind.
 func KindDefaultReflectType(k isa.RegisterKind) reflect.Type {
 	switch k {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return reflect.TypeFor[int]()
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return reflect.TypeFor[float64]()
 	case isa.RegisterString:
 		return reflect.TypeFor[string]()
 	case isa.RegisterBool:
 		return reflect.TypeFor[bool]()
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return reflect.TypeFor[uint64]()
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return reflect.TypeFor[complex128]()
 	default:
 		return reflect.TypeFor[any]()

@@ -19,6 +19,7 @@
 package adapters
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -55,6 +56,9 @@ const (
 	// bytecodeVectorAlignment is the byte alignment used when building FlatBuffer offset
 	// vectors.
 	bytecodeVectorAlignment = 4
+
+	// fieldVectorKeyStackBytes is the stack buffer size for a field vector's key.
+	fieldVectorKeyStackBytes = 128
 )
 
 // bytecodeStore provides FlatBuffer-based persistence for compiled bytecode. It
@@ -112,7 +116,7 @@ func (bytecodeStore *bytecodeStore) SaveCompiledFileSet(ctx context.Context, key
 		return errors.New("bytecode store requires a compiled file set")
 	}
 
-	payload, packErr := packCompiledFileSetPayload(compiledFileSet)
+	payload, packErr := packCompiledFileSetPayload(ctx, compiledFileSet)
 	if packErr != nil {
 		return fmt.Errorf("bytecode save: %w", packErr)
 	}
@@ -167,12 +171,13 @@ func (bytecodeStore *bytecodeStore) invalidateCache(ctx context.Context, key str
 //
 // Returns []byte which is the versioned FlatBuffer payload.
 // Returns error when compiledFileSet is nil, when a function's general constants disagree
-// with their descriptors, or when the payload is larger than a loader accepts.
-func PackCompiledFileSetToBytes(compiledFileSet *program.CompiledFileSet) ([]byte, error) {
+// with their descriptors, when the payload is larger than a loader accepts, or when
+// cancellation stops the packing.
+func PackCompiledFileSetToBytes(ctx context.Context, compiledFileSet *program.CompiledFileSet) ([]byte, error) {
 	if compiledFileSet == nil {
 		return nil, errors.New("bytecode pack requires a compiled file set")
 	}
-	payload, err := packCompiledFileSetPayload(compiledFileSet)
+	payload, err := packCompiledFileSetPayload(ctx, compiledFileSet)
 	if err != nil {
 		return nil, fmt.Errorf("bytecode pack: %w", err)
 	}
@@ -186,16 +191,17 @@ func PackCompiledFileSetToBytes(compiledFileSet *program.CompiledFileSet) ([]byt
 // without the version header, refusing what a loader would refuse.
 //
 // Takes compiledFileSet (*program.CompiledFileSet) which is the compiled file set to
-// serialise; it must not be nil.
+// serialise. It must not be nil.
 //
 // Returns []byte which is the FlatBuffer payload.
-// Returns error when a function cannot be serialised faithfully, or
-// schema.ErrBytecodeTooLarge when the payload exceeds schema.MaximumBytecodePayloadBytes.
-func packCompiledFileSetPayload(compiledFileSet *program.CompiledFileSet) ([]byte, error) {
+// Returns error when a function cannot be serialised faithfully, when cancellation stops
+// the packing, or schema.ErrBytecodeTooLarge when the payload exceeds
+// schema.MaximumBytecodePayloadBytes.
+func packCompiledFileSetPayload(ctx context.Context, compiledFileSet *program.CompiledFileSet) ([]byte, error) {
 	builder := flatbuffers.NewBuilder(bytecodeInitialBuilder)
 	endSharing := beginDescriptorSharing(builder)
 	var packFailure error
-	rootOffset := packCompiledFileSet(builder, compiledFileSet, &packFailure)
+	rootOffset := packCompiledFileSet(ctx, builder, compiledFileSet, &packFailure)
 	endSharing()
 	if packFailure != nil {
 		return nil, packFailure
@@ -209,30 +215,30 @@ func packCompiledFileSetPayload(compiledFileSet *program.CompiledFileSet) ([]byt
 	return payload, nil
 }
 
-// packCompiledFileSet serialises a CompiledFileSet into a FlatBuffer. The root and
-// variable init functions are packed recursively.
+// packCompiledFileSet serialises a CompiledFileSet into a FlatBuffer.
 //
 // Takes builder (*flatbuffers.Builder) which is the FlatBuffer builder to write into.
 // Takes compiledFileSet (*program.CompiledFileSet) which is the compiled file set to
 // serialise.
 // Takes failure (*error) which receives the first function that cannot be serialised
-// faithfully; packing carries on so the builder stays consistent.
+// faithfully, or the cancellation. Packing carries on so the builder stays consistent.
 //
 // Returns flatbuffers.UOffsetT which is the offset of the packed CompiledFileSet table.
-func packCompiledFileSet(builder *flatbuffers.Builder, compiledFileSet *program.CompiledFileSet, failure *error) flatbuffers.UOffsetT {
+func packCompiledFileSet(ctx context.Context, builder *flatbuffers.Builder, compiledFileSet *program.CompiledFileSet, failure *error) flatbuffers.UOffsetT {
 	var rootOffset flatbuffers.UOffsetT
 	if compiledFileSet.Root() != nil {
-		rootOffset = packCompiledFunction(builder, compiledFileSet.Root(), failure)
+		rootOffset = packCompiledFunction(ctx, builder, compiledFileSet.Root(), failure)
 	}
 
 	var varInitOffset flatbuffers.UOffsetT
 	if compiledFileSet.VariableInitFunction() != nil {
-		varInitOffset = packCompiledFunction(builder, compiledFileSet.VariableInitFunction(), failure)
+		varInitOffset = packCompiledFunction(ctx, builder, compiledFileSet.VariableInitFunction(), failure)
 	}
 
 	entrypointsOffset := packEntrypoints(builder, compiledFileSet.Entrypoints())
 	initFunctionIndicesOffset := packUint16Slice(builder, compiledFileSet.InitFunctions())
 	packageVariablesOffset := packPackageVariables(builder, compiledFileSet.PackageVariables())
+	namedInterfacesOffset := packNamedInterfaces(builder, compiledFileSet.NamedInterfaces())
 
 	schemagen.CompiledFileSetStart(builder)
 	if rootOffset != 0 {
@@ -256,6 +262,9 @@ func packCompiledFileSet(builder *flatbuffers.Builder, compiledFileSet *program.
 	}
 	if packageVariablesOffset != 0 {
 		schemagen.CompiledFileSetAddPackageVariables(builder, packageVariablesOffset)
+	}
+	if namedInterfacesOffset != 0 {
+		schemagen.CompiledFileSetAddNamedInterfaces(builder, namedInterfacesOffset)
 	}
 	return schemagen.CompiledFileSetEnd(builder)
 }
@@ -314,6 +323,33 @@ func packPackageVariables(builder *flatbuffers.Builder, vars []program.PackageVa
 		builder.PrependUOffsetT(v)
 	}
 	return builder.EndVector(len(offsets))
+}
+
+// packNamedInterfaces packs the interface types a program declares and names in a
+// reflect.TypeOf call, each as its package path, name and method names.
+//
+// Takes builder (*flatbuffers.Builder) which is the FlatBuffer builder to write into.
+// Takes interfaces ([]program.NamedInterface) which describes each interface.
+//
+// Returns flatbuffers.UOffsetT which is the vector offset, or 0 when there are none.
+func packNamedInterfaces(builder *flatbuffers.Builder, interfaces []program.NamedInterface) flatbuffers.UOffsetT {
+	if len(interfaces) == 0 {
+		return 0
+	}
+	offsets := make([]flatbuffers.UOffsetT, len(interfaces))
+	for i, entry := range interfaces {
+		pathOffset := builder.CreateString(entry.PackagePath)
+		nameOffset := builder.CreateString(entry.Name)
+		methodsOffset := packStrings(builder, entry.Methods)
+		schemagen.NamedInterfaceEntryStart(builder)
+		schemagen.NamedInterfaceEntryAddPackagePath(builder, pathOffset)
+		schemagen.NamedInterfaceEntryAddName(builder, nameOffset)
+		if methodsOffset != 0 {
+			schemagen.NamedInterfaceEntryAddMethods(builder, methodsOffset)
+		}
+		offsets[i] = schemagen.NamedInterfaceEntryEnd(builder)
+	}
+	return createVector(builder, offsets)
 }
 
 // compiledFunctionOffsets holds the FlatBuffer offsets of every child object of one
@@ -394,18 +430,28 @@ type compiledFunctionOffsets struct {
 
 	// signatureDescriptor is the offset of the function's Go signature type descriptor.
 	signatureDescriptor flatbuffers.UOffsetT
+
+	// receiverMethods is the offset of the receiver method table vector.
+	receiverMethods flatbuffers.UOffsetT
 }
 
-// packCompiledFunction recursively serialises a CompiledFunction into a FlatBuffer. All
-// constant pools, descriptors, call sites, and child functions are packed.
+// packCompiledFunction recursively serialises a CompiledFunction into a FlatBuffer.
 //
 // Takes builder (*flatbuffers.Builder) which is the FlatBuffer builder to write into.
 // Takes compiledFunction (*program.CompiledFunction) which is the function to serialise.
-// Takes failure (*error) which receives the first serialisation failure.
+// Takes failure (*error) which receives the first serialisation failure, or the
+// cancellation, after which nothing more is packed.
 //
-// Returns flatbuffers.UOffsetT which is the offset of the packed CompiledFunction table.
-func packCompiledFunction(builder *flatbuffers.Builder, compiledFunction *program.CompiledFunction, failure *error) flatbuffers.UOffsetT {
-	offsets := packCompiledFunctionChildren(builder, compiledFunction, failure)
+// Returns flatbuffers.UOffsetT which is the offset of the packed CompiledFunction table,
+// or 0 once packing has been cancelled.
+func packCompiledFunction(ctx context.Context, builder *flatbuffers.Builder, compiledFunction *program.CompiledFunction, failure *error) flatbuffers.UOffsetT {
+	if err := ctx.Err(); err != nil {
+		if *failure == nil {
+			*failure = fmt.Errorf("bytecode pack cancelled at %s: %w", codec.ExportName(compiledFunction), err)
+		}
+		return 0
+	}
+	offsets := packCompiledFunctionChildren(ctx, builder, compiledFunction, failure)
 	return writeCompiledFunctionTable(builder, compiledFunction, &offsets)
 }
 
@@ -417,7 +463,7 @@ func packCompiledFunction(builder *flatbuffers.Builder, compiledFunction *progra
 //
 // Returns compiledFunctionOffsets which holds the offset of each packed child object, or
 // 0 for an absent one.
-func packCompiledFunctionChildren(builder *flatbuffers.Builder, compiledFunction *program.CompiledFunction, failure *error) compiledFunctionOffsets {
+func packCompiledFunctionChildren(ctx context.Context, builder *flatbuffers.Builder, compiledFunction *program.CompiledFunction, failure *error) compiledFunctionOffsets {
 	generalDescriptors, err := codec.GeneralConstantDescriptors(compiledFunction)
 	if err != nil && *failure == nil {
 		*failure = fmt.Errorf("function %s: %w", codec.ExportName(compiledFunction), err)
@@ -436,18 +482,19 @@ func packCompiledFunctionChildren(builder *flatbuffers.Builder, compiledFunction
 		uintConstants:             packUint64Slice(builder, codec.UintConstants(compiledFunction)),
 		complexConstants:          packComplexSlice(builder, codec.ComplexConstants(compiledFunction)),
 		stringConstants:           packStringSlice(builder, codec.StringConstants(compiledFunction)),
-		generalDescriptors:        packGeneralConstantDescriptors(builder, generalDescriptors),
-		typeTableDescriptors:      packTypeDescriptors(builder, codec.TypeTableDescriptors(compiledFunction)),
+		generalDescriptors:        packGeneralConstantDescriptors(ctx, builder, generalDescriptors, codec.ExportName(compiledFunction), failure),
+		typeTableDescriptors:      packTypeTableDescriptors(ctx, builder, compiledFunction, failure),
 		typeTableInterfaceMethods: packInterfaceMethodSets(builder, codec.TypeTableInterfaceMethods(compiledFunction)),
 		typeNames:                 packTypeNames(builder, codec.TypeNames(compiledFunction)),
 		callSites:                 packCallSites(builder, codec.CallSites(compiledFunction)),
 		upvalueDescriptors:        packUpvalueDescriptors(builder, codec.UpvalueDescriptors(compiledFunction)),
-		functions:                 packChildFunctions(builder, program.ExportFunctions(compiledFunction), failure),
+		functions:                 packChildFunctions(ctx, builder, program.ExportFunctions(compiledFunction), failure),
 		namedResultLocations:      packVarLocations(builder, codec.NamedResultLocations(compiledFunction)),
 		methodTable:               packMethodTable(builder, codec.MethodTable(compiledFunction)),
 		structLayoutTable:         packStructLayoutTable(builder, codec.StructLayoutTable(compiledFunction)),
-		variableInitFunction:      packVariableInitFunction(builder, compiledFunction, failure),
+		variableInitFunction:      packVariableInitFunction(ctx, builder, compiledFunction, failure),
 		signatureDescriptor:       packSignatureDescriptor(builder, compiledFunction),
+		receiverMethods:           packReceiverMethods(builder, codec.ReceiverMethods(compiledFunction)),
 	}
 }
 
@@ -459,10 +506,10 @@ func packCompiledFunctionChildren(builder *flatbuffers.Builder, compiledFunction
 // Takes failure (*error) which receives the first serialisation failure.
 //
 // Returns flatbuffers.UOffsetT which is the offset of the packed vector.
-func packChildFunctions(builder *flatbuffers.Builder, childFunctions []*program.CompiledFunction, failure *error) flatbuffers.UOffsetT {
+func packChildFunctions(ctx context.Context, builder *flatbuffers.Builder, childFunctions []*program.CompiledFunction, failure *error) flatbuffers.UOffsetT {
 	childOffsets := make([]flatbuffers.UOffsetT, len(childFunctions))
 	for i, child := range childFunctions {
-		childOffsets[i] = packCompiledFunction(builder, child, failure)
+		childOffsets[i] = packCompiledFunction(ctx, builder, child, failure)
 	}
 	return createVector(builder, childOffsets)
 }
@@ -478,11 +525,11 @@ func packChildFunctions(builder *flatbuffers.Builder, childFunctions []*program.
 //
 // Returns flatbuffers.UOffsetT which is the offset of the packed init function, or 0 when
 // there is none.
-func packVariableInitFunction(builder *flatbuffers.Builder, compiledFunction *program.CompiledFunction, failure *error) flatbuffers.UOffsetT {
+func packVariableInitFunction(ctx context.Context, builder *flatbuffers.Builder, compiledFunction *program.CompiledFunction, failure *error) flatbuffers.UOffsetT {
 	if program.VariableInitFunction(compiledFunction) == nil {
 		return 0
 	}
-	return packCompiledFunction(builder, program.VariableInitFunction(compiledFunction), failure)
+	return packCompiledFunction(ctx, builder, program.VariableInitFunction(compiledFunction), failure)
 }
 
 // packSignatureDescriptor packs the type descriptor of the function's own static Go
@@ -543,6 +590,7 @@ func writeCompiledFunctionTable(builder *flatbuffers.Builder, compiledFunction *
 	addOffsetIfSet(builder, schemagen.CompiledFunctionAddMethodTable, offsets.methodTable)
 	addOffsetIfSet(builder, schemagen.CompiledFunctionAddVariableInitFunction, offsets.variableInitFunction)
 	addOffsetIfSet(builder, schemagen.CompiledFunctionAddStructLayoutTable, offsets.structLayoutTable)
+	addOffsetIfSet(builder, schemagen.CompiledFunctionAddReceiverMethods, offsets.receiverMethods)
 	return schemagen.CompiledFunctionEnd(builder)
 }
 
@@ -678,8 +726,8 @@ func packCallSites(builder *flatbuffers.Builder, callSites []codec.CallSiteData)
 		return 0
 	}
 	offsets := make([]flatbuffers.UOffsetT, len(callSites))
-	for i, site := range callSites {
-		offsets[i] = packCallSite(builder, site)
+	for i := range callSites {
+		offsets[i] = packCallSite(builder, callSites[i])
 	}
 	return createVector(builder, offsets)
 }
@@ -694,6 +742,9 @@ func packCallSites(builder *flatbuffers.Builder, callSites []codec.CallSiteData)
 func packCallSite(builder *flatbuffers.Builder, site codec.CallSiteData) flatbuffers.UOffsetT {
 	argumentsOffset := packVarLocations(builder, site.Arguments)
 	returnsOffset := packVarLocations(builder, site.Returns)
+	staticNamesOffset := packStrings(builder, site.ArgumentStaticTypeNames)
+	staticStringsOffset := packStrings(builder, site.ArgumentStaticTypeStrings)
+	linkedTypeArgsOffset := packTypeDescriptors(builder, site.LinkedTypeArgs)
 
 	schemagen.CallSiteStart(builder)
 	schemagen.CallSiteAddFunctionIndex(builder, site.FunctionIndex)
@@ -715,7 +766,33 @@ func packCallSite(builder *flatbuffers.Builder, site codec.CallSiteData) flatbuf
 	if site.IsEllipsisSpread {
 		schemagen.CallSiteAddIsEllipsisSpread(builder, site.IsEllipsisSpread)
 	}
+	if staticNamesOffset != 0 {
+		schemagen.CallSiteAddArgumentStaticTypeNames(builder, staticNamesOffset)
+	}
+	if staticStringsOffset != 0 {
+		schemagen.CallSiteAddArgumentStaticTypeStrings(builder, staticStringsOffset)
+	}
+	if linkedTypeArgsOffset != 0 {
+		schemagen.CallSiteAddLinkedTypeArgs(builder, linkedTypeArgsOffset)
+	}
 	return schemagen.CallSiteEnd(builder)
+}
+
+// packStrings packs a string slice as a FlatBuffer vector of strings.
+//
+// Takes builder (*flatbuffers.Builder) which is the FlatBuffer builder to write into.
+// Takes values ([]string) which are the strings.
+//
+// Returns flatbuffers.UOffsetT which is the vector's offset, or 0 for an empty slice.
+func packStrings(builder *flatbuffers.Builder, values []string) flatbuffers.UOffsetT {
+	if len(values) == 0 {
+		return 0
+	}
+	offsets := make([]flatbuffers.UOffsetT, len(values))
+	for i, value := range values {
+		offsets[i] = builder.CreateString(value)
+	}
+	return createVector(builder, offsets)
 }
 
 // packTypeDescriptor packs a type descriptor into a FlatBuffer table. Recursive fields
@@ -731,23 +808,17 @@ func packTypeDescriptor(builder *flatbuffers.Builder, typeDescriptorData descrip
 	return offset
 }
 
-// packTypeDescriptorShared is packTypeDescriptor that also reports the subtree's
-// structural key, so an identical subtree already written into this builder is referenced
-// again rather than written a second time.
-//
-// Children are packed first because a parent's key is built from theirs, which keeps the
-// whole keying linear in the tree rather than quadratic. The strings are created after
-// the memo check so a shared subtree costs nothing at all.
+// packTypeDescriptorShared packs a descriptor and shares identical subtrees.
 //
 // Takes builder (*flatbuffers.Builder) which is the FlatBuffer builder to write into.
 // Takes typeDescriptorData (descriptor.TypeDescriptorData) which holds the type
 // descriptor to pack.
 //
 // Returns flatbuffers.UOffsetT which is the offset of the packed TypeDescriptor table.
-// Returns string which is the subtree's structural key.
-func packTypeDescriptorShared(builder *flatbuffers.Builder, typeDescriptorData descriptor.TypeDescriptorData) (flatbuffers.UOffsetT, string) {
+// Returns descriptorKeyID which is the number of the subtree's structural key.
+func packTypeDescriptorShared(builder *flatbuffers.Builder, typeDescriptorData descriptor.TypeDescriptorData) (flatbuffers.UOffsetT, descriptorKeyID) {
 	var elemOffset, keyOffset, valueOffset flatbuffers.UOffsetT
-	var elemKey, keyKey, valueKey string
+	var elemKey, keyKey, valueKey descriptorKeyID
 	if typeDescriptorData.Elem != nil {
 		elemOffset, elemKey = packTypeDescriptorShared(builder, *typeDescriptorData.Elem)
 	}
@@ -766,7 +837,7 @@ func packTypeDescriptorShared(builder *flatbuffers.Builder, typeDescriptorData d
 
 	memo := descriptorMemoFor(builder)
 	if existing, ok := memo.lookup(key); ok {
-		return existing, key
+		return existing.offset, existing.id
 	}
 
 	packagePathOffset := builder.CreateString(typeDescriptorData.PackagePath)
@@ -798,9 +869,9 @@ func packTypeDescriptorShared(builder *flatbuffers.Builder, typeDescriptorData d
 		schemagen.TypeDescriptorAddResults(builder, resultsOffset)
 	}
 	schemagen.TypeDescriptorAddIsVariadic(builder, typeDescriptorData.IsVariadic)
+	schemagen.TypeDescriptorAddBackReference(builder, typeDescriptorData.BackReference)
 	offset := schemagen.TypeDescriptorEnd(builder)
-	memo.remember(key, offset)
-	return offset, key
+	return offset, memo.remember(key, offset)
 }
 
 // typeDescriptorStructuralKey renders the key two descriptors share exactly when they
@@ -808,17 +879,23 @@ func packTypeDescriptorShared(builder *flatbuffers.Builder, typeDescriptorData d
 //
 // Takes typeDescriptorData (descriptor.TypeDescriptorData) which supplies the node's own
 // fields.
-// Takes elemKey (string) which is the elem pointer child's key, empty when absent.
-// Takes keyKey (string) which is the key pointer child's key, empty when absent.
-// Takes valueKey (string) which is the value pointer child's key, empty when absent.
-// Takes fieldsKey (string) which is the fields vector child's key, empty when absent.
-// Takes paramsKey (string) which is the params vector child's key, empty when absent.
-// Takes resultsKey (string) which is the results vector child's key, empty when absent.
+// Takes elemKey (descriptorKeyID) which numbers the elem pointer child's key, zero when
+// absent.
+// Takes keyKey (descriptorKeyID) which numbers the key pointer child's key, zero when
+// absent.
+// Takes valueKey (descriptorKeyID) which numbers the value pointer child's key, zero when
+// absent.
+// Takes fieldsKey (descriptorKeyID) which numbers the fields vector child's key, zero
+// when absent.
+// Takes paramsKey (descriptorKeyID) which numbers the params vector child's key, zero
+// when absent.
+// Takes resultsKey (descriptorKeyID) which numbers the results vector child's key, zero
+// when absent.
 //
 // Returns string which is the node's structural key.
 func typeDescriptorStructuralKey(
 	typeDescriptorData descriptor.TypeDescriptorData,
-	elemKey, keyKey, valueKey, fieldsKey, paramsKey, resultsKey string,
+	elemKey, keyKey, valueKey, fieldsKey, paramsKey, resultsKey descriptorKeyID,
 ) string {
 	var keyBuilder strings.Builder
 	_, _ = keyBuilder.WriteString("d")
@@ -827,14 +904,15 @@ func typeDescriptorStructuralKey(
 	appendKeyInt(&keyBuilder, int64(typeDescriptorData.Length))
 	appendKeyInt(&keyBuilder, int64(typeDescriptorData.Dir))
 	appendKeyInt(&keyBuilder, boolKeyValue(typeDescriptorData.IsVariadic))
+	appendKeyInt(&keyBuilder, boolKeyValue(typeDescriptorData.BackReference))
 	appendKeyPart(&keyBuilder, typeDescriptorData.PackagePath)
 	appendKeyPart(&keyBuilder, typeDescriptorData.Name)
-	appendKeyPart(&keyBuilder, elemKey)
-	appendKeyPart(&keyBuilder, keyKey)
-	appendKeyPart(&keyBuilder, valueKey)
-	appendKeyPart(&keyBuilder, fieldsKey)
-	appendKeyPart(&keyBuilder, paramsKey)
-	appendKeyPart(&keyBuilder, resultsKey)
+	appendKeyID(&keyBuilder, elemKey)
+	appendKeyID(&keyBuilder, keyKey)
+	appendKeyID(&keyBuilder, valueKey)
+	appendKeyID(&keyBuilder, fieldsKey)
+	appendKeyID(&keyBuilder, paramsKey)
+	appendKeyID(&keyBuilder, resultsKey)
 	return keyBuilder.String()
 }
 
@@ -851,8 +929,86 @@ func packTypeDescriptors(builder *flatbuffers.Builder, descriptors []descriptor.
 	return offset
 }
 
-// packTypeDescriptorsShared is packTypeDescriptors that also reports the vector's
-// structural key, and shares the vector itself when an identical one was already written.
+// packCancelled records the first cancellation that stops packing.
+//
+// Takes failure (*error) which receives the cancellation.
+// Takes functionName (string) which names the function being packed.
+//
+// Returns bool which is true when the context is done and packing should stop.
+func packCancelled(ctx context.Context, failure *error, functionName string) bool {
+	err := ctx.Err()
+	if err == nil {
+		return false
+	}
+	if *failure == nil {
+		*failure = fmt.Errorf("bytecode pack cancelled at %s: %w", functionName, err)
+	}
+	return true
+}
+
+// packTypeTableDescriptors packs a function's type table as a FlatBuffer vector.
+//
+// Takes builder (*flatbuffers.Builder) which is the FlatBuffer builder to write into.
+// Takes compiledFunction (*program.CompiledFunction) which owns the type table.
+// Takes failure (*error) which receives the cancellation when it stops the packing, after
+// which the vector holds only the descriptors packed so far.
+//
+// Returns flatbuffers.UOffsetT which is the offset of the packed vector, or 0 when the
+// type table is empty.
+func packTypeTableDescriptors(ctx context.Context, builder *flatbuffers.Builder, compiledFunction *program.CompiledFunction, failure *error) flatbuffers.UOffsetT {
+	count := codec.TypeTableLength(compiledFunction)
+	if count == 0 {
+		return 0
+	}
+	memo := descriptorMemoFor(builder)
+	offsets := make([]flatbuffers.UOffsetT, count)
+	var keyBuilder strings.Builder
+	_, _ = keyBuilder.WriteString("v")
+	for index := range count {
+		if packCancelled(ctx, failure, codec.ExportName(compiledFunction)) {
+			offsets = offsets[:index]
+			break
+		}
+		entry := packTypeTableDescriptor(builder, memo, compiledFunction, index)
+		offsets[index] = entry.offset
+		appendKeyID(&keyBuilder, entry.id)
+	}
+	key := keyBuilder.String()
+
+	if existing, ok := memo.lookup(key); ok {
+		return existing.offset
+	}
+	offset := createVector(builder, offsets)
+	memo.remember(key, offset)
+	return offset
+}
+
+// packTypeTableDescriptor packs one descriptor, reusing entries derived from their type.
+//
+// Takes builder (*flatbuffers.Builder) which is the FlatBuffer builder to write into.
+// Takes memo (*descriptorShareMemo) which is the builder's sharing memo, or nil.
+// Takes compiledFunction (*program.CompiledFunction) which owns the type table.
+// Takes index (int) which is the type table index.
+//
+// Returns descriptorShareEntry which holds the descriptor's offset and key number.
+func packTypeTableDescriptor(
+	builder *flatbuffers.Builder, memo *descriptorShareMemo, compiledFunction *program.CompiledFunction, index int,
+) descriptorShareEntry {
+	derivedFrom, derived := codec.TypeTableDerivedType(compiledFunction, index)
+	if derived {
+		if existing, ok := memo.lookupDerived(derivedFrom); ok {
+			return existing
+		}
+	}
+	offset, id := packTypeDescriptorShared(builder, codec.TypeTableDescriptorAt(compiledFunction, index))
+	entry := descriptorShareEntry{offset: offset, id: id}
+	if derived {
+		memo.rememberDerived(derivedFrom, entry)
+	}
+	return entry
+}
+
+// packTypeDescriptorsShared packs descriptors and shares identical vectors.
 //
 // Takes builder (*flatbuffers.Builder) which is the FlatBuffer builder to write into.
 // Takes descriptors ([]descriptor.TypeDescriptorData) which holds the type descriptors to
@@ -860,62 +1016,55 @@ func packTypeDescriptors(builder *flatbuffers.Builder, descriptors []descriptor.
 //
 // Returns flatbuffers.UOffsetT which is the offset of the packed vector, or 0 when the
 // slice is empty.
-// Returns string which is the vector's structural key.
-func packTypeDescriptorsShared(builder *flatbuffers.Builder, descriptors []descriptor.TypeDescriptorData) (flatbuffers.UOffsetT, string) {
+// Returns descriptorKeyID which is the number of the vector's structural key, or 0 when
+// the slice is empty.
+func packTypeDescriptorsShared(builder *flatbuffers.Builder, descriptors []descriptor.TypeDescriptorData) (flatbuffers.UOffsetT, descriptorKeyID) {
 	if len(descriptors) == 0 {
-		return 0, ""
+		return 0, 0
 	}
 	offsets := make([]flatbuffers.UOffsetT, len(descriptors))
 	var keyBuilder strings.Builder
 	_, _ = keyBuilder.WriteString("v")
 	for i := range descriptors {
-		var elementKey string
+		var elementKey descriptorKeyID
 		offsets[i], elementKey = packTypeDescriptorShared(builder, descriptors[i])
-		appendKeyPart(&keyBuilder, elementKey)
+		appendKeyID(&keyBuilder, elementKey)
 	}
 	key := keyBuilder.String()
 
 	memo := descriptorMemoFor(builder)
 	if existing, ok := memo.lookup(key); ok {
-		return existing, key
+		return existing.offset, existing.id
 	}
 	offset := createVector(builder, offsets)
-	memo.remember(key, offset)
-	return offset, key
+	return offset, memo.remember(key, offset)
 }
 
-// packTypeDescFieldsShared packs struct field descriptors as FlatBuffer tables and
-// reports the vector's structural key, sharing both the field tables and the vector when
-// identical ones were already written.
+// packTypeDescFieldsShared packs and shares identical field descriptors and vectors.
 //
 // Takes builder (*flatbuffers.Builder) which is the FlatBuffer builder to write into.
 // Takes fields ([]descriptor.TypeDescriptorFieldData) which holds the fields to pack.
 //
 // Returns flatbuffers.UOffsetT which is the offset of the packed vector, or 0 when the
 // slice is empty.
-// Returns string which is the vector's structural key.
-func packTypeDescFieldsShared(builder *flatbuffers.Builder, fields []descriptor.TypeDescriptorFieldData) (flatbuffers.UOffsetT, string) {
+// Returns descriptorKeyID which is the number of the vector's structural key, or 0 when
+// the slice is empty.
+func packTypeDescFieldsShared(builder *flatbuffers.Builder, fields []descriptor.TypeDescriptorFieldData) (flatbuffers.UOffsetT, descriptorKeyID) {
 	if len(fields) == 0 {
-		return 0, ""
+		return 0, 0
 	}
 	offsets := make([]flatbuffers.UOffsetT, len(fields))
-	var vectorKeyBuilder strings.Builder
-	_, _ = vectorKeyBuilder.WriteString("fv")
+	var vectorKeyStorage [fieldVectorKeyStackBytes]byte
+	vectorKey := append(vectorKeyStorage[:0], "fv"...)
 	memo := descriptorMemoFor(builder)
 	for i := range fields {
 		typeOffset, typeKey := packTypeDescriptorShared(builder, fields[i].Typ)
-
-		var fieldKeyBuilder strings.Builder
-		_, _ = fieldKeyBuilder.WriteString("f")
-		appendKeyPart(&fieldKeyBuilder, fields[i].Name)
-		appendKeyPart(&fieldKeyBuilder, fields[i].Tag)
-		appendKeyPart(&fieldKeyBuilder, fields[i].PackagePath)
-		appendKeyPart(&fieldKeyBuilder, typeKey)
-		fieldKey := fieldKeyBuilder.String()
-		appendKeyPart(&vectorKeyBuilder, fieldKey)
-
-		if existing, ok := memo.lookup(fieldKey); ok {
-			offsets[i] = existing
+		fieldKey := fieldShareKey{
+			name: fields[i].Name, tag: fields[i].Tag, packagePath: fields[i].PackagePath, typeKey: typeKey, embedded: fields[i].Embedded,
+		}
+		if existing, ok := memo.lookupField(fieldKey); ok {
+			offsets[i] = existing.offset
+			vectorKey = appendKeyIDBytes(vectorKey, existing.id)
 			continue
 		}
 		nameOffset := builder.CreateString(fields[i].Name)
@@ -927,16 +1076,15 @@ func packTypeDescFieldsShared(builder *flatbuffers.Builder, fields []descriptor.
 		schemagen.TypeDescFieldAddTag(builder, tagOffset)
 		schemagen.TypeDescFieldAddPackagePath(builder, packagePathOffset)
 		schemagen.TypeDescFieldAddTypeDescriptor(builder, typeOffset)
+		schemagen.TypeDescFieldAddEmbedded(builder, fields[i].Embedded)
 		offsets[i] = schemagen.TypeDescFieldEnd(builder)
-		memo.remember(fieldKey, offsets[i])
+		vectorKey = appendKeyIDBytes(vectorKey, memo.rememberField(fieldKey, offsets[i]))
 	}
-	key := vectorKeyBuilder.String()
-	if existing, ok := memo.lookup(key); ok {
-		return existing, key
+	if existing, ok := memo.lookupSpelled(vectorKey); ok {
+		return existing.offset, existing.id
 	}
 	offset := createVector(builder, offsets)
-	memo.remember(key, offset)
-	return offset, key
+	return offset, memo.remember(string(vectorKey), offset)
 }
 
 // packGeneralConstantDescriptors packs general constant descriptors as FlatBuffer tables.
@@ -944,15 +1092,22 @@ func packTypeDescFieldsShared(builder *flatbuffers.Builder, fields []descriptor.
 // Takes builder (*flatbuffers.Builder) which is the FlatBuffer builder to write into.
 // Takes descriptors ([]codec.GeneralConstantDescriptorData) which holds the descriptors
 // to pack.
+// Takes functionName (string) which names the function they belong to in a cancellation.
+// Takes failure (*error) which receives the cancellation when it stops the packing, after
+// which the vector holds only the descriptors packed so far.
 //
 // Returns flatbuffers.UOffsetT which is the offset of the packed vector, or 0 when the
 // slice is empty.
-func packGeneralConstantDescriptors(builder *flatbuffers.Builder, descriptors []codec.GeneralConstantDescriptorData) flatbuffers.UOffsetT {
+func packGeneralConstantDescriptors(ctx context.Context, builder *flatbuffers.Builder, descriptors []codec.GeneralConstantDescriptorData, functionName string, failure *error) flatbuffers.UOffsetT {
 	if len(descriptors) == 0 {
 		return 0
 	}
 	offsets := make([]flatbuffers.UOffsetT, len(descriptors))
 	for i := range descriptors {
+		if packCancelled(ctx, failure, functionName) {
+			offsets = offsets[:i]
+			break
+		}
 		packagePathOffset := builder.CreateString(descriptors[i].PackagePath)
 		symbolNameOffset := builder.CreateString(descriptors[i].SymbolName)
 		typeDescOffset := packTypeDescriptor(builder, descriptors[i].TypeDescriptor)
@@ -981,14 +1136,26 @@ func packTypeNames(builder *flatbuffers.Builder, typeNames map[reflect.Type]code
 		return 0
 	}
 
-	sortedData := slices.Collect(maps.Values(typeNames))
-	slices.SortFunc(sortedData, func(a, b codec.TypeNameData) int {
-		return strings.Compare(a.Name, b.Name)
+	values := slices.Collect(maps.Values(typeNames))
+	nameCounts := make(map[string]int, len(values))
+	for i := range values {
+		nameCounts[values[i].Name]++
+	}
+	keys := make([]string, len(values))
+	order := make([]int, len(values))
+	for i := range values {
+		if nameCounts[values[i].Name] > 1 {
+			keys[i] = descriptorOrderKey(&values[i].TypeDescriptor)
+		}
+		order[i] = i
+	}
+	slices.SortFunc(order, func(a, b int) int {
+		return cmp.Or(strings.Compare(values[a].Name, values[b].Name), strings.Compare(keys[a], keys[b]))
 	})
 
-	offsets := make([]flatbuffers.UOffsetT, 0, len(sortedData))
-	for i := range sortedData {
-		data := &sortedData[i]
+	offsets := make([]flatbuffers.UOffsetT, 0, len(values))
+	for _, index := range order {
+		data := &values[index]
 		nameOffset := builder.CreateString(data.Name)
 		typeDescOffset := packTypeDescriptor(builder, data.TypeDescriptor)
 
@@ -996,6 +1163,83 @@ func packTypeNames(builder *flatbuffers.Builder, typeNames map[reflect.Type]code
 		schemagen.TypeNameEntryAddName(builder, nameOffset)
 		schemagen.TypeNameEntryAddTypeDescriptor(builder, typeDescOffset)
 		offsets = append(offsets, schemagen.TypeNameEntryEnd(builder))
+	}
+	return createVector(builder, offsets)
+}
+
+// descriptorOrderKey renders a descriptor as a string that orders descriptors the same
+// way in every process, so entries that share a name pack in a fixed order.
+//
+// Takes data (*descriptor.TypeDescriptorData) which is the descriptor.
+//
+// Returns string which is the key.
+func descriptorOrderKey(data *descriptor.TypeDescriptorData) string {
+	var key strings.Builder
+	writeDescriptorOrderKey(&key, data, 0)
+	return key.String()
+}
+
+// writeDescriptorOrderKey appends data's order key, bounded by the depth the loader
+// accepts, so the key of any descriptor a loader could read back is complete.
+//
+// Takes key (*strings.Builder) which receives the key.
+// Takes data (*descriptor.TypeDescriptorData) which is the descriptor, possibly nil.
+// Takes depth (int) which is the nesting depth.
+func writeDescriptorOrderKey(key *strings.Builder, data *descriptor.TypeDescriptorData, depth int) {
+	if data == nil || depth > maxBytecodeTypeDescriptorDepth {
+		_, _ = key.WriteString("-")
+		return
+	}
+	_, _ = key.WriteString("(")
+	appendKeyInt(key, int64(data.Kind))
+	appendKeyInt(key, int64(data.BasicKind))
+	appendKeyInt(key, int64(data.Length))
+	appendKeyInt(key, int64(data.Dir))
+	appendKeyInt(key, boolKeyValue(data.IsVariadic))
+	appendKeyInt(key, boolKeyValue(data.BackReference))
+	appendKeyPart(key, data.PackagePath)
+	appendKeyPart(key, data.Name)
+	writeDescriptorOrderKey(key, data.Elem, depth+1)
+	writeDescriptorOrderKey(key, data.Key, depth+1)
+	writeDescriptorOrderKey(key, data.Value, depth+1)
+	for i := range data.Fields {
+		_, _ = key.WriteString("[")
+		appendKeyPart(key, data.Fields[i].Name)
+		appendKeyPart(key, data.Fields[i].Tag)
+		appendKeyPart(key, data.Fields[i].PackagePath)
+		appendKeyInt(key, boolKeyValue(data.Fields[i].Embedded))
+		writeDescriptorOrderKey(key, &data.Fields[i].Typ, depth+1)
+	}
+	for i := range data.Params {
+		writeDescriptorOrderKey(key, &data.Params[i], depth+1)
+	}
+	_, _ = key.WriteString("|")
+	for i := range data.Results {
+		writeDescriptorOrderKey(key, &data.Results[i], depth+1)
+	}
+	_, _ = key.WriteString(")")
+}
+
+// packReceiverMethods packs the receiver method table as a vector of entries, each
+// pairing a receiver type descriptor with a method's shared body and the body to run.
+//
+// Takes builder (*flatbuffers.Builder) which is the FlatBuffer builder to write into.
+// Takes entries ([]codec.ReceiverMethodData) which are the sorted entries.
+//
+// Returns flatbuffers.UOffsetT which is the offset of the packed vector, or 0 when there
+// are no entries.
+func packReceiverMethods(builder *flatbuffers.Builder, entries []codec.ReceiverMethodData) flatbuffers.UOffsetT {
+	if len(entries) == 0 {
+		return 0
+	}
+	offsets := make([]flatbuffers.UOffsetT, len(entries))
+	for i := range entries {
+		typeDescOffset := packTypeDescriptor(builder, entries[i].ReceiverTypeDescriptor)
+		schemagen.ReceiverMethodEntryStart(builder)
+		schemagen.ReceiverMethodEntryAddReceiverTypeDescriptor(builder, typeDescOffset)
+		schemagen.ReceiverMethodEntryAddMethodIndex(builder, entries[i].Method)
+		schemagen.ReceiverMethodEntryAddFunctionIndex(builder, entries[i].Function)
+		offsets[i] = schemagen.ReceiverMethodEntryEnd(builder)
 	}
 	return createVector(builder, offsets)
 }

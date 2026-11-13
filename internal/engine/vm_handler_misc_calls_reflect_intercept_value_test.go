@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -49,7 +50,7 @@ func TestInterceptPipitReflectNumFieldHidesTheSentinel(t *testing.T) {
 			t.Parallel()
 
 			_, _, registers := newStandardVM(t)
-			site := reflectInterceptSite(isa.RegisterInt, program.VarLocation{Kind: isa.RegisterInt, Register: 0})
+			site := reflectInterceptSite(isa.RegisterInt64, program.VarLocation{Kind: isa.RegisterInt64, Register: 0})
 
 			got, handled := interceptPipitReflectNumField(registers, site, tt.inner)
 			require.Equal(t, opContinue, got)
@@ -70,7 +71,7 @@ func TestInterceptPipitReflectFieldBoundsChecksTheUserFields(t *testing.T) {
 		t.Parallel()
 
 		vm, _, registers := newStandardVM(t)
-		site := reflectInterceptSite(isa.RegisterInt, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
+		site := reflectInterceptSite(isa.RegisterInt64, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
 		receiver := reflect.New(script).Elem()
 		receiver.Field(0).SetInt(4)
 		registers.Ints[2] = 0
@@ -88,7 +89,7 @@ func TestInterceptPipitReflectFieldBoundsChecksTheUserFields(t *testing.T) {
 		t.Parallel()
 
 		vm, _, registers := newStandardVM(t)
-		site := reflectInterceptSite(isa.RegisterInt, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
+		site := reflectInterceptSite(isa.RegisterInt64, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
 		registers.Ints[2] = 1
 
 		_, handled := interceptPipitReflectField(vm, registers, site, reflect.New(script).Elem())
@@ -100,7 +101,7 @@ func TestInterceptPipitReflectFieldBoundsChecksTheUserFields(t *testing.T) {
 		t.Parallel()
 
 		vm, _, registers := newStandardVM(t)
-		site := reflectInterceptSite(isa.RegisterInt, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
+		site := reflectInterceptSite(isa.RegisterInt64, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
 		registers.Ints[2] = 0
 
 		_, handled := interceptPipitReflectField(vm, registers, site, reflect.Zero(reflect.PointerTo(script)))
@@ -122,7 +123,7 @@ func TestInterceptPipitReflectFieldBoundsChecksTheUserFields(t *testing.T) {
 		t.Parallel()
 
 		vm, _, registers := newStandardVM(t)
-		site := reflectInterceptSite(isa.RegisterInt, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
+		site := reflectInterceptSite(isa.RegisterInt64, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
 
 		_, handled := interceptPipitReflectField(vm, registers, site, reflect.ValueOf(identityNone{}))
 		require.False(t, handled)
@@ -265,10 +266,21 @@ func TestTryInterceptPipitReflectValueMethodRoutesByName(t *testing.T) {
 			t.Parallel()
 
 			vm, _, registers := newStandardVM(t)
-			site := reflectInterceptSite(isa.RegisterInt, program.VarLocation{Kind: isa.RegisterInt, Register: 0})
+			site := reflectInterceptSite(isa.RegisterInt64, program.VarLocation{Kind: isa.RegisterInt64, Register: 0})
 
 			_, handled := tryInterceptPipitReflectValueMethod(vm, registers, site, tt.receiver, tt.method)
 			require.Equal(t, tt.wantHandled, handled)
 		})
 	}
+}
+
+func TestABoundCallableIsRefusedWhenNoBodyMatchesItsReceiver(t *testing.T) {
+	t.Parallel()
+
+	root := genericReceiverRoot(t)
+	vm := newTestVM(t)
+
+	callable, err := pipitBoundMethodCallable(vm, reflect.ValueOf(struct{ W string }{}), root.Functions[0], root)
+	require.ErrorIs(t, err, fault.ErrNoMethodBodyForReceiver, "MethodByName must raise what a direct call raises, not run the shared body")
+	require.False(t, callable.IsValid())
 }

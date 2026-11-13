@@ -60,7 +60,7 @@ func (c *Compiler) compileMethodReceiverWithPath(ctx context.Context, receiverEx
 
 	if !callee.IsPointerReceiver && finalIsPointer {
 		derefRegister := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-		program.Emit(c.Function, isa.OpDeref, derefRegister, receiverLocation.Register, 0)
+		program.Emit(c.Function, isa.OpDereference, derefRegister, receiverLocation.Register, 0)
 		receiverLocation = program.VarLocation{Register: derefRegister, Kind: isa.RegisterGeneral}
 	}
 	return receiverLocation, nil
@@ -92,7 +92,7 @@ func (c *Compiler) compileMethodReceiverAsPointer(ctx context.Context, receiverE
 // Returns a general-banked pointer to the struct that directly contains the leaf field.
 func (c *Compiler) compileEmbeddedParentPointerReusing(receiverLocation program.VarLocation, receiverExpr ast.Expr, fieldPath []int) program.VarLocation {
 	baseRegister := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpAddr, baseRegister, receiverLocation.Register, engine.AddrSourceStable)
+	program.Emit(c.Function, isa.OpAddress, baseRegister, receiverLocation.Register, engine.AddrSourceStable)
 	base := program.VarLocation{Register: baseRegister, Kind: isa.RegisterGeneral}
 	return c.walkFieldPointerPath(base, receiverExpr, fieldPath[:len(fieldPath)-1])
 }
@@ -107,16 +107,13 @@ func (c *Compiler) compileEmbeddedParentPointerReusing(receiverLocation program.
 // Returns a general-banked pointer to the leaf field.
 func (c *Compiler) compileEmbeddedLeafPointerReusing(receiverLocation program.VarLocation, receiverExpr ast.Expr, fieldPath []int) program.VarLocation {
 	baseRegister := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpAddr, baseRegister, receiverLocation.Register, engine.AddrSourceStable)
+	program.Emit(c.Function, isa.OpAddress, baseRegister, receiverLocation.Register, engine.AddrSourceStable)
 	base := program.VarLocation{Register: baseRegister, Kind: isa.RegisterGeneral}
 	return c.walkFieldPointerPath(base, receiverExpr, fieldPath)
 }
 
 // walkFieldPointerPath walks fieldPath from a base pointer to the final field's location.
 //
-// Emits isa.OpDeref/isa.OpGetField per hop. A pointer-typed field is followed by its
-// value so the next hop dereferences the pointee; a value-typed field is addressed in
-// place with isa.OpAddr. With an empty fieldPath the base pointer is returned unchanged.
 // baseAddr must be a pointer whose dereference yields the receiver, and receiverExpr
 // supplies the static type chain so pointer intermediates are threaded correctly.
 //
@@ -134,13 +131,13 @@ func (c *Compiler) walkFieldPointerPath(baseAddr program.VarLocation, receiverEx
 		}
 		fieldType := structFieldType(currentType, fieldIndex)
 		fieldReg := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-		program.Emit(c.Function, isa.OpDeref, fieldReg, addrLoc.Register, 0)
+		program.Emit(c.Function, isa.OpDereference, fieldReg, addrLoc.Register, 0)
 		program.Emit(c.Function, isa.OpGetField, fieldReg, fieldReg, safeconv.MustIntToUint8(fieldIndex))
 		if _, fieldIsPointer := pointerUnderlying(fieldType); fieldIsPointer {
 			addrLoc = program.VarLocation{Register: fieldReg, Kind: isa.RegisterGeneral}
 		} else {
 			addrReg := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-			program.Emit(c.Function, isa.OpAddr, addrReg, fieldReg, engine.AddrSourceStable)
+			program.Emit(c.Function, isa.OpAddress, addrReg, fieldReg, engine.AddrSourceStable)
 			addrLoc = program.VarLocation{Register: addrReg, Kind: isa.RegisterGeneral}
 		}
 		currentType = fieldType
@@ -149,15 +146,6 @@ func (c *Compiler) walkFieldPointerPath(baseAddr program.VarLocation, receiverEx
 }
 
 // compileAddressOfReceiverExpr produces a *T pointer for a method receiver expression.
-//
-// Mirrors compileAddressOf's dispatch but takes a bare ast.Expr rather than the
-// *ast.UnaryExpr wrapper that compileAddressOf uses for source-level `&x` syntax.
-// Method-call address-takes are implicit (Go's auto-rewrite) and have no UnaryExpr in the
-// AST. Falls back to compileExpression + isa.OpAddr when the receiver kind is not
-// Ident/Selector/Index/StarExpr; isa.OpAddr's CanAddr branch handles already-addressable
-// values (slice elements, addressable temporaries), and the non-addressable branch
-// allocates fresh storage which is acceptable for read-only-receiver use cases (rare in
-// valid Go since pointer-receiver methods on non-addressable values are forbidden).
 //
 // Takes expression (ast.Expr) which is the receiver expression.
 //
@@ -184,7 +172,7 @@ func (c *Compiler) compileAddressOfReceiverExpr(ctx context.Context, expression 
 	}
 	c.boxToGeneral(ctx, &operand)
 	destination := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpAddr, destination, operand.Register, 0)
+	program.Emit(c.Function, isa.OpAddress, destination, operand.Register, 0)
 	return program.VarLocation{Register: destination, Kind: isa.RegisterGeneral}, nil
 }
 
@@ -197,7 +185,8 @@ func (c *Compiler) compileAddressOfReceiverExpr(ctx context.Context, expression 
 // Takes selection (*types.Selection) which is the type-checker selection information for
 // the method expression.
 //
-// Returns VarLocation holding the method call result and any compilation error.
+// Returns program.VarLocation which holds the method call result.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileMethodExprDirectCall(ctx context.Context, selectorExpression *ast.SelectorExpr, expression *ast.CallExpr, selection *types.Selection) (program.VarLocation, error) {
 	functionIndex, ok := c.resolveMethodExprFunction(ctx, selectorExpression)
 	if !ok {
@@ -238,14 +227,7 @@ func (c *Compiler) compileMethodExprDirectCall(ctx context.Context, selectorExpr
 		resultLocation = returnLocations[0]
 	}
 
-	site := program.CallSite{FunctionIndex: functionIndex, Arguments: argumentLocations, Returns: returnLocations}
-	if int(functionIndex) < len(c.RootFunction.Functions) {
-		site.CachedCallee = c.RootFunction.Functions[functionIndex]
-	}
-	if site.CachedCallee != nil {
-		site.ArgCopyProgram = program.BuildCallArgCopyProgram(site.Arguments, site.CachedCallee.ParameterKinds, site.CachedCallee.ParameterRegisters)
-	}
-	siteIndex, err := program.AddCallSite(c.Function, &site)
+	siteIndex, err := program.AddCallSite(c.Function, new(c.siteCalling(functionIndex, argumentLocations, returnLocations)))
 	if err != nil {
 		return program.VarLocation{}, err
 	}

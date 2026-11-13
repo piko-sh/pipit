@@ -28,9 +28,15 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-// float32BitWidth is the width of a float32, the shift that packs a complex64's imaginary
-// part above its real part in one 64-bit word.
-const float32BitWidth = 32
+const (
+	// float32BitWidth is the width of a float32, the shift that packs a complex64's
+	// imaginary part above its real part in one 64-bit word.
+	float32BitWidth = 32
+
+	// widestBankElementBytes is the size of the widest element a numeric register bank
+	// stores, a 64-bit word.
+	widestBankElementBytes = 8
+)
 
 // runtimeClosureReflectType is the reflect type of a boxed interpreted closure.
 var runtimeClosureReflectType = reflect.TypeFor[*RuntimeClosure]()
@@ -50,17 +56,17 @@ func PackTypedSliceStringToGeneral(arena *RegisterArena, s []string) reflect.Val
 	return arenaWrapTypedSlice(arena, data, len(s), cap(s), stringSliceReflectType)
 }
 
-// HandleTruncateNarrow truncates a narrow integer register to its declared width, using a
-// zero-fill mask for unsigned and sign-extension for signed.
+// handleTruncateToWidth truncates a narrow integer register to its declared width, using
+// a zero-fill mask for unsigned and sign-extension for signed.
 //
 // Takes registers (*Registers) which provides the narrow integer banks.
 // Takes instruction (instruction) which encodes the register index, the bit width, and
 // the bank kind.
 //
 // Returns OpResult indicating the next execution step.
-func HandleTruncateNarrow(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleTruncateToWidth(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	bitWidth := uint(instruction.B)
-	if isa.RegisterKind(instruction.C) == isa.RegisterUint {
+	if isa.RegisterKind(instruction.C) == isa.RegisterUint64 {
 		mask := uint64(1)<<bitWidth - 1
 		registers.Uints[instruction.A] &= mask
 		return opContinue
@@ -126,8 +132,8 @@ func handleJumpIfFalse(_ *VM, frame *CallFrame, registers *Registers, instructio
 	return opContinue
 }
 
-// handleUnpackInterface extracts a concrete value from an interface in a general register
-// into a typed register.
+// handleUnboxFromInterface extracts a concrete value from an interface in a general
+// register into a typed register.
 //
 // When the source value is invalid or nil, the destination register is set to its zero
 // value.
@@ -137,20 +143,20 @@ func handleJumpIfFalse(_ *VM, frame *CallFrame, registers *Registers, instructio
 // indices, and the target register kind.
 //
 // Returns OpResult indicating the next execution step.
-func handleUnpackInterface(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleUnboxFromInterface(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	v := registers.General[instruction.B]
 	if v.IsValid() && v.Kind() == reflect.Interface {
 		v = v.Elem()
 	}
 	if !v.IsValid() {
-		unpackInterfaceZero(registers, instruction)
+		unboxFromInterfaceZero(registers, instruction)
 	} else {
-		unpackInterfaceValue(registers, instruction, v)
+		unboxFromInterfaceValue(registers, instruction, v)
 	}
 	return opContinue
 }
 
-// unpackInterfaceZero writes the zero value for the destination kind when the source
+// unboxFromInterfaceZero writes the zero value for the destination kind when the source
 // reflect.Value is invalid (nil interface).
 //
 // Only the banks with a dedicated sub-op are listed. The default routes through the
@@ -160,14 +166,14 @@ func handleUnpackInterface(_ *VM, _ *CallFrame, registers *Registers, instructio
 // into.
 // Takes instruction (instruction) which encodes the operand slots and the target register
 // kind.
-func unpackInterfaceZero(registers *Registers, instruction isa.Instruction) {
-	if unpackInterfaceSliceZero(registers, isa.RegisterKind(instruction.C), instruction.A) {
+func unboxFromInterfaceZero(registers *Registers, instruction isa.Instruction) {
+	if unboxFromInterfaceSliceZero(registers, isa.RegisterKind(instruction.C), instruction.A) {
 		return
 	}
 	switch isa.RegisterKind(instruction.C) {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		registers.Ints[instruction.A] = 0
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.Floats[instruction.A] = 0
 	case isa.RegisterString:
 		registers.Strings[instruction.A] = ""
@@ -175,29 +181,29 @@ func unpackInterfaceZero(registers *Registers, instruction isa.Instruction) {
 		registers.General[instruction.A] = reflect.Value{}
 	case isa.RegisterBool:
 		registers.Bools[instruction.A] = false
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[instruction.A] = 0
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.Complex[instruction.A] = 0
 	default:
 	}
 }
 
-// unpackInterfaceValue extracts a concrete value from a valid reflect.Value into the
+// unboxFromInterfaceValue extracts a concrete value from a valid reflect.Value into the
 // destination register bank.
 //
 // Takes registers (*Registers) which provides the register file.
 // Takes instruction (instruction) which encodes the operand slots and the target register
 // kind.
 // Takes value (reflect.Value) which is the concrete value to extract.
-func unpackInterfaceValue(registers *Registers, instruction isa.Instruction, value reflect.Value) {
-	if unpackInterfaceSlice(registers, isa.RegisterKind(instruction.C), instruction.A, value) {
+func unboxFromInterfaceValue(registers *Registers, instruction isa.Instruction, value reflect.Value) {
+	if unboxFromInterfaceSlice(registers, isa.RegisterKind(instruction.C), instruction.A, value) {
 		return
 	}
 	switch isa.RegisterKind(instruction.C) {
-	case isa.RegisterInt:
-		unpackInterfaceInt(registers, instruction.A, value)
-	case isa.RegisterFloat:
+	case isa.RegisterInt64:
+		unboxFromInterfaceInt64(registers, instruction.A, value)
+	case isa.RegisterFloat64:
 		registers.Floats[instruction.A] = value.Float()
 	case isa.RegisterString:
 		registers.Strings[instruction.A] = value.String()
@@ -205,22 +211,22 @@ func unpackInterfaceValue(registers *Registers, instruction isa.Instruction, val
 		registers.General[instruction.A] = value
 	case isa.RegisterBool:
 		registers.Bools[instruction.A] = value.Bool()
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[instruction.A] = value.Uint()
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.Complex[instruction.A] = value.Complex()
 	default:
 	}
 }
 
-// unpackInterfaceInt handles the isa.RegisterInt case which requires checking multiple
-// numeric kinds (signed, unsigned, bool).
+// unboxFromInterfaceInt64 handles the isa.RegisterInt64 case which requires checking
+// multiple numeric kinds (signed, unsigned, bool).
 //
 // Takes registers (*Registers) which provides the register file to write the integer
 // value into.
 // Takes destination (uint8) which is the index of the target integer register.
 // Takes value (reflect.Value) which is the value to extract the integer from.
-func unpackInterfaceInt(registers *Registers, destination uint8, value reflect.Value) {
+func unboxFromInterfaceInt64(registers *Registers, destination uint8, value reflect.Value) {
 	if value.CanInt() {
 		registers.Ints[destination] = value.Int()
 	} else if value.CanUint() {
@@ -230,28 +236,24 @@ func unpackInterfaceInt(registers *Registers, destination uint8, value reflect.V
 	}
 }
 
-// unpackInterfaceSliceZero clears a typed-slice register slot.
-//
-// The six typed-slice banks are not covered by the scalar switch in
-// unpackInterfaceZero(), so a heap-promoted named typed-slice result read through
-// OpUnpackInterface must reset its bank slot here.
+// unboxFromInterfaceSliceZero clears a typed-slice register slot.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes kind (isa.RegisterKind) which selects the bank.
 // Takes destination (uint8) which is the slot index.
 //
 // Returns bool which is true when kind names a typed-slice bank.
-func unpackInterfaceSliceZero(registers *Registers, kind isa.RegisterKind, destination uint8) bool {
+func unboxFromInterfaceSliceZero(registers *Registers, kind isa.RegisterKind, destination uint8) bool {
 	switch kind {
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		registers.SlicesInt[destination] = nil
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		registers.slicesFloat[destination] = nil
 	case isa.RegisterSliceString:
 		registers.slicesString[destination] = nil
 	case isa.RegisterSliceBool:
 		registers.slicesBool[destination] = nil
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		registers.slicesUint[destination] = nil
 	case isa.RegisterSliceByte:
 		registers.slicesByte[destination] = nil
@@ -261,7 +263,7 @@ func unpackInterfaceSliceZero(registers *Registers, kind isa.RegisterKind, desti
 	return true
 }
 
-// unpackInterfaceSlice aliases a reflect slice into a typed-slice register bank.
+// unboxFromInterfaceSlice aliases a reflect slice into a typed-slice register bank.
 //
 // The backing array is shared so element writes through either view remain mutually
 // visible. Exact-storage banks alias by direct type assertion. Width-identical
@@ -275,38 +277,38 @@ func unpackInterfaceSliceZero(registers *Registers, kind isa.RegisterKind, desti
 // Takes value (reflect.Value) which is the source slice to alias.
 //
 // Returns bool which is true when value was aliased into the bank.
-func unpackInterfaceSlice(registers *Registers, kind isa.RegisterKind, destination uint8, value reflect.Value) bool {
+func unboxFromInterfaceSlice(registers *Registers, kind isa.RegisterKind, destination uint8, value reflect.Value) bool {
 	if !value.IsValid() || value.Kind() != reflect.Slice {
 		return false
 	}
 	switch kind {
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		if bankSlice, ok := reflectSliceToBankInt(value); ok {
 			registers.SlicesInt[destination] = bankSlice
 			return true
 		}
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		if bankSlice, ok := reflectSliceToBankUint(value); ok {
 			registers.slicesUint[destination] = bankSlice
 			return true
 		}
-	case isa.RegisterSliceFloat:
-		if bankSlice, ok := reflect.TypeAssert[[]float64](value); ok {
+	case isa.RegisterSliceFloat64:
+		if bankSlice, ok := typedSliceOf[float64](value); ok {
 			registers.slicesFloat[destination] = bankSlice
 			return true
 		}
 	case isa.RegisterSliceString:
-		if bankSlice, ok := reflect.TypeAssert[[]string](value); ok {
+		if bankSlice, ok := typedSliceOf[string](value); ok {
 			registers.slicesString[destination] = bankSlice
 			return true
 		}
 	case isa.RegisterSliceBool:
-		if bankSlice, ok := reflect.TypeAssert[[]bool](value); ok {
+		if bankSlice, ok := typedSliceOf[bool](value); ok {
 			registers.slicesBool[destination] = bankSlice
 			return true
 		}
 	case isa.RegisterSliceByte:
-		if bankSlice, ok := reflect.TypeAssert[[]byte](value); ok {
+		if bankSlice, ok := typedSliceOf[byte](value); ok {
 			registers.slicesByte[destination] = bankSlice
 			return true
 		}
@@ -323,7 +325,7 @@ func unpackInterfaceSlice(registers *Registers, kind isa.RegisterKind, destinati
 //
 // Returns the aliased []int64 and true, or nil and false when no alias applies.
 func reflectSliceToBankInt(value reflect.Value) ([]int64, bool) {
-	if bankSlice, ok := reflect.TypeAssert[[]int64](value); ok {
+	if bankSlice, ok := typedSliceOf[int64](value); ok {
 		return bankSlice, true
 	}
 	element := value.Type().Elem()
@@ -334,9 +336,9 @@ func reflectSliceToBankInt(value reflect.Value) ([]int64, bool) {
 }
 
 // reflectSliceToBankUint aliases a reflect slice value into the []uint64 storage of the
-// isa.RegisterSliceUint bank, mirroring reflectSliceToBankInt for the unsigned banks.
+// isa.RegisterSliceUint64 bank, mirroring reflectSliceToBankInt for the unsigned banks.
 //
-// An exact []uint64 aliases directly; a width-identical []uint is reinterpreted in place.
+// An exact []uint64 aliases directly. A width-identical []uint is reinterpreted in place.
 // Narrow-uint element slices ([]uint16/[]uint32) return false so the caller keeps them on
 // the loud reflect path.
 //
@@ -345,7 +347,7 @@ func reflectSliceToBankInt(value reflect.Value) ([]int64, bool) {
 // Returns the aliased []uint64 and true, or nil and false when no width-identical alias
 // applies.
 func reflectSliceToBankUint(value reflect.Value) ([]uint64, bool) {
-	if bankSlice, ok := reflect.TypeAssert[[]uint64](value); ok {
+	if bankSlice, ok := typedSliceOf[uint64](value); ok {
 		return bankSlice, true
 	}
 	element := value.Type().Elem()
@@ -355,9 +357,8 @@ func reflectSliceToBankUint(value reflect.Value) ([]uint64, bool) {
 	return nil, false
 }
 
-// handlePackInterface wraps a typed register value into a reflect.Value and stores it in
-// a general register. The packed value stays arena-backed: registers share the arena's
-// lifetime, and the store barrier detaches the value if it later escapes to the heap.
+// handleBoxAsInterface wraps a typed register value into a reflect.Value and stores it in
+// a general register. The packed value stays arena-backed.
 //
 // Takes vm (*VM) which provides the arena allocator for the box slabs.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -365,11 +366,11 @@ func reflectSliceToBankUint(value reflect.Value) ([]uint64, bool) {
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handlePackInterface(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleBoxAsInterface(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	switch isa.RegisterKind(instruction.C) {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		registers.General[instruction.A] = boxInt64ToGeneral(vm.Arena, registers.Ints[instruction.B])
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.General[instruction.A] = boxFloat64ToGeneral(vm.Arena, registers.Floats[instruction.B])
 	case isa.RegisterString:
 		registers.General[instruction.A] = BoxStringToGeneral(vm.Arena, registers.Strings[instruction.B])
@@ -377,19 +378,19 @@ func handlePackInterface(vm *VM, frame *CallFrame, registers *Registers, instruc
 		registers.General[instruction.A] = registers.General[instruction.B]
 	case isa.RegisterBool:
 		registers.General[instruction.A] = boxBoolToGeneral(registers.Bools[instruction.B])
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.General[instruction.A] = boxUint64ToGeneral(vm.Arena, registers.Uints[instruction.B])
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.General[instruction.A] = boxComplex128ToGeneral(vm.Arena, registers.Complex[instruction.B])
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		registers.General[instruction.A] = packTypedSliceToGeneral(vm.Arena, registers.SlicesInt[instruction.B], intSliceReflectType)
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		registers.General[instruction.A] = packTypedSliceFloatToGeneral(vm.Arena, registers.slicesFloat[instruction.B])
 	case isa.RegisterSliceString:
 		registers.General[instruction.A] = PackTypedSliceStringToGeneral(vm.Arena, registers.slicesString[instruction.B])
 	case isa.RegisterSliceBool:
 		registers.General[instruction.A] = packTypedSliceBoolToGeneral(vm.Arena, registers.slicesBool[instruction.B])
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		registers.General[instruction.A] = packTypedSliceUintToGeneral(vm.Arena, registers.slicesUint[instruction.B])
 	case isa.RegisterSliceByte:
 		if vm.Arena != nil {
@@ -466,7 +467,7 @@ func packTypedSliceUintToGeneral(arena *RegisterArena, s []uint64) reflect.Value
 	return arenaWrapTypedSlice(arena, data, len(s), cap(s), uintSliceReflectType)
 }
 
-// handlePackTyped boxes a typed-bank register value into the general bank while
+// handleBoxAsType boxes a typed-bank register value into the general bank while
 // preserving its exact source-level reflect.Type from the TypeTable.
 //
 // Takes vm (*VM) which provides the arena allocator.
@@ -475,7 +476,7 @@ func packTypedSliceUintToGeneral(arena *RegisterArena, s []uint64) reflect.Value
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handlePackTyped(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleBoxAsType(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	typeIndex := uint16(extensionWord.A) | uint16(extensionWord.B)<<isa.WideBitShift
@@ -485,36 +486,33 @@ func handlePackTyped(vm *VM, frame *CallFrame, registers *Registers, instruction
 	}
 	reflectType := frame.Function.TypeTable[typeIndex]
 	if reflectType == nil {
-		registers.General[instruction.A] = packInterfaceFallback(vm, registers, instruction)
+		registers.General[instruction.A] = boxAsInterfaceFallback(vm, registers, instruction)
 		return opContinue
 	}
 	registers.General[instruction.A] = boxTypedToGeneral(vm.Arena, reflectType, registers, instruction.B, isa.RegisterKind(instruction.C))
 	return opContinue
 }
 
-// packInterfaceFallback boxes a register value using canonical representation.
-//
-// Used by handlePackTyped when the recorded type index resolves to a nil reflect.Type.
-// Falls back to canonical boxing rather than panicking.
+// boxAsInterfaceFallback boxes a register value using canonical representation.
 //
 // Takes vm (*VM) which provides the arena.
 // Takes registers (*Registers) which provides the source banks.
 // Takes instruction (isa.Instruction) which encodes B=source, C=kind.
 //
 // Returns reflect.Value which is the boxed value.
-func packInterfaceFallback(vm *VM, registers *Registers, instruction isa.Instruction) reflect.Value {
+func boxAsInterfaceFallback(vm *VM, registers *Registers, instruction isa.Instruction) reflect.Value {
 	switch isa.RegisterKind(instruction.C) {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return boxInt64ToGeneral(vm.Arena, registers.Ints[instruction.B])
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return boxFloat64ToGeneral(vm.Arena, registers.Floats[instruction.B])
 	case isa.RegisterString:
 		return BoxStringToGeneral(vm.Arena, registers.Strings[instruction.B])
 	case isa.RegisterBool:
 		return boxBoolToGeneral(registers.Bools[instruction.B])
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return boxUint64ToGeneral(vm.Arena, registers.Uints[instruction.B])
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return reflect.ValueOf(registers.Complex[instruction.B])
 	default:
 		return registers.General[instruction.B]
@@ -563,15 +561,15 @@ func boxTypedToGeneral(arena *RegisterArena, reflectType reflect.Type, registers
 		out.SetComplex(registers.Complex[sourceRegister])
 	default:
 		switch sourceKind {
-		case isa.RegisterInt:
+		case isa.RegisterInt64:
 			return boxInt64ToGeneral(nil, registers.Ints[sourceRegister])
-		case isa.RegisterFloat:
+		case isa.RegisterFloat64:
 			return boxFloat64ToGeneral(nil, registers.Floats[sourceRegister])
 		case isa.RegisterString:
 			return reflect.ValueOf(registers.Strings[sourceRegister])
 		case isa.RegisterBool:
 			return boxBoolToGeneral(registers.Bools[sourceRegister])
-		case isa.RegisterUint:
+		case isa.RegisterUint64:
 			return boxUint64ToGeneral(nil, registers.Uints[sourceRegister])
 		default:
 			return registers.General[sourceRegister]
@@ -583,49 +581,96 @@ func boxTypedToGeneral(arena *RegisterArena, reflectType reflect.Type, registers
 // boxTypedSliceAs boxes a typed-slice bank register as the exact slice type the source
 // carried.
 //
-// Element types that share their bank's storage width reinterpret the header in place;
-// narrower integer elements, whose storage is widened, are copied into a fresh slice of
-// the exact type so the boxed value has Go's layout.
+// Element types with their bank's element layout (the same size and the same class,
+// either signed, unsigned or floating-point, or the same kind otherwise) reinterpret the
+// header in place. Narrower integer and floating-point elements, whose storage is
+// widened, are copied into a fresh slice of the exact type so the boxed value has Go's
+// layout.
 //
-// Takes arena (*RegisterArena) which provides the slice-header slab; may be nil.
+// Takes arena (*RegisterArena) which provides the slice-header slab. It may be nil.
 // Takes reflectType (reflect.Type) which is the exact slice type.
 // Takes registers (*Registers) which provides the typed banks.
 // Takes sourceRegister (uint8) which is the source slot.
 // Takes sourceKind (isa.RegisterKind) which selects the bank.
 //
-// Returns the boxed slice and true, or false when the source is not a typed-slice bank.
+// Returns the boxed slice and true, or false when the source is not a typed-slice bank or
+// its storage cannot be given the element type.
 func boxTypedSliceAs(arena *RegisterArena, reflectType reflect.Type, registers *Registers, sourceRegister uint8, sourceKind isa.RegisterKind) (reflect.Value, bool) {
-	elemSize := reflectType.Elem().Size()
+	if reflectType.Kind() != reflect.Slice {
+		return reflect.Value{}, false
+	}
+	element := reflectType.Elem()
 	switch sourceKind {
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		s := registers.SlicesInt[sourceRegister]
-		if elemSize == unsafe.Sizeof(int64(0)) {
+		if !typedBankElementConvertible(element, reflect.Int64) {
+			return reflect.Value{}, false
+		}
+		if element.Size() == unsafe.Sizeof(int64(0)) {
 			return wrapSliceHeaderAs(arena, unsafe.Pointer(unsafe.SliceData(s)), len(s), cap(s), reflectType), true
 		}
 		return copyIntsAs(reflectType, s), true
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		s := registers.slicesUint[sourceRegister]
-		if elemSize == unsafe.Sizeof(uint64(0)) {
+		if !typedBankElementConvertible(element, reflect.Uint64) {
+			return reflect.Value{}, false
+		}
+		if element.Size() == unsafe.Sizeof(uint64(0)) {
 			return wrapSliceHeaderAs(arena, unsafe.Pointer(unsafe.SliceData(s)), len(s), cap(s), reflectType), true
 		}
 		return copyUintsAs(reflectType, s), true
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		s := registers.slicesFloat[sourceRegister]
-		return wrapSliceHeaderAs(arena, unsafe.Pointer(unsafe.SliceData(s)), len(s), cap(s), reflectType), true
+		if !typedBankElementConvertible(element, reflect.Float64) {
+			return reflect.Value{}, false
+		}
+		if element.Size() == unsafe.Sizeof(float64(0)) {
+			return wrapSliceHeaderAs(arena, unsafe.Pointer(unsafe.SliceData(s)), len(s), cap(s), reflectType), true
+		}
+		return copyFloatsAs(reflectType, s), true
 	case isa.RegisterSliceString:
 		s := registers.slicesString[sourceRegister]
-		return wrapSliceHeaderAs(arena, unsafe.Pointer(unsafe.SliceData(s)), len(s), cap(s), reflectType), true
+		return wrapTypedBankAs(arena, unsafe.Pointer(unsafe.SliceData(s)), len(s), cap(s), reflectType, reflect.String)
 	case isa.RegisterSliceBool:
 		s := registers.slicesBool[sourceRegister]
-		return wrapSliceHeaderAs(arena, unsafe.Pointer(unsafe.SliceData(s)), len(s), cap(s), reflectType), true
+		return wrapTypedBankAs(arena, unsafe.Pointer(unsafe.SliceData(s)), len(s), cap(s), reflectType, reflect.Bool)
 	case isa.RegisterSliceByte:
 		s := registers.slicesByte[sourceRegister]
-		return wrapSliceHeaderAs(arena, unsafe.Pointer(unsafe.SliceData(s)), len(s), cap(s), reflectType), true
-	case isa.RegisterInt, isa.RegisterFloat, isa.RegisterString, isa.RegisterGeneral,
-		isa.RegisterBool, isa.RegisterUint, isa.RegisterComplex:
+		return wrapTypedBankAs(arena, unsafe.Pointer(unsafe.SliceData(s)), len(s), cap(s), reflectType, reflect.Uint8)
+	case isa.RegisterInt64, isa.RegisterFloat64, isa.RegisterString, isa.RegisterGeneral,
+		isa.RegisterBool, isa.RegisterUint64, isa.RegisterComplex128:
 		return reflect.Value{}, false
 	}
 	return reflect.Value{}, false
+}
+
+// typedBankElementConvertible reports whether a widened numeric bank's elements can be
+// given element's type. The element is of the bank's class and no wider than its storage.
+//
+// Takes element (reflect.Type) which is the declared element type.
+// Takes bankKind (reflect.Kind) which is the bank's element kind.
+//
+// Returns bool which is true when the bank can be boxed as element.
+func typedBankElementConvertible(element reflect.Type, bankKind reflect.Kind) bool {
+	return bankScalarClass(element.Kind()) == bankKind && element.Size() <= widestBankElementBytes
+}
+
+// wrapTypedBankAs reinterprets a string, bool or byte bank's header as sliceType when the
+// element type has the bank's element layout.
+//
+// Takes arena (*RegisterArena) which may be nil.
+// Takes data (unsafe.Pointer) which is the backing array.
+// Takes length (int) which is the slice length.
+// Takes capacity (int) which is the slice capacity.
+// Takes sliceType (reflect.Type) which is the declared slice type.
+// Takes bankKind (reflect.Kind) which is the bank's element kind.
+//
+// Returns the wrapped slice and true, or false when the element type does not match.
+func wrapTypedBankAs(arena *RegisterArena, data unsafe.Pointer, length, capacity int, sliceType reflect.Type, bankKind reflect.Kind) (reflect.Value, bool) {
+	if sliceType.Elem().Kind() != bankKind {
+		return reflect.Value{}, false
+	}
+	return wrapSliceHeaderAs(arena, data, length, capacity, sliceType), true
 }
 
 // wrapSliceHeaderAs reinterprets a typed-bank slice header as sliceType, through the
@@ -679,6 +724,24 @@ func copyUintsAs(sliceType reflect.Type, s []uint64) reflect.Value {
 	out := reflect.MakeSlice(sliceType, len(s), cap(s))
 	for i, v := range s {
 		out.Index(i).SetUint(v)
+	}
+	return out
+}
+
+// copyFloatsAs copies a float64 bank slice into a fresh slice of sliceType, whose element
+// is a narrower floating-point type.
+//
+// Takes sliceType (reflect.Type) which is the declared slice type.
+// Takes s ([]float64) which is the bank slice.
+//
+// Returns reflect.Value which is the copy, or the zero slice for a nil s.
+func copyFloatsAs(sliceType reflect.Type, s []float64) reflect.Value {
+	if s == nil {
+		return reflect.Zero(sliceType)
+	}
+	out := reflect.MakeSlice(sliceType, len(s), len(s))
+	for i, value := range s {
+		out.Index(i).SetFloat(value)
 	}
 	return out
 }
@@ -819,67 +882,67 @@ func boxOtherScalarToArenaBox(arena *RegisterArena, abiType unsafe.Pointer, refl
 	}
 }
 
-// handleIntToFloat converts a signed integer register value to float64 and stores it in a
-// float register.
+// handleConvertInt64ToFloat64Body converts a signed integer register value to float64 and
+// stores it in a float register.
 //
 // Takes registers (*Registers) which provides the integer and float register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleIntToFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleConvertInt64ToFloat64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Floats[instruction.A] = float64(registers.Ints[instruction.B])
 	return opContinue
 }
 
-// handleFloatToInt converts a floating-point register value to int64 and stores it in an
-// integer register.
+// handleConvertFloat64ToInt64Body converts a floating-point register value to int64 and
+// stores it in an integer register.
 //
 // Takes registers (*Registers) which provides the float and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleFloatToInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleConvertFloat64ToInt64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = int64(registers.Floats[instruction.B])
 	return opContinue
 }
 
-// handleRoundFloat32 rounds a float register value to float32 precision. float32 values
-// share the float64 bank, so the compiler emits this after every operation whose static
-// type is float32 to reproduce Go's single-precision rounding.
+// handleRoundToFloat32Body rounds a float register value to float32 precision. float32
+// values share the float64 bank, so the compiler emits this after every operation whose
+// static type is float32 to reproduce Go's single-precision rounding.
 //
 // Takes registers (*Registers) which provides the float register bank.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleRoundFloat32(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleRoundToFloat32Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Floats[instruction.A] = float64(float32(registers.Floats[instruction.B]))
 	return opContinue
 }
 
-// handleRoundComplex64 rounds both parts of a complex register value to float32
-// precision, the complex64 counterpart of handleRoundFloat32.
+// handleRoundToComplex64Body rounds both parts of a complex register value to float32
+// precision, the complex64 counterpart of handleRoundToFloat32Body.
 //
 // Takes registers (*Registers) which provides the complex register bank.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleRoundComplex64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleRoundToComplex64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Complex[instruction.A] = complex128(complex64(registers.Complex[instruction.B]))
 	return opContinue
 }
 
-// handleMoveBool copies a boolean value between virtual machine registers.
+// handleMoveBoolBody copies a boolean value between virtual machine registers.
 //
 // Takes registers (*Registers) which provides the boolean register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMoveBool(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMoveBoolBody(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Bools[instruction.A] = registers.Bools[instruction.B]
 	return opContinue
 }
 
-// handleLoadBoolConst loads a boolean constant from the function constant pool into a
+// handleLoadBoolConstant loads a boolean constant from the function constant pool into a
 // register.
 //
 // Takes vm (*VM) which is the virtual machine.
@@ -889,7 +952,7 @@ func handleMoveBool(_ *VM, _ *CallFrame, registers *Registers, instruction isa.I
 // index.
 //
 // Returns OpResult indicating the next execution step.
-func handleLoadBoolConst(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLoadBoolConstant(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	if int(instruction.C) >= len(frame.Function.BoolConstants) {
 		vMBoundsError(vm, frame, boundsTableBoolConstant, int(instruction.C), len(frame.Function.BoolConstants))
 		return opPanicError
@@ -898,8 +961,8 @@ func handleLoadBoolConst(vm *VM, frame *CallFrame, registers *Registers, instruc
 	return opContinue
 }
 
-// handleLoadComplexConst loads a complex number constant from the function constant pool
-// into a register.
+// handleLoadComplex128Constant loads a complex number constant from the function constant
+// pool into a register.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which provides access to the function constant pool.
@@ -908,7 +971,7 @@ func handleLoadBoolConst(vm *VM, frame *CallFrame, registers *Registers, instruc
 // index.
 //
 // Returns OpResult indicating the next execution step.
-func handleLoadComplexConst(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLoadComplex128Constant(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	index := instruction.WideIndex()
 	if int(index) >= len(frame.Function.ComplexConstants) {
 		vMBoundsError(vm, frame, boundsTableComplexConstant, int(index), len(frame.Function.ComplexConstants))
@@ -918,255 +981,257 @@ func handleLoadComplexConst(vm *VM, frame *CallFrame, registers *Registers, inst
 	return opContinue
 }
 
-// handleAddComplex performs complex number addition of two register operands in the
+// handleAddComplex128 performs complex number addition of two register operands in the
 // virtual machine.
 //
 // Takes registers (*Registers) which provides the complex register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleAddComplex(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleAddComplex128(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Complex[instruction.A] = registers.Complex[instruction.B] + registers.Complex[instruction.C]
 	return opContinue
 }
 
-// handleSubComplex performs complex number subtraction of two register operands in the
-// virtual machine.
+// handleSubtractComplex128 performs complex number subtraction of two register operands
+// in the virtual machine.
 //
 // Takes registers (*Registers) which provides the complex register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleSubComplex(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSubtractComplex128(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Complex[instruction.A] = registers.Complex[instruction.B] - registers.Complex[instruction.C]
 	return opContinue
 }
 
-// handleMulComplex performs complex number multiplication of two register operands in the
-// virtual machine.
+// handleMultiplyComplex128 performs complex number multiplication of two register
+// operands in the virtual machine.
 //
 // Takes registers (*Registers) which provides the complex register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMulComplex(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMultiplyComplex128(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Complex[instruction.A] = registers.Complex[instruction.B] * registers.Complex[instruction.C]
 	return opContinue
 }
 
-// handleDivComplex performs complex number division of two register operands in the
+// handleDivideComplex128 performs complex number division of two register operands in the
 // virtual machine.
 //
 // Takes registers (*Registers) which provides the complex register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleDivComplex(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleDivideComplex128(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Complex[instruction.A] = registers.Complex[instruction.B] / registers.Complex[instruction.C]
 	return opContinue
 }
 
-// handleEqComplex tests equality of two complex register values and stores the boolean
-// result as an int.
+// handleEqualComplex128 tests equality of two complex register values and stores the
+// boolean result as an int.
 //
 // Takes registers (*Registers) which provides the complex and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleEqComplex(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleEqualComplex128(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Complex[instruction.B] == registers.Complex[instruction.C])
 	return opContinue
 }
 
-// handleNeComplex tests inequality of two complex register values and stores the boolean
-// result as an int.
+// handleNotEqualComplex128 tests inequality of two complex register values and stores the
+// boolean result as an int.
 //
 // Takes registers (*Registers) which provides the complex and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleNeComplex(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleNotEqualComplex128(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Complex[instruction.B] != registers.Complex[instruction.C])
 	return opContinue
 }
 
-// handleIntToUint converts a signed integer register value to uint64 and stores it in an
-// unsigned register.
+// handleConvertInt64ToUint64Body converts a signed integer register value to uint64 and
+// stores it in an unsigned register.
 //
 // Takes registers (*Registers) which provides the integer and unsigned integer register
 // banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleIntToUint(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleConvertInt64ToUint64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Uints[instruction.A] = safeconv.Int64ToUint64Reinterpret(registers.Ints[instruction.B])
 	return opContinue
 }
 
-// handleUintToInt converts an unsigned integer register value to int64 and stores it in a
-// signed register.
+// handleConvertUint64ToInt64Body converts an unsigned integer register value to int64 and
+// stores it in a signed register.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleUintToInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleConvertUint64ToInt64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = safeconv.Uint64ToInt64Reinterpret(registers.Uints[instruction.B])
 	return opContinue
 }
 
-// handleUintToFloat converts an unsigned integer register value to float64 and stores it
-// in a float register.
+// handleConvertUint64ToFloat64Body converts an unsigned integer register value to float64
+// and stores it in a float register.
 //
 // Takes registers (*Registers) which provides the unsigned integer and float register
 // banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleUintToFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleConvertUint64ToFloat64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Floats[instruction.A] = float64(registers.Uints[instruction.B])
 	return opContinue
 }
 
-// handleFloatToUint converts a floating-point register value to uint64 and stores it in
-// an unsigned register.
+// handleConvertFloat64ToUint64Body converts a floating-point register value to uint64 and
+// stores it in an unsigned register.
 //
 // Takes registers (*Registers) which provides the float and unsigned integer register
 // banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleFloatToUint(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleConvertFloat64ToUint64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Uints[instruction.A] = uint64(registers.Floats[instruction.B])
 	return opContinue
 }
 
-// handleBoolToInt converts a boolean register value to an integer representation and
-// stores it in an int register.
+// handleConvertBoolToInt64Body converts a boolean register value to an integer
+// representation and stores it in an int register.
 //
 // Takes registers (*Registers) which provides the boolean and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleBoolToInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleConvertBoolToInt64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Bools[instruction.B])
 	return opContinue
 }
 
-// handleIntToBool converts a signed integer register value to a boolean and stores it in
-// a bool register.
+// handleConvertInt64ToBoolBody converts a signed integer register value to a boolean and
+// stores it in a bool register.
 //
 // Takes registers (*Registers) which provides the integer and boolean register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleIntToBool(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleConvertInt64ToBoolBody(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Bools[instruction.A] = registers.Ints[instruction.B] != 0
 	return opContinue
 }
 
-// handleBuildComplex constructs a complex number from two float register values and
+// handleMakeComplex128 constructs a complex number from two float register values and
 // stores it in a complex register.
 //
 // Takes registers (*Registers) which provides the float and complex register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleBuildComplex(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMakeComplex128(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Complex[instruction.A] = complex(registers.Floats[instruction.B], registers.Floats[instruction.C])
 	return opContinue
 }
 
-// handleIncInt increments a signed integer register value by one in the virtual machine.
+// handleIncrementInt64Body increments a signed integer register value by one in the
+// virtual machine.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the target register index.
 //
 // Returns OpResult indicating the next execution step.
-func handleIncInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleIncrementInt64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A]++
 	return opContinue
 }
 
-// handleDecInt decrements a signed integer register value by one in the virtual machine.
+// handleDecrementInt64Body decrements a signed integer register value by one in the
+// virtual machine.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the target register index.
 //
 // Returns OpResult indicating the next execution step.
-func handleDecInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleDecrementInt64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A]--
 	return opContinue
 }
 
-// handleNeFloat tests inequality of two floating-point register values and stores the
-// boolean result as an int.
+// handleNotEqualFloat64 tests inequality of two floating-point register values and stores
+// the boolean result as an int.
 //
 // Takes registers (*Registers) which provides the float and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleNeFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleNotEqualFloat64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Floats[instruction.B] != registers.Floats[instruction.C])
 	return opContinue
 }
 
-// handleGtFloat tests whether the first float register is greater than the second and
-// stores the result as an int.
+// handleGreaterThanFloat64 tests whether the first float register is greater than the
+// second and stores the result as an int.
 //
 // Takes registers (*Registers) which provides the float and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleGtFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGreaterThanFloat64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Floats[instruction.B] > registers.Floats[instruction.C])
 	return opContinue
 }
 
-// handleGeFloat tests whether the first float register is greater than or equal to the
-// second and stores the result.
+// handleGreaterOrEqualFloat64 tests whether the first float register is greater than or
+// equal to the second and stores the result.
 //
 // Takes registers (*Registers) which provides the float and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleGeFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGreaterOrEqualFloat64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Floats[instruction.B] >= registers.Floats[instruction.C])
 	return opContinue
 }
 
-// handleNeString tests inequality of two string register values and stores the boolean
-// result as an int.
+// handleNotEqualString tests inequality of two string register values and stores the
+// boolean result as an int.
 //
 // Takes registers (*Registers) which provides the string and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleNeString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleNotEqualString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Strings[instruction.B] != registers.Strings[instruction.C])
 	return opContinue
 }
 
-// handleGtString tests whether the first string register is lexicographically greater
-// than the second.
+// handleGreaterThanString tests whether the first string register is lexicographically
+// greater than the second.
 //
 // Takes registers (*Registers) which provides the string and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleGtString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGreaterThanString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Strings[instruction.B] > registers.Strings[instruction.C])
 	return opContinue
 }
 
-// handleGeString tests whether the first string register is lexicographically greater
-// than or equal to the second.
+// handleGreaterOrEqualString tests whether the first string register is lexicographically
+// greater than or equal to the second.
 //
 // Takes registers (*Registers) which provides the string and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleGeString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGreaterOrEqualString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Strings[instruction.B] >= registers.Strings[instruction.C])
 	return opContinue
 }
@@ -1190,6 +1255,9 @@ func interfaceValuesEqual(a, b reflect.Value, lenientNil bool) (equal bool, offe
 		return false, reflect.Value{}
 	}
 	if a.Type() == runtimeClosureReflectType {
+		if closureDynamicType(a) != closureDynamicType(b) {
+			return false, reflect.Value{}
+		}
 		return false, a
 	}
 	if equal, handled := pointerIdentityEqual(a, b); handled {
@@ -1323,15 +1391,15 @@ func raiseUncomparablePanic(vm *VM, operand reflect.Value) OpResult {
 	return raiseNativePanicAsInterpreted(vm, newRuntimePanicError("runtime error: comparing uncomparable type %s", typeName))
 }
 
-// handleNeGeneral tests inequality of two general register values using reflection and
-// stores the result.
+// handleNotEqualGeneral tests inequality of two general register values using reflection
+// and stores the result.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleNeGeneral(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleNotEqualGeneral(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	equal, offending := interfaceValuesEqual(
 		registers.General[instruction.B], registers.General[instruction.C], true)
 	if offending.IsValid() {

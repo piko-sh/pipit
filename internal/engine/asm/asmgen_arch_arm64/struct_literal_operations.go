@@ -39,23 +39,23 @@ const (
 	labelASLStore = "asl_store"
 )
 
-// EmitAllocStructLiteral emits the arm64 body of handlerSubOpAllocStructLiteral,
+// EmitAllocateStructLiteral emits the arm64 body of handlerAllocateStructLiteral,
 // allocating a zeroed struct from the arena's generic-bytes slab.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-func (*BytecodeARM64Arch) EmitAllocStructLiteral(e *asmgen.Emitter) {
-	emitAllocStructLiteralLookup(e)
-	emitAllocStructLiteralBump(e)
-	emitAllocStructLiteralZeroAndStore(e)
+func (*BytecodeARM64Arch) EmitAllocateStructLiteral(e *asmgen.Emitter) {
+	emitAllocateStructLiteralLookup(e)
+	emitAllocateStructLiteralBump(e)
+	emitAllocateStructLiteralZeroAndStore(e)
 }
 
-// emitAllocStructLiteralLookup decodes the destination register and type index, rejects
-// an active write barrier, locates the struct-literal table entry through the current
-// frame's function and rejects a non-qualifying type, leaving the entry and destination
-// slot in registers for the allocation stage.
+// emitAllocateStructLiteralLookup decodes the destination register and type index,
+// rejects an active write barrier, locates the struct-literal table entry through the
+// current frame's function and rejects a non-qualifying type, leaving the entry and
+// destination slot in registers for the allocation stage.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-func emitAllocStructLiteralLookup(e *asmgen.Emitter) {
+func emitAllocateStructLiteralLookup(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$24, R0, R1")
 	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R1, R1")
 	inst5(e, asmarm64.OperationMove32BitsUnsigned, "(R22)(R20<<2), R2")
@@ -81,12 +81,12 @@ func emitAllocStructLiteralLookup(e *asmgen.Emitter) {
 	e.Blank()
 }
 
-// emitAllocStructLiteralBump aligns and bumps the arena's generic-bytes cursor through
+// emitAllocateStructLiteralBump aligns and bumps the arena's generic-bytes cursor through
 // the published cursor address, rejects an allocation beyond the slab length, records the
 // bytes for GC pacing and marks the arena banks dirty.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-func emitAllocStructLiteralBump(e *asmgen.Emitter) {
+func emitAllocateStructLiteralBump(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationMove64Bits, "CTX_ARENA_GENERIC_IDX_PTR(R19), R10")
 	inst5(e, asmarm64.OperationMove64Bits, "(R10), R7")
 	inst5(e, asmarm64.OperationMove64Bits, "SLE_ALIGN_MASK(R4), R5")
@@ -110,13 +110,13 @@ func emitAllocStructLiteralBump(e *asmgen.Emitter) {
 	e.Blank()
 }
 
-// emitAllocStructLiteralZeroAndStore zeroes the allocation eight bytes at a time with a
-// byte tail, writes the reflect.Value triple into the destination slot, consumes the
-// extension word and dispatches; the fallback exits to Go with the program counter
+// emitAllocateStructLiteralZeroAndStore zeroes the allocation eight bytes at a time with
+// a byte tail, writes the reflect.Value triple into the destination slot, consumes the
+// extension word and dispatches. The fallback exits to Go with the program counter
 // rewound to the opcode word.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-func emitAllocStructLiteralZeroAndStore(e *asmgen.Emitter) {
+func emitAllocateStructLiteralZeroAndStore(e *asmgen.Emitter) {
 	e.Label(labelASLZeroWords)
 	inst5(e, asmarm64.OperationCompare, "$8, R9")
 	inst5(e, asmarm64.OperationBranchIfLessSigned, labelASLZeroBytes)

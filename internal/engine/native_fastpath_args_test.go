@@ -73,7 +73,7 @@ func TestFastPathArgumentReadersPreferTheirOwnBank(t *testing.T) {
 		registers.Ints[1] = 4
 		registers.General[2] = reflect.ValueOf(5)
 
-		require.Equal(t, int64(4), readIntArg(&registers, program.VarLocation{Kind: isa.RegisterInt, Register: 1}))
+		require.Equal(t, int64(4), readIntArg(&registers, program.VarLocation{Kind: isa.RegisterInt64, Register: 1}))
 		require.Equal(t, int64(5), readIntArg(&registers, program.VarLocation{Kind: isa.RegisterGeneral, Register: 2}))
 	})
 
@@ -84,7 +84,7 @@ func TestFastPathArgumentReadersPreferTheirOwnBank(t *testing.T) {
 		registers.Floats[1] = 1.5
 		registers.General[2] = reflect.ValueOf(2.5)
 
-		require.InDelta(t, 1.5, readFloatArg(&registers, program.VarLocation{Kind: isa.RegisterFloat, Register: 1}), 0)
+		require.InDelta(t, 1.5, readFloatArg(&registers, program.VarLocation{Kind: isa.RegisterFloat64, Register: 1}), 0)
 		require.InDelta(t, 2.5, readFloatArg(&registers, program.VarLocation{Kind: isa.RegisterGeneral, Register: 2}), 0)
 	})
 }
@@ -98,18 +98,18 @@ func TestReadAnyArgBoxesEveryBank(t *testing.T) {
 		load func(*Registers)
 		want any
 	}{
-		{name: "the int bank", kind: isa.RegisterInt, load: func(r *Registers) { r.Ints[1] = 4 }, want: 4},
-		{name: "the float bank", kind: isa.RegisterFloat, load: func(r *Registers) { r.Floats[1] = 1.5 }, want: 1.5},
+		{name: "the int bank", kind: isa.RegisterInt64, load: func(r *Registers) { r.Ints[1] = 4 }, want: 4},
+		{name: "the float bank", kind: isa.RegisterFloat64, load: func(r *Registers) { r.Floats[1] = 1.5 }, want: 1.5},
 		{name: "the string bank", kind: isa.RegisterString, load: func(r *Registers) { r.Strings[1] = "s" }, want: "s"},
 		{name: "the bool bank", kind: isa.RegisterBool, load: func(r *Registers) { r.Bools[1] = true }, want: true},
-		{name: "the uint bank", kind: isa.RegisterUint, load: func(r *Registers) { r.Uints[1] = 6 }, want: uint64(6)},
-		{name: "the complex bank", kind: isa.RegisterComplex, load: func(r *Registers) { r.Complex[1] = 2i }, want: 2i},
+		{name: "the uint bank", kind: isa.RegisterUint64, load: func(r *Registers) { r.Uints[1] = 6 }, want: uint64(6)},
+		{name: "the complex bank", kind: isa.RegisterComplex128, load: func(r *Registers) { r.Complex[1] = 2i }, want: 2i},
 		{
-			name: "the int-slice bank", kind: isa.RegisterSliceInt,
+			name: "the int-slice bank", kind: isa.RegisterSliceInt64,
 			load: func(r *Registers) { r.SlicesInt[1] = []int64{1} }, want: []int64{1},
 		},
 		{
-			name: "the float-slice bank", kind: isa.RegisterSliceFloat,
+			name: "the float-slice bank", kind: isa.RegisterSliceFloat64,
 			load: func(r *Registers) { r.slicesFloat[1] = []float64{1.5} }, want: []float64{1.5},
 		},
 		{
@@ -121,7 +121,7 @@ func TestReadAnyArgBoxesEveryBank(t *testing.T) {
 			load: func(r *Registers) { r.slicesBool[1] = []bool{true} }, want: []bool{true},
 		},
 		{
-			name: "the uint-slice bank", kind: isa.RegisterSliceUint,
+			name: "the uint-slice bank", kind: isa.RegisterSliceUint64,
 			load: func(r *Registers) { r.slicesUint[1] = []uint64{2} }, want: []uint64{2},
 		},
 		{
@@ -291,7 +291,7 @@ func TestArgDynamicValueRequiresAdapterInspectsTheLiveRegister(t *testing.T) {
 		vm := adapterHostVM(t, "at.String", stringReturningMethod(t, "String", "x"))
 		registers := standardRegisters()
 
-		require.False(t, argDynamicValueRequiresAdapter(vm, program.VarLocation{Kind: isa.RegisterInt}, &registers))
+		require.False(t, argDynamicValueRequiresAdapter(vm, program.VarLocation{Kind: isa.RegisterInt64}, &registers))
 	})
 
 	t.Run("an unset register never needs one", func(t *testing.T) {

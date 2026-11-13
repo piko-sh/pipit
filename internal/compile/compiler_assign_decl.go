@@ -96,7 +96,7 @@ func (c *Compiler) tryMultiAssignSingleRHS(ctx context.Context, statement *ast.A
 }
 
 // tryCompileSwapStructFields detects `t.x, t.y = t.y, t.x` and emits an
-// OpSwapStructFieldsGeneralT0 super-op instead of the generic expansion.
+// OpSwapStructFieldsGeneral super-op instead of the generic expansion.
 //
 // Takes statement (*ast.AssignStmt) which is the candidate swap.
 //
@@ -120,7 +120,7 @@ func (c *Compiler) tryCompileSwapStructFields(
 	}
 	c.boxToGeneral(ctx, &receiverLocation)
 	program.Emit(c.Function,
-		isa.OpSwapStructFieldsGeneralT0,
+		isa.OpSwapStructFieldsGeneral,
 		receiverLocation.Register,
 		safeconv.MustIntToUint8(int(layoutAIdx)),
 		safeconv.MustIntToUint8(int(layoutBIdx)),
@@ -548,7 +548,11 @@ func (c *Compiler) compileShortVarIdent(ctx context.Context, identifier *ast.Ide
 	if typeObject == nil {
 		return c.compileShortVarRedecl(ctx, identifier, rightHandSideExprs, i)
 	}
-	kind := c.typedSliceKindForLocal(identifier.Name, typeObject.Type(), c.kindFor(typeObject.Type()))
+	kind := c.kindFor(typeObject.Type())
+	if c.byteViews.variables[typeObject] {
+		kind = isa.RegisterString
+	}
+	kind = c.typedSliceKindForLocal(identifier.Name, typeObject.Type(), kind)
 
 	if isa.IsTypedSliceKind(kind) {
 		return c.compileShortVarIdentTypedSlice(ctx, identifier, rightHandSideExprs, i, kind)
@@ -656,7 +660,7 @@ func (c *Compiler) emitTypedSliceInitialiser(ctx context.Context, identifier *as
 
 // emitTypedMakeSliceInto emits the umbrella subOpMakeSlice<Kind> instruction matching
 // kind, compiling the length and capacity arguments into the int bank and threading them
-// through the standard isa.OpDrillTier1 + isa.OpExt extension pair.
+// through the standard isa.OpDrillTier1 + isa.OpExtension extension pair.
 //
 // Takes expression (*ast.CallExpr) which must be a make([]T, ...) call validated by the
 // typed-slice classifier.
@@ -693,11 +697,11 @@ func (c *Compiler) emitTypedMakeSliceInto(ctx context.Context, expression *ast.C
 	}
 	if heapPlaced {
 		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMakeSliceHeap), destinationRegister, lengthLocation.Register)
-		program.Emit(c.Function, isa.OpExt, capacityLocation.Register, uint8(kind), 0)
+		program.Emit(c.Function, isa.OpExtension, capacityLocation.Register, uint8(kind), 0)
 		return nil
 	}
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(subOp), destinationRegister, lengthLocation.Register)
-	program.Emit(c.Function, isa.OpExt, capacityLocation.Register, 0, 0)
+	program.Emit(c.Function, isa.OpExtension, capacityLocation.Register, 0, 0)
 	return nil
 }
 
@@ -725,7 +729,7 @@ func (c *Compiler) emitValueCopyForLocalAssignment(rhsExpr ast.Expr, valueLocati
 	}
 	if !typeIsStructOrArray(tv.Type) {
 		if c.rhsAliasesIndexedBackingStore(rhsExpr) && !typeIsInterface(tv.Type) {
-			program.Emit(c.Function, isa.OpDeref, valueLocation.Register, valueLocation.Register, engine.DerefSnapshot)
+			program.Emit(c.Function, isa.OpDereference, valueLocation.Register, valueLocation.Register, engine.DerefSnapshot)
 		}
 		return
 	}
@@ -734,14 +738,14 @@ func (c *Compiler) emitValueCopyForLocalAssignment(rhsExpr ast.Expr, valueLocati
 		!c.closureCapturedNames[localName] {
 		return
 	}
-	program.Emit(c.Function, isa.OpDeref, valueLocation.Register, valueLocation.Register, engine.DerefSnapshot)
+	program.Emit(c.Function, isa.OpDereference, valueLocation.Register, valueLocation.Register, engine.DerefSnapshot)
 }
 
 // rhsAliasesIndexedBackingStore reports whether rhsExpr is a slice or array index
 // expression whose evaluated value aliases the collection's backing storage.
 //
-// handleIndex hands back collection.Index(i), an addressable reflect.Value sharing the
-// backing array, so a reference-kind element bound directly into a local would follow
+// handleGetElement hands back collection.Index(i), an addressable reflect.Value sharing
+// the backing array, so a reference-kind element bound directly into a local would follow
 // later in-place mutations of that backing rather than holding an independent copy. Map
 // and string indexes already yield detached copies and so are excluded.
 //
@@ -793,7 +797,7 @@ func (c *Compiler) indexedReadNeedsDetach(expression ast.Expr, value program.Var
 // Takes value (program.VarLocation) which holds the compiled value.
 func (c *Compiler) detachIndexedRead(expression ast.Expr, value program.VarLocation) {
 	if c.indexedReadNeedsDetach(expression, value) {
-		program.Emit(c.Function, isa.OpDeref, value.Register, value.Register, engine.DerefSnapshot)
+		program.Emit(c.Function, isa.OpDereference, value.Register, value.Register, engine.DerefSnapshot)
 	}
 }
 
@@ -829,7 +833,7 @@ func (c *Compiler) snapshotIndirectLocalRead(rhsExpr ast.Expr, value program.Var
 	if !c.rhsReadsIndirectLocal(rhsExpr) {
 		return false
 	}
-	program.Emit(c.Function, isa.OpDeref, value.Register, value.Register, engine.DerefSnapshot)
+	program.Emit(c.Function, isa.OpDereference, value.Register, value.Register, engine.DerefSnapshot)
 	return true
 }
 

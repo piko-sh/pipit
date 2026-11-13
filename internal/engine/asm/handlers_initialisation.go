@@ -124,12 +124,12 @@ func handlerTier2Fallback() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// handlerCallExit returns the EXIT_CALL exit handler, returning to Go for OpCall.
+// handlerCallExit returns the EXIT_CALL exit handler, returning to Go for isa.SubOpCall.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
 func handlerCallExit() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerCallExit", Comment: "handlerCallExit exits to Go with EXIT_CALL for dedicated OpCall handling.",
+		Name: "handlerCallExit", Comment: "handlerCallExit exits to Go with EXIT_CALL for dedicated isa.SubOpCall handling.",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.InitialisationOperations().EmitExitHandler(emitter, "EXIT_CALL")
@@ -137,12 +137,13 @@ func handlerCallExit() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// handlerReturnExit returns the EXIT_RETURN exit handler, returning to Go for OpReturn.
+// handlerReturnExit returns the EXIT_RETURN exit handler, returning to Go for
+// isa.SubOpTier2Return.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
 func handlerReturnExit() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerReturnExit", Comment: "handlerReturnExit exits to Go with EXIT_RETURN for dedicated OpReturn handling.",
+		Name: "handlerReturnExit", Comment: "handlerReturnExit exits to Go with EXIT_RETURN for dedicated isa.SubOpTier2Return handling.",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.InitialisationOperations().EmitExitHandler(emitter, "EXIT_RETURN")
@@ -151,12 +152,12 @@ func handlerReturnExit() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 }
 
 // handlerReturnVoidExit returns the EXIT_RETURN_VOID exit handler, returning to Go for
-// OpReturnVoid.
+// isa.SubOpTier3ReturnVoid.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
 func handlerReturnVoidExit() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerReturnVoidExit", Comment: "handlerReturnVoidExit exits to Go with EXIT_RETURN_VOID for dedicated OpReturnVoid handling.",
+		Name: "handlerReturnVoidExit", Comment: "handlerReturnVoidExit exits to Go with EXIT_RETURN_VOID for dedicated isa.SubOpTier3ReturnVoid handling.",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.InitialisationOperations().EmitExitHandler(emitter, "EXIT_RETURN_VOID")
@@ -165,12 +166,12 @@ func handlerReturnVoidExit() asmgen.HandlerDefinition[BytecodeArchitecturePort] 
 }
 
 // handlerTailCallExit returns the EXIT_TAIL_CALL exit handler, returning to Go for
-// OpTailCall.
+// isa.Subisa.SubOpTailCall.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
 func handlerTailCallExit() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerTailCallExit", Comment: "handlerTailCallExit exits to Go with EXIT_TAIL_CALL for dedicated OpTailCall handling.",
+		Name: "handlerTailCallExit", Comment: "handlerTailCallExit exits to Go with EXIT_TAIL_CALL for dedicated isa.SubOpTailCall handling.",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.InitialisationOperations().EmitExitHandler(emitter, "EXIT_TAIL_CALL")

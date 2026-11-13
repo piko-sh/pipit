@@ -175,10 +175,12 @@ func RestoreBodyCheckpoint(compiledFunction *CompiledFunction, checkpoint *BodyC
 	prunePCs(compiledFunction.FieldStoreArenaSafePCs, lengths.body)
 	prunePCs(compiledFunction.ArenaSafeAllocPCs, lengths.body)
 	prunePCs(compiledFunction.InPlaceHeaderReusePCs, lengths.body)
+	compiledFunction.LocalContainerAllocPCs = nil
+	compiledFunction.LocalContainerStorePCs = nil
 	prunePCs(compiledFunction.PeepholeProvenance, lengths.body)
-	for pc := range compiledFunction.GetMethodReceiverTypeNames {
+	for pc := range compiledFunction.BindMethodByNameReceiverTypeNames {
 		if int(pc) >= lengths.body {
-			delete(compiledFunction.GetMethodReceiverTypeNames, pc)
+			delete(compiledFunction.BindMethodByNameReceiverTypeNames, pc)
 		}
 	}
 

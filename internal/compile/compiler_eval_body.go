@@ -41,6 +41,7 @@ import (
 //
 // Returns error when compilation of any function declaration fails.
 func (c *Compiler) CompileNonEvalFuncDecls(ctx context.Context, declarations []ast.Decl) error {
+	unparenthesiseTargets(declarations)
 	for _, declaration := range declarations {
 		functionDeclaration, ok := declaration.(*ast.FuncDecl)
 		if !ok || functionDeclaration.Name.Name == EvalFunctionName {
@@ -50,6 +51,7 @@ func (c *Compiler) CompileNonEvalFuncDecls(ctx context.Context, declarations []a
 			return fmt.Errorf(fault.ErrChainFmt, fault.ErrCompilation, err)
 		}
 	}
+	c.compileReceiverInstances(ctx)
 	return nil
 }
 
@@ -84,6 +86,7 @@ func (c *Compiler) CompileEvalBody(
 	if err != nil {
 		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrCompilation, err)
 	}
+	c.compileReceiverInstances(ctx)
 
 	if hasResult {
 		lastLocation = c.coerceEvalBoolResult(ctx, info, lastExpr, lastLocation)
@@ -138,6 +141,7 @@ func (c *Compiler) CompileEvalFunction(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrCompilation, err)
 	}
+	c.compileReceiverInstances(ctx)
 
 	if hasResult {
 		lastLocation = c.coerceEvalBoolResult(ctx, info, lastExpr, lastLocation)
@@ -157,11 +161,12 @@ func (c *Compiler) CompileEvalFunction(ctx context.Context,
 	return c.Function, nil
 }
 
-// prepareEvalBody pushes the _eval_ scope and runs analyseBody. Allocations remain on
-// the heap because eval bodies have no escape classification.
+// prepareEvalBody pushes the _eval_ scope and runs analyseBody. Allocations remain on the
+// heap because eval bodies have no escape classification.
 //
 // Takes functionDeclaration (*ast.FuncDecl) which is the _eval_ function.
 func (c *Compiler) prepareEvalBody(functionDeclaration *ast.FuncDecl) {
+	unparenthesiseTargets([]*ast.FuncDecl{functionDeclaration})
 	c.Scopes.PushScope()
 	c.analyseBody(bodySpec{body: functionDeclaration.Body, receiver: nil, signature: functionDeclaration.Type, resultTypes: nil})
 }

@@ -173,9 +173,57 @@ func TestCompactPhaseKeepsChunkReachedThroughPointerRoot(t *testing.T) {
 	require.Empty(t, a.freeGenericByteChunks)
 	require.Equal(t, gcTracePair{A: 3, B: 4}, *(*gcTracePair)(pointer))
 
+	skipUnderReuseAudit(t)
 	dead := acquireGCMarkState(a)
 	defer releaseGCMarkState(dead)
 	_, recycled = a.compactPhase(dead)
 	require.Equal(t, int64(genericBytesSlabChunk), recycled, "the same chunk is recycled once nothing references it")
 	require.Equal(t, gcTracePair{}, *(*gcTracePair)(pointer), "a recycled chunk is zeroed")
+}
+
+type gcFanOutNode struct {
+	next   *gcFanOutNode
+	shared [8]*gcTracePair
+}
+
+func TestTheMarksWorkListFailsClosedAtItsLimit(t *testing.T) {
+	t.Parallel()
+	arena := NewRegisterArena()
+	arena.attachLicencePolicy(&VMLimits{})
+	setArenaBudget(t, arena, 1<<30)
+	shared := &gcTracePair{}
+	var head *gcFanOutNode
+	for range 64 {
+		node := &gcFanOutNode{next: head}
+		for index := range node.shared {
+			node.shared[index] = shared
+		}
+		head = node
+	}
+	state := acquireGCMarkState(arena)
+	defer releaseGCMarkState(state)
+	state.work = nil
+	state.workLimit = 16
+	markReflectValue(arena, state, reflect.ValueOf(head))
+	require.Equal(t, failClosedBudget, state.failClosed, "a graph that would grow the work list past its limit fails the cycle closed")
+	require.LessOrEqual(t, cap(state.work), 4*state.workLimit, "the list never grows far past its limit")
+}
+
+func TestTheMarksWorkListUnderItsLimitMarksEverything(t *testing.T) {
+	t.Parallel()
+	arena := NewRegisterArena()
+	arena.attachLicencePolicy(&VMLimits{})
+	setArenaBudget(t, arena, 1<<30)
+	pairType := reflect.TypeFor[gcTracePair]()
+	pointer, index := retireGenericBytesAllocation(t, arena, pairType.Size(), uintptr(pairType.Align()))
+	node := &gcFanOutNode{}
+	for slot := range node.shared {
+		node.shared[slot] = (*gcTracePair)(pointer)
+	}
+	state := acquireGCMarkState(arena)
+	defer releaseGCMarkState(state)
+	state.workLimit = 64
+	markReflectValue(arena, state, reflect.ValueOf(node))
+	require.Zero(t, state.failClosed)
+	require.True(t, state.OldGenericBytesLive[index])
 }

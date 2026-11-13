@@ -154,7 +154,7 @@ func TestTier0GeneralFieldReadsCoverEveryFieldShape(t *testing.T) {
 
 			vm, frame, registers := newGeneralFieldFrame(t, tt.receiver)
 
-			require.Equal(t, opContinue, handleGetStructFieldGeneralT0(vm, frame, registers, op(0, 1, tt.field)))
+			require.Equal(t, opContinue, handleGetStructFieldGeneral(vm, frame, registers, op(0, 1, tt.field)))
 			tt.inspect(t, registers.General[0])
 		})
 	}
@@ -166,7 +166,7 @@ func TestTier0GeneralFieldReadsWalkANonPointerReceiver(t *testing.T) {
 	vm, frame, registers := newGeneralFieldFrame(t, &generalFields{})
 	registers.General[1] = reflect.ValueOf(generalFields{Label: "walked"})
 
-	require.Equal(t, opContinue, handleGetStructFieldGeneralT0(vm, frame, registers, op(0, 1, 5)),
+	require.Equal(t, opContinue, handleGetStructFieldGeneral(vm, frame, registers, op(0, 1, 5)),
 		"a receiver with no storage address still has to reach the field through reflect")
 	require.Equal(t, "walked", registers.General[0].Interface())
 }
@@ -176,7 +176,7 @@ func TestTier0GeneralFieldReadOnANilPointerRaisesADereferenceFault(t *testing.T)
 
 	vm, frame, registers := newGeneralFieldFrame(t, (*generalFields)(nil))
 
-	got := handleGetStructFieldGeneralT0(vm, frame, registers, op(0, 1, 5))
+	got := handleGetStructFieldGeneral(vm, frame, registers, op(0, 1, 5))
 	require.NotEqual(t, opContinue, got)
 	require.Error(t, vm.evalError)
 }
@@ -191,7 +191,7 @@ func TestTier0GeneralFieldWritesReachTheReceiver(t *testing.T) {
 		vm, frame, registers := newGeneralFieldFrame(t, receiver)
 		registers.General[2] = reflect.ValueOf("written")
 
-		require.Equal(t, opContinue, handleSetStructFieldGeneralT0(vm, frame, registers, op(1, 2, 5)))
+		require.Equal(t, opContinue, handleSetStructFieldGeneral(vm, frame, registers, op(1, 2, 5)))
 		require.Equal(t, "written", receiver.Label)
 	})
 
@@ -202,7 +202,7 @@ func TestTier0GeneralFieldWritesReachTheReceiver(t *testing.T) {
 		vm, frame, registers := newGeneralFieldFrame(t, receiver)
 		registers.General[2] = reflect.ValueOf(11)
 
-		require.Equal(t, opContinue, handleSetStructFieldGeneralT0(vm, frame, registers, op(1, 2, 1)))
+		require.Equal(t, opContinue, handleSetStructFieldGeneral(vm, frame, registers, op(1, 2, 1)))
 		require.Equal(t, 11, receiver.Boxed)
 	})
 
@@ -212,7 +212,7 @@ func TestTier0GeneralFieldWritesReachTheReceiver(t *testing.T) {
 		receiver := &generalFields{Label: "stale"}
 		vm, frame, registers := newGeneralFieldFrame(t, receiver)
 
-		require.Equal(t, opContinue, handleSetStructFieldGeneralT0(vm, frame, registers, op(1, 2, 5)))
+		require.Equal(t, opContinue, handleSetStructFieldGeneral(vm, frame, registers, op(1, 2, 5)))
 		require.Empty(t, receiver.Label)
 	})
 
@@ -224,7 +224,7 @@ func TestTier0GeneralFieldWritesReachTheReceiver(t *testing.T) {
 		registers.General[1] = receiver
 		registers.General[2] = reflect.ValueOf("walked")
 
-		require.Equal(t, opContinue, handleSetStructFieldGeneralT0(vm, frame, registers, op(1, 2, 5)))
+		require.Equal(t, opContinue, handleSetStructFieldGeneral(vm, frame, registers, op(1, 2, 5)))
 		require.Equal(t, "walked", receiver.Interface().(generalFields).Label)
 	})
 }
@@ -240,7 +240,7 @@ func TestTier0CopyStructFieldMovesBetweenReceivers(t *testing.T) {
 		vm, frame, registers := newGeneralFieldFrame(t, source, op(5, 0, 0))
 		registers.General[2] = reflect.ValueOf(destination)
 
-		require.Equal(t, opContinue, handleCopyStructFieldGeneralT0(vm, frame, registers, op(1, 2, 5)))
+		require.Equal(t, opContinue, handleCopyStructFieldGeneral(vm, frame, registers, op(1, 2, 5)))
 		require.Equal(t, "copied", destination.Label)
 	})
 
@@ -252,7 +252,7 @@ func TestTier0CopyStructFieldMovesBetweenReceivers(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(generalFields{Label: "fallback"})
 		registers.General[2] = reflect.ValueOf(destination)
 
-		require.Equal(t, opContinue, handleCopyStructFieldGeneralT0(vm, frame, registers, op(1, 2, 5)))
+		require.Equal(t, opContinue, handleCopyStructFieldGeneral(vm, frame, registers, op(1, 2, 5)))
 		require.Equal(t, "fallback", destination.Label)
 	})
 }
@@ -262,7 +262,7 @@ func TestTier0LayoutIndexPastTheTableIsAnInvariantBreak(t *testing.T) {
 
 	vm, frame, registers := newGeneralFieldFrame(t, &generalFields{})
 
-	require.Panics(t, func() { handleGetStructFieldGeneralT0(vm, frame, registers, op(0, 1, 99)) },
+	require.Panics(t, func() { handleGetStructFieldGeneral(vm, frame, registers, op(0, 1, 99)) },
 		"a layout index the compiler cannot have emitted is an invariant break")
 }
 
@@ -290,7 +290,7 @@ func TestTier0ArrayFieldIndexReadsTheElement(t *testing.T) {
 			)
 			registers.Ints[3] = tt.index
 
-			require.Equal(t, opContinue, handleGetStructFieldIndexGeneral(vm, frame, registers, op(0, 1, 3)))
+			require.Equal(t, opContinue, handleGetStructFieldElementGeneral(vm, frame, registers, op(0, 1, 3)))
 			require.Equal(t, tt.want, registers.General[0].Interface())
 		})
 	}
@@ -307,7 +307,7 @@ func TestTier0ArrayFieldIndexRefusesAnOutOfRangeIndex(t *testing.T) {
 	)
 	registers.Ints[3] = 9
 
-	got := handleGetStructFieldIndexGeneral(vm, frame, registers, op(0, 1, 3))
+	got := handleGetStructFieldElementGeneral(vm, frame, registers, op(0, 1, 3))
 	requireRuntimePanic(t, vm, got, "index out of range [9] with length 3")
 }
 
@@ -324,7 +324,7 @@ func TestTier0ArrayFieldIndexWritesTheElement(t *testing.T) {
 	registers.Ints[3] = 1
 	registers.General[2] = reflect.ValueOf(int64(99))
 
-	require.Equal(t, opContinue, handleSetStructFieldIndexGeneral(vm, frame, registers, op(1, 2, 3)))
+	require.Equal(t, opContinue, handleSetStructFieldElementGeneral(vm, frame, registers, op(1, 2, 3)))
 	require.Equal(t, [3]int64{10, 99, 30}, receiver.Fixed)
 }
 
@@ -341,14 +341,14 @@ func TestTier0SliceFieldScalarIndexReadsTheSubField(t *testing.T) {
 		inspect   func(*testing.T, *Registers)
 	}{
 		{
-			name: "the leading int sub-field", subOffset: 0, kind: isa.RegisterInt, index: 1,
+			name: "the leading int sub-field", subOffset: 0, kind: isa.RegisterInt64, index: 1,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, int64(2), r.Ints[0])
 			},
 		},
 		{
-			name: "the trailing float sub-field", subOffset: 8, kind: isa.RegisterFloat, index: 0,
+			name: "the trailing float sub-field", subOffset: 8, kind: isa.RegisterFloat64, index: 0,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.InDelta(t, 1.5, r.Floats[0], 0)
@@ -367,7 +367,7 @@ func TestTier0SliceFieldScalarIndexReadsTheSubField(t *testing.T) {
 			)
 			registers.Ints[3] = tt.index
 
-			require.Equal(t, opContinue, handleGetStructFieldSliceIndexScalar(vm, frame, registers, op(0, 1, 2)))
+			require.Equal(t, opContinue, handleGetStructFieldElementField(vm, frame, registers, op(0, 1, 2)))
 			tt.inspect(t, registers)
 		})
 	}
@@ -381,10 +381,10 @@ func TestTier0SliceFieldScalarIndexRefusesAnOutOfRangeIndex(t *testing.T) {
 	receiver := &generalFields{Values: []generalLeaf{{Count: 1}}}
 	vm, frame, registers := newGeneralFieldFrame(t, receiver,
 		op(elementSize, 0, 3),
-		op(0, 0, uint8(isa.RegisterInt)),
+		op(0, 0, uint8(isa.RegisterInt64)),
 	)
 	registers.Ints[3] = 4
 
-	got := handleGetStructFieldSliceIndexScalar(vm, frame, registers, op(0, 1, 2))
+	got := handleGetStructFieldElementField(vm, frame, registers, op(0, 1, 2))
 	requireRuntimePanic(t, vm, got, "index out of range [4] with length 1")
 }

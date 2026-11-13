@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxlinux
 
@@ -59,7 +59,7 @@ func runNativeRecoveryBatch(t *testing.T, config WorkerConfig, original *WorkerP
 	}
 	var bootstrap *sandboxbroker.LinuxBootstrap
 	if mode == "journalled-recovery-checkpoint" {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 		defer cancel()
 		if err := original.reapForRecovery(ctx); err != nil {
 			t.Fatal(err)
@@ -80,7 +80,7 @@ func runNativeRecoveryBatch(t *testing.T, config WorkerConfig, original *WorkerP
 		t.Fatal(err)
 	}
 	defer bootstrap.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	if process, err := LaunchFilesystemBroker(ctx, config, bootstrap); process != nil || !errors.Is(err, ErrInvalidLimits) {
 		t.Fatal("unguarded launcher accepted recovery role:", process, err)
@@ -101,7 +101,7 @@ func runNativeRecoveryBatch(t *testing.T, config WorkerConfig, original *WorkerP
 		if err == nil || failed == nil {
 			t.Fatal("failed recovery launch lost cleanup ownership:", failed, err)
 		}
-		_ = failed.Close()
+		_ = failed.Close(t.Context())
 		if failed.releaseAdmission != nil {
 			t.Fatal("failed recovery image approval retained admission")
 		}
@@ -127,7 +127,7 @@ func runNativeRecoveryBatch(t *testing.T, config WorkerConfig, original *WorkerP
 		process, err = launchFilesystemRecoveryInGroup(ctx, config, original, bootstrap, original.brokerParent)
 	}
 	if process != nil {
-		defer process.Close()
+		defer process.Close(t.Context())
 	}
 	if err != nil {
 		t.Fatal("recovery launch failed:", err)
@@ -193,7 +193,7 @@ func runNativeRecoveryBatch(t *testing.T, config WorkerConfig, original *WorkerP
 	if err := process.Wait(); err != nil {
 		t.Fatal("native recovery did not exit cleanly:", err)
 	}
-	if err := process.Close(); err != nil {
+	if err := process.Close(t.Context()); err != nil {
 		t.Fatal("native recovery cleanup failed:", err)
 	}
 	if _, err := os.Lstat(staging); !os.IsNotExist(err) {

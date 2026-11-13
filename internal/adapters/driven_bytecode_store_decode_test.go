@@ -37,7 +37,7 @@ func packTrivialProgram(t *testing.T) []byte {
 	service := app.NewService()
 	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": "package main\n\nfunc helper(n int) int {\n\treturn n + 1\n}\n\nfunc main() {\n\tx := helper(1)\n\t_ = x\n}\n"})
 	require.NoError(t, err)
-	data, err := PackCompiledFileSetToBytes(compiled)
+	data, err := PackCompiledFileSetToBytes(t.Context(), compiled)
 	require.NoError(t, err)
 	return data
 }
@@ -45,9 +45,29 @@ func packTrivialProgram(t *testing.T) []byte {
 func TestLoadCompiledFromBytesRoundTripsTrivialProgram(t *testing.T) {
 	t.Parallel()
 	data := packTrivialProgram(t)
-	loaded, err := LoadCompiledFromBytes(data, symtab.NewSymbolRegistry(nil))
+	loaded, err := LoadCompiledFromBytes(t.Context(), data, symtab.NewSymbolRegistry(nil))
 	require.NoError(t, err)
 	require.NotNil(t, loaded)
+}
+
+func TestLoadCompiledFromBytesKeepsTheNamedInterfaces(t *testing.T) {
+	t.Parallel()
+	service := app.NewService()
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": "package main\n\nfunc main() {}\n"})
+	require.NoError(t, err)
+	interfaces := []program.NamedInterface{
+		{PackagePath: "example.com/shapes", Name: "Shape", Methods: []string{"Area", "Perimeter"}},
+		{PackagePath: "main", Name: "Marker", Methods: nil},
+	}
+	compiled.SetNamedInterfaces(interfaces)
+	data, err := PackCompiledFileSetToBytes(t.Context(), compiled)
+	require.NoError(t, err)
+	loaded, err := LoadCompiledFromBytes(t.Context(), data, symtab.NewSymbolRegistry(nil))
+	require.NoError(t, err)
+	require.Equal(t, []program.NamedInterface{
+		{PackagePath: "example.com/shapes", Name: "Shape", Methods: []string{"Area", "Perimeter"}},
+		{PackagePath: "main", Name: "Marker", Methods: []string{}},
+	}, loaded.NamedInterfaces())
 }
 
 func TestLoadCompiledFromBytesVerifiesTheBytecode(t *testing.T) {
@@ -65,7 +85,7 @@ func TestLoadCompiledFromBytesVerifiesTheBytecode(t *testing.T) {
 		},
 		{
 			name:    "a register operand past the frame",
-			body:    []isa.Instruction{{Op: isa.OpAddInt, A: 0, B: 1, C: 7}},
+			body:    []isa.Instruction{{Op: isa.OpAddInt64, A: 0, B: 1, C: 7}},
 			wantErr: verify.ErrRegisterOperandOutOfRange,
 		},
 	}
@@ -75,11 +95,11 @@ func TestLoadCompiledFromBytesVerifiesTheBytecode(t *testing.T) {
 			t.Parallel()
 
 			root := &program.CompiledFunction{Name: "tampered", Body: tt.body}
-			root.NumRegisters[isa.RegisterInt] = 2
-			data, err := PackCompiledFileSetToBytes(program.NewCompiledFileSet(root, nil, nil, nil))
+			root.NumRegisters[isa.RegisterInt64] = 2
+			data, err := PackCompiledFileSetToBytes(t.Context(), program.NewCompiledFileSet(root, nil, nil, nil))
 			require.NoError(t, err)
 
-			loaded, err := LoadCompiledFromBytes(data, symtab.NewSymbolRegistry(nil))
+			loaded, err := LoadCompiledFromBytes(t.Context(), data, symtab.NewSymbolRegistry(nil))
 
 			require.ErrorIs(t, err, tt.wantErr)
 			require.Nil(t, loaded, "unverified bytecode must not be returned")
@@ -91,14 +111,14 @@ func TestLoadCompiledFromBytesRejectsTruncatedPayloads(t *testing.T) {
 	t.Parallel()
 	data := packTrivialProgram(t)
 	registry := symtab.NewSymbolRegistry(nil)
-	whole, err := LoadCompiledFromBytes(data, registry)
+	whole, err := LoadCompiledFromBytes(t.Context(), data, registry)
 	require.NoError(t, err)
 	entrypoints := len(whole.Entrypoints())
 
 	for cut := 0; cut < len(data); cut += 64 {
 		truncated := data[:cut]
 		require.NotPanics(t, func() {
-			loaded, err := LoadCompiledFromBytes(truncated, registry)
+			loaded, err := LoadCompiledFromBytes(t.Context(), truncated, registry)
 			if err != nil {
 				require.Nil(t, loaded, "payload truncated at %d bytes must not yield a file set", cut)
 				return
@@ -163,9 +183,9 @@ func TestLoadCompiledFromBytesKeepsNilTypeSwitchClause(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, original.TypeTable, nil, "the compiler records the nil clause as a nil type")
 
-	data, err := PackCompiledFileSetToBytes(compiled)
+	data, err := PackCompiledFileSetToBytes(t.Context(), compiled)
 	require.NoError(t, err)
-	loaded, err := LoadCompiledFromBytes(data, symtab.NewSymbolRegistry(nil))
+	loaded, err := LoadCompiledFromBytes(t.Context(), data, symtab.NewSymbolRegistry(nil))
 	require.NoError(t, err)
 	reloaded, err := loaded.FindFunction("classify")
 	require.NoError(t, err)

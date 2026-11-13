@@ -28,7 +28,7 @@ import (
 )
 
 // rangeCheckShape carries the per-bound immediate and destination register decoded from
-// the fuseRangeCheckUintJumpFalse window.
+// the fuseInRangeUint64ThenJumpIfFalse window.
 type rangeCheckShape struct {
 	// loImm is the low-bound immediate decoded from the first LoadUintConstSmall.
 	loImm uint8
@@ -59,27 +59,45 @@ func FuseThreeInstrPatterns(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
-	return fuseCompareConstJump(compiledFunction, body, i, n, jumpTargets, compareConstFusion{compare: isa.OpLeInt, jump: isa.OpJumpIfFalse, fused: isa.SubOpLeIntConstJumpFalse}) ||
-		fuseCompareConstJump(compiledFunction, body, i, n, jumpTargets, compareConstFusion{compare: isa.OpLtInt, jump: isa.OpJumpIfFalse, fused: isa.SubOpLtIntConstJumpFalse}) ||
-		fuseCompareConstJump(compiledFunction, body, i, n, jumpTargets, compareConstFusion{compare: isa.OpEqInt, jump: isa.OpJumpIfFalse, fused: isa.SubOpEqIntConstJumpFalse}) ||
-		fuseCompareConstJump(compiledFunction, body, i, n, jumpTargets, compareConstFusion{compare: isa.OpEqInt, jump: isa.OpJumpIfTrue, fused: isa.SubOpEqIntConstJumpTrue}) ||
-		fuseCompareConstJump(compiledFunction, body, i, n, jumpTargets, compareConstFusion{compare: isa.OpGeInt, jump: isa.OpJumpIfFalse, fused: isa.SubOpGeIntConstJumpFalse}) ||
-		fuseCompareConstJump(compiledFunction, body, i, n, jumpTargets, compareConstFusion{compare: isa.OpGtInt, jump: isa.OpJumpIfFalse, fused: isa.SubOpGtIntConstJumpFalse}) ||
+	return fuseCompareConstJumps(compiledFunction, body, i, n, jumpTargets) ||
 		fuseStringConstJump(compiledFunction, body, i, n, jumpTargets) ||
 		fuseNilTestJump(compiledFunction, body, i, n, jumpTargets) ||
-		fuseIncIntJumpLt(compiledFunction, body, i, n, jumpTargets) ||
-		fuseLenStringLtJump(compiledFunction, body, i, n, jumpTargets) ||
-		fuseEqUintConstJumpFalse(compiledFunction, body, i, n, jumpTargets) ||
-		fuseMapIndexOkJumpFalse(compiledFunction, body, i, n, jumpTargets, isa.OpMapIndexOkIntInt, isa.OpMapIndexOkJumpIfFalseIntInt) ||
-		fuseMapIndexOkJumpFalse(compiledFunction, body, i, n, jumpTargets, isa.OpMapIndexOkStringInt, isa.OpMapIndexOkJumpIfFalseStringInt) ||
-		fuseMapIndexOkJumpFalse(compiledFunction, body, i, n, jumpTargets, isa.OpMapIndexOkStringString, isa.OpMapIndexOkJumpIfFalseStringString) ||
-		fuseMapIndexOkJumpFalse(compiledFunction, body, i, n, jumpTargets, isa.OpMapIndexOkIntString, isa.OpMapIndexOkJumpIfFalseIntString) ||
-		fuseMapIndexOkJumpFalse(compiledFunction, body, i, n, jumpTargets, isa.OpMapIndexOkIntGeneral, isa.OpMapIndexOkJumpIfFalseIntGeneral) ||
-		fuseMapIndexOkJumpFalse(compiledFunction, body, i, n, jumpTargets, isa.OpMapIndexOkStringGeneral, isa.OpMapIndexOkJumpIfFalseStringGeneral)
+		fuseIncrementInt64ThenJumpIfLessThan(compiledFunction, body, i, n, jumpTargets) ||
+		fuseLessThanLengthStringThenJumpIfFalse(compiledFunction, body, i, n, jumpTargets) ||
+		fuseEqualUint64ImmediateThenJumpIfFalse(compiledFunction, body, i, n, jumpTargets) ||
+		fuseGetMapOkThenJumpIfFalse(compiledFunction, body, i, n, jumpTargets, isa.OpGetMapInt64Int64Ok, isa.OpGetMapInt64Int64OkThenJumpIfFalse) ||
+		fuseGetMapOkThenJumpIfFalse(compiledFunction, body, i, n, jumpTargets, isa.OpGetMapStringInt64Ok, isa.OpGetMapStringInt64OkThenJumpIfFalse) ||
+		fuseGetMapOkThenJumpIfFalse(compiledFunction, body, i, n, jumpTargets, isa.OpGetMapStringStringOk, isa.OpGetMapStringStringOkThenJumpIfFalse) ||
+		fuseGetMapOkThenJumpIfFalse(compiledFunction, body, i, n, jumpTargets, isa.OpGetMapInt64StringOk, isa.OpGetMapInt64StringOkThenJumpIfFalse) ||
+		fuseGetMapOkThenJumpIfFalse(compiledFunction, body, i, n, jumpTargets, isa.OpGetMapInt64GeneralOk, isa.OpGetMapInt64GeneralOkThenJumpIfFalse) ||
+		fuseGetMapOkThenJumpIfFalse(compiledFunction, body, i, n, jumpTargets, isa.OpGetMapStringGeneralOk, isa.OpGetMapStringGeneralOkThenJumpIfFalse)
 }
 
-// FuseArithConst fuses LoadIntConst or LoadUintConst with an arithmetic op into a
-// constant-operand superinstruction.
+// fuseCompareConstJumps tries each compare-against-constant fusion at i.
+//
+// Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
+// the liveness guard reads.
+// Takes body ([]instruction) which specifies the instruction sequence.
+// Takes i (int) which specifies the current index.
+// Takes n (int) which specifies the length.
+// Takes jumpTargets (map[int]bool) which specifies the set of protected jump
+// destinations.
+//
+// Returns true if a pattern was matched and applied.
+func fuseCompareConstJumps(compiledFunction *program.CompiledFunction,
+	body []isa.Instruction, i, n int,
+	jumpTargets map[int]bool,
+) bool {
+	for _, fusion := range compareJumpFusions {
+		if fuseCompareConstJump(compiledFunction, body, i, n, jumpTargets, fusion) {
+			return true
+		}
+	}
+	return false
+}
+
+// FuseArithConst fuses LoadInt64Constant or LoadUint64Constant with an arithmetic op into
+// a constant-operand superinstruction.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
@@ -100,7 +118,12 @@ func FuseArithConst(compiledFunction *program.CompiledFunction,
 	return fuseUintArithConst(compiledFunction, body, i, n, jumpTargets)
 }
 
-// FuseAddIntJump fuses AddIntConst + Jump into isa.OpAddIntJump + isa.OpExt.
+// FuseAddInt64ConstantThenJump fuses AddInt64Constant + Jump into
+// isa.OpAddInt64ConstantThenJump + isa.OpExtension.
+//
+// The offset is carried over unchanged. A jump's offset counts from the word after it,
+// and the fused pair's counts from the word after its extension word, which is the same
+// word.
 //
 // Takes body ([]instruction) which specifies the instruction sequence.
 // Takes i (int) which specifies the current index.
@@ -109,28 +132,22 @@ func FuseArithConst(compiledFunction *program.CompiledFunction,
 // destinations.
 //
 // Returns true if a pattern was matched and applied.
-func FuseAddIntJump(_ *program.CompiledFunction,
+func FuseAddInt64ConstantThenJump(_ *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
 	if i+1 >= n ||
-		body[i].Op != isa.OpAddIntConst || !isa.InstrIsTier1SubOp(body[i+1], isa.SubOpJump) ||
+		body[i].Op != isa.OpAddInt64Constant || !isa.InstrIsTier1SubOp(body[i+1], isa.SubOpJump) ||
 		jumpTargets[i+1] {
 		return false
 	}
-	raw := body[i+1].SignedOffset()
-	adj := raw + 1
-	lo, hi := isa.SplitOffset(adj)
-	body[i] = isa.NewInstruction(isa.OpAddIntJump, body[i].A, body[i].B, body[i].C)
-	body[i+1] = isa.NewInstruction(isa.OpExt, lo, hi, 0)
+	lo, hi := isa.SplitOffset(body[i+1].SignedOffset())
+	body[i] = isa.NewInstruction(isa.OpAddInt64ConstantThenJump, body[i].A, body[i].B, body[i].C)
+	body[i+1] = isa.NewInstruction(isa.OpExtension, lo, hi, 0)
 	return true
 }
 
-// FuseConcatRune fuses RuneToString + ConcatString into isa.OpConcatRuneString.
-//
-// Operand layout: isa.SubOpRuneToString lives in tier-1 form {isa.OpDrillTier1,
-// isa.SubOpRuneToString, destination=B, source=C}. The fusion reads destination from
-// body[i].b and source from body[i].c.
+// FuseConcatRune fuses RuneToString + ConcatenateString into isa.OpConcatenateStringRune.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
 // the liveness guard reads.
@@ -146,7 +163,7 @@ func FuseConcatRune(compiledFunction *program.CompiledFunction,
 	jumpTargets map[int]bool,
 ) bool {
 	if i+1 >= n ||
-		!isa.InstrIsTier1SubOp(body[i], isa.SubOpRuneToString) || body[i+1].Op != isa.OpConcatString ||
+		!isa.InstrIsTier1SubOp(body[i], isa.SubOpConvertRuneToString) || body[i+1].Op != isa.OpConcatenateString ||
 		body[i].B != body[i+1].C ||
 		body[i].B == body[i+1].B ||
 		jumpTargets[i+1] {
@@ -155,8 +172,8 @@ func FuseConcatRune(compiledFunction *program.CompiledFunction,
 	if !writeDroppedSafely(compiledFunction, body, i+2, isa.RegisterString, body[i].B, body[i+1].A) {
 		return false
 	}
-	body[i] = isa.NewInstruction(isa.OpConcatRuneString, body[i+1].A, body[i+1].B, body[i].C)
-	body[i+1] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	body[i] = isa.NewInstruction(isa.OpConcatenateStringRune, body[i+1].A, body[i+1].B, body[i].C)
+	body[i+1] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 	return true
 }
 
@@ -187,15 +204,15 @@ func FuseAppendMove(compiledFunction *program.CompiledFunction,
 	return tryFuseTier1AppendMove(compiledFunction, body, i, n, jumpTargets, appendInstr)
 }
 
-// OptimiseLoadIntConst rewrites LoadIntConst to LoadIntConstSmall when the constant value
-// fits in [0, 255].
+// OptimiseLoadInt64Constant rewrites LoadInt64Constant to LoadIntConstSmall when the
+// constant value fits in [0, 255].
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
 // Takes body ([]instruction) which specifies the instruction sequence.
 // Takes i (int) which specifies the current instruction index.
-func OptimiseLoadIntConst(compiledFunction *program.CompiledFunction, body []isa.Instruction, i int) {
-	if body[i].Op != isa.OpLoadIntConst || body[i].C != 0 {
+func OptimiseLoadInt64Constant(compiledFunction *program.CompiledFunction, body []isa.Instruction, i int) {
+	if body[i].Op != isa.OpLoadInt64Constant || body[i].C != 0 {
 		return
 	}
 	if int(body[i].B) >= len(compiledFunction.IntConstants) {
@@ -203,22 +220,20 @@ func OptimiseLoadIntConst(compiledFunction *program.CompiledFunction, body []isa
 	}
 	value := compiledFunction.IntConstants[body[i].B]
 	if value >= 0 && value <= program.MaxSmallConstant {
-		body[i] = isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), body[i].A, safeconv.MustIntToUint8(int(value)))
+		body[i] = isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), body[i].A, safeconv.MustIntToUint8(int(value)))
 	}
 }
 
-// OptimiseLoadUintConst rewrites LoadUintConst to LoadUintConstSmall when the constant
-// fits in the 8-bit inline immediate slot.
-//
-// Mirror of OptimiseLoadIntConst for the uint bank.
+// OptimiseLoadUint64Constant rewrites LoadUint64Constant to LoadUintConstSmall when the
+// constant fits in the 8-bit inline immediate slot.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
 // Takes body ([]instruction) which is the instruction sequence to scan and rewrite in
 // place.
 // Takes i (int) which is the index of the candidate instruction.
-func OptimiseLoadUintConst(compiledFunction *program.CompiledFunction, body []isa.Instruction, i int) {
-	if body[i].Op != isa.OpLoadUintConst || body[i].C != 0 {
+func OptimiseLoadUint64Constant(compiledFunction *program.CompiledFunction, body []isa.Instruction, i int) {
+	if body[i].Op != isa.OpLoadUint64Constant || body[i].C != 0 {
 		return
 	}
 	if int(body[i].B) >= len(compiledFunction.UintConstants) {
@@ -226,18 +241,13 @@ func OptimiseLoadUintConst(compiledFunction *program.CompiledFunction, body []is
 	}
 	value := compiledFunction.UintConstants[body[i].B]
 	if value <= uint64(program.MaxSmallConstant) {
-		body[i] = isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpLoadUintConstSmall), body[i].A, safeconv.MustIntToUint8(int(value)))
+		body[i] = isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpLoadUint64Immediate), body[i].A, safeconv.MustIntToUint8(int(value)))
 	}
 }
 
-// FuseStringIndexToInt fuses isa.OpStringIndex + isa.SubOpUintToInt into
-// isa.OpStringIndexToInt, avoiding the intermediate uint register and one tier-2
+// FuseGetStringByteAsInt64 fuses isa.OpGetStringByte + isa.SubOpConvertUint64ToInt64 into
+// isa.OpGetStringByteAsInt64, avoiding the intermediate uint register and one tier-2
 // trampoline per string byte access converted to int.
-//
-// The fuser matches STRING_INDEX(R_uint, R_str, R_idx) followed by {isa.OpDrillTier1,
-// isa.SubOpUintToInt, R_int=B, R_uint=C} and rewrites the pair to
-// STRING_INDEX_TO_INT(R_int, R_str, R_idx) + NOP. isa.SubOpUintToInt lives in tier-1 form
-// {isa.OpDrillTier1, isa.SubOpUintToInt, destination=B, source=C}.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
 // the liveness guard reads.
@@ -248,27 +258,66 @@ func OptimiseLoadUintConst(compiledFunction *program.CompiledFunction, body []is
 // destinations.
 //
 // Returns true if a pattern was matched and applied.
-func FuseStringIndexToInt(compiledFunction *program.CompiledFunction,
+func FuseGetStringByteAsInt64(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
+	return fuseUnsignedReadIntoConversion(compiledFunction, body, i, n, jumpTargets, isa.OpGetStringByte, isa.OpGetStringByteAsInt64)
+}
+
+// FuseGetElementUint64AsInt64 combines an unsigned element read with conversion to int.
+//
+// Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
+// the liveness guard reads.
+// Takes body ([]instruction) which specifies the instruction sequence.
+// Takes i (int) which specifies the current index.
+// Takes n (int) which specifies the length.
+// Takes jumpTargets (map[int]bool) which specifies the set of protected jump
+// destinations.
+//
+// Returns true if a pattern was matched and applied.
+func FuseGetElementUint64AsInt64(compiledFunction *program.CompiledFunction,
+	body []isa.Instruction, i, n int,
+	jumpTargets map[int]bool,
+) bool {
+	return fuseUnsignedReadIntoConversion(compiledFunction, body, i, n, jumpTargets, isa.OpGetElementUint64, isa.OpGetElementInt64)
+}
+
+// fuseUnsignedReadIntoConversion combines an unsigned read and its conversion to int.
+//
+// Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
+// the liveness guard reads.
+// Takes body ([]instruction) which specifies the instruction sequence.
+// Takes i (int) which specifies the current index.
+// Takes n (int) which specifies the length.
+// Takes jumpTargets (map[int]bool) which specifies the set of protected jump
+// destinations.
+// Takes read (isa.Opcode) which is the read into the uint bank, with its destination in
+// A.
+// Takes fused (isa.Opcode) which is the same read into the int bank.
+//
+// Returns true if the pattern was matched and applied.
+func fuseUnsignedReadIntoConversion(compiledFunction *program.CompiledFunction,
+	body []isa.Instruction, i, n int,
+	jumpTargets map[int]bool, read, fused isa.Opcode,
+) bool {
 	if i+1 >= n ||
-		body[i].Op != isa.OpStringIndex || !isa.InstrIsTier1SubOp(body[i+1], isa.SubOpUintToInt) ||
+		body[i].Op != read || !isa.InstrIsTier1SubOp(body[i+1], isa.SubOpConvertUint64ToInt64) ||
 		body[i].A != body[i+1].C ||
 		jumpTargets[i+1] {
 		return false
 	}
-	if !registerDeadFrom(compiledFunction, body, i+2, isa.RegisterUint, body[i].A) {
+	if !registerDeadFrom(compiledFunction, body, i+2, isa.RegisterUint64, body[i].A) {
 		return false
 	}
-	body[i] = isa.NewInstruction(isa.OpStringIndexToInt, body[i+1].B, body[i].B, body[i].C)
-	body[i+1] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	body[i] = isa.NewInstruction(fused, body[i+1].B, body[i].B, body[i].C)
+	body[i+1] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 	return true
 }
 
 // SyncSourceMapAfterOptimise zeroes source positions for instructions that were replaced
-// with NOPs during optimisation, keeping the source map consistent with the instruction
-// body.
+// with NO_OPERATION words during optimisation, keeping the source map consistent with the
+// instruction body.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
@@ -278,7 +327,7 @@ func SyncSourceMapAfterOptimise(compiledFunction *program.CompiledFunction, body
 		return
 	}
 	for i, instr := range body {
-		if isCanonicalNop(instr) && i < len(compiledFunction.DebugSourceMap.Positions) {
+		if isCanonicalNoOperation(instr) && i < len(compiledFunction.DebugSourceMap.Positions) {
 			compiledFunction.DebugSourceMap.Positions[i] = program.SourcePosition{Line: 0, Column: 0, FileID: 0, Inlined: false}
 		}
 	}
@@ -301,12 +350,13 @@ func fuseLongPatterns(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
-	return fuseRangeCheckUintJumpFalse(compiledFunction, body, i, n, jumpTargets)
+	return fuseInRangeUint64ThenJumpIfFalse(compiledFunction, body, i, n, jumpTargets)
 }
 
-// fuseRangeCheckUintJumpFalse fuses the canonical `value >= lo && value <= hi` byte
+// fuseInRangeUint64ThenJumpIfFalse fuses the canonical `value >= lo && value <= hi` byte
 // classifier pattern into a single tier-2 sub-op plus two extension words, replacing the
-// 8-instruction window with three instruction words and five isa.OpNop padding slots.
+// 8-instruction window with three instruction words and five isa.OpNoOperation padding
+// slots.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
@@ -317,7 +367,7 @@ func fuseLongPatterns(compiledFunction *program.CompiledFunction,
 // destinations.
 //
 // Returns true if the pattern matched and was applied.
-func fuseRangeCheckUintJumpFalse(compiledFunction *program.CompiledFunction,
+func fuseInRangeUint64ThenJumpIfFalse(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
@@ -343,11 +393,11 @@ func fuseRangeCheckUintJumpFalse(compiledFunction *program.CompiledFunction,
 		return false
 	}
 	offLo, offHi := isa.SplitOffset(off2)
-	body[i] = isa.NewTier2Instruction(isa.SubOpTier2RangeCheckUintJumpFalse, valueReg)
-	body[i+1] = isa.NewInstruction(isa.OpExt, shape.loImm, shape.hiImm, 0)
-	body[i+2] = isa.NewInstruction(isa.OpExt, offLo, offHi, 0)
-	for slot := i + program.RangeCheckFirstNopOffset; slot < i+program.RangeCheckWindowSize; slot++ {
-		body[slot] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	body[i] = isa.NewTier2Instruction(isa.SubOpTier2InRangeUint64ThenJumpIfFalse, valueReg)
+	body[i+1] = isa.NewInstruction(isa.OpExtension, shape.loImm, shape.hiImm, 0)
+	body[i+2] = isa.NewInstruction(isa.OpExtension, offLo, offHi, 0)
+	for slot := i + program.RangeCheckFirstNoOperationOffset; slot < i+program.RangeCheckWindowSize; slot++ {
+		body[slot] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 	}
 	return true
 }
@@ -370,8 +420,8 @@ func matchRangeCheckShape(compiledFunction *program.CompiledFunction, body []isa
 	if !ok {
 		return rangeCheckShape{}, false
 	}
-	if body[i+1].Op != isa.OpGeUint ||
-		!isa.InstrIsTier1SubOp(body[i+2], isa.SubOpMoveInt) ||
+	if body[i+1].Op != isa.OpGreaterOrEqualUint64 ||
+		!isa.InstrIsTier1SubOp(body[i+2], isa.SubOpMoveInt64) ||
 		body[i+program.RangeCheckFirstJumpOffset].Op != isa.OpJumpIfFalse {
 		return rangeCheckShape{}, false
 	}
@@ -379,8 +429,8 @@ func matchRangeCheckShape(compiledFunction *program.CompiledFunction, body []isa
 	if !ok {
 		return rangeCheckShape{}, false
 	}
-	if body[i+program.RangeCheckSecondLoadOffset+1].Op != isa.OpLeUint ||
-		!isa.InstrIsTier1SubOp(body[i+program.RangeCheckSecondMoveOffset], isa.SubOpMoveInt) ||
+	if body[i+program.RangeCheckSecondLoadOffset+1].Op != isa.OpLessOrEqualUint64 ||
+		!isa.InstrIsTier1SubOp(body[i+program.RangeCheckSecondMoveOffset], isa.SubOpMoveInt64) ||
 		body[i+program.RangeCheckSecondJumpOffset].Op != isa.OpJumpIfFalse {
 		return rangeCheckShape{}, false
 	}
@@ -411,18 +461,11 @@ func rangeCheckJumpTargetsClear(compiledFunction *program.CompiledFunction, body
 	return true
 }
 
-// fuseEqUintConstJumpFalse fuses the 3-op byte-switch dispatch pattern
-// `LoadUintConstSmall + EqUint + JumpIfFalse` into a single tier-1 sub-op
-// (isa.SubOpEqUintConstJumpFalse) plus one extension word and one trailing isa.OpNop.
-// Hits the canonical `switch byteValue` chain (brainfuck dispatch, tokenisers,
-// hand-rolled lexers) where each case becomes one of these triples.
-//
-// Pre-fusion the window holds LoadUintConstSmall(constReg, immVal), EqUint(condReg,
-// valueReg, constReg), then JumpIfFalse(condReg, off). Post-fusion the window becomes the
-// umbrella op carrying valueReg+immVal, an isa.OpExt word holding the split offset, and a
-// trailing isa.OpNop that keeps the body length stable so unrelated jump targets land at
-// unchanged indices. The handler reads uints[valueReg] and advances programCounter by the
-// encoded offset when the value does not match immVal.
+// fuseEqualUint64ImmediateThenJumpIfFalse fuses the 3-op byte-switch dispatch pattern
+// `LoadUintConstSmall + EqualUint64 + JumpIfFalse` into a single tier-1 sub-op
+// (isa.SubOpEqualUint64ImmediateThenJumpIfFalse) plus one extension word and one trailing
+// isa.OpNoOperation. Hits the canonical `switch byteValue` chain (brainfuck dispatch,
+// tokenisers, hand-rolled lexers) where each case becomes one of these triples.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
@@ -433,7 +476,7 @@ func rangeCheckJumpTargetsClear(compiledFunction *program.CompiledFunction, body
 // destinations.
 //
 // Returns true if the pattern matched and was applied.
-func fuseEqUintConstJumpFalse(compiledFunction *program.CompiledFunction,
+func fuseEqualUint64ImmediateThenJumpIfFalse(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
@@ -444,7 +487,7 @@ func fuseEqUintConstJumpFalse(compiledFunction *program.CompiledFunction,
 	if !ok {
 		return false
 	}
-	if body[i+1].Op != isa.OpEqUint || body[i+2].Op != isa.OpJumpIfFalse {
+	if body[i+1].Op != isa.OpEqualUint64 || body[i+2].Op != isa.OpJumpIfFalse {
 		return false
 	}
 	if jumpTargets[i+1] || jumpTargets[i+2] {
@@ -463,19 +506,19 @@ func fuseEqUintConstJumpFalse(compiledFunction *program.CompiledFunction,
 	if body[i+2].A != condReg || valueReg == constReg {
 		return false
 	}
-	if !registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterUint, constReg) ||
-		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, condReg) {
+	if !registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterUint64, constReg) ||
+		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt64, condReg) {
 		return false
 	}
 	rawOffset := body[i+2].SignedOffset()
 	offLo, offHi := isa.SplitOffset(rawOffset)
-	body[i] = isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpEqUintConstJumpFalse), valueReg, immVal)
-	body[i+1] = isa.NewInstruction(isa.OpExt, offLo, offHi, 0)
-	body[i+2] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	body[i] = isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpEqualUint64ImmediateThenJumpIfFalse), valueReg, immVal)
+	body[i+1] = isa.NewInstruction(isa.OpExtension, offLo, offHi, 0)
+	body[i+2] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 	return true
 }
 
-// fuseMapIndexOkJumpFalse fuses a typed `opMapIndexOkXXX + ext + isa.OpJumpIfFalse`
+// fuseGetMapOkThenJumpIfFalse fuses a typed `opMapIndexOkXXX + ext + isa.OpJumpIfFalse`
 // triple into a single fused dispatch opcode.
 //
 // Strict adjacency is required because intervening ops could read the moved value on the
@@ -487,12 +530,12 @@ func fuseEqUintConstJumpFalse(compiledFunction *program.CompiledFunction,
 // Takes jumpTargets (map[int]bool) which specifies the set of protected jump
 // destinations.
 // Takes sourceOpcode (opcode) which is the unfused typed mapIndexOk opcode to recognise
-// (e.g. isa.OpMapIndexOkIntGeneral).
+// (e.g. isa.OpGetMapInt64GeneralOk).
 // Takes targetOpcode (opcode) which is the fused replacement opcode (e.g.
-// isa.OpMapIndexOkJumpIfFalseIntGeneral).
+// isa.OpGetMapInt64GeneralOkThenJumpIfFalse).
 //
 // Returns true if the pattern matched and was applied.
-func fuseMapIndexOkJumpFalse(_ *program.CompiledFunction,
+func fuseGetMapOkThenJumpIfFalse(_ *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 	sourceOpcode isa.Opcode, targetOpcode isa.Opcode,
@@ -520,18 +563,13 @@ func fuseMapIndexOkJumpFalse(_ *program.CompiledFunction,
 	}
 	offLo, offHi := isa.SplitOffset(int16(packedOffset))
 	body[i] = isa.NewInstruction(targetOpcode, body[i].A, body[i].B, body[i].C)
-	body[i+1] = isa.NewInstruction(isa.OpExt, okReg, offLo, offHi)
-	body[i+2] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	body[i+1] = isa.NewInstruction(isa.OpExtension, okReg, offLo, offHi)
+	body[i+2] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 	return true
 }
 
 // countIncomingJumps counts branches targeting targetPC, excluding the instruction at
 // sourcePC.
-//
-// Used by fuseRangeCheckUintJumpFalse to verify that the chained jump from the inner
-// JumpIfFalse to the outer JumpIfFalse is the ONLY entry into the outer JumpIfFalse, so
-// collapsing both into a single fused op is safe even when the outer position appears in
-// jumpTargets.
 //
 // Takes body ([]instruction) which specifies the instruction sequence.
 // Takes targetPC (int) which is the destination index to count entries for.
@@ -555,12 +593,6 @@ func countIncomingJumps(_ *program.CompiledFunction, body []isa.Instruction, tar
 // matchSmallUintConstLoad recognises both forms of a uint constant load that fits in a
 // byte immediate.
 //
-// Recognises the tier-0 isa.OpLoadUintConst with a pool reference whose value is in
-// 0..math.MaxUint8, and the post-rewrite tier-1 isa.SubOpLoadUintConstSmall with the
-// immediate already inlined. Callers use this to fuse patterns that read a small uint
-// constant regardless of whether OptimiseLoadUintConst has already rewritten the load
-// instruction.
-//
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
 // Takes instr (instruction) which is the candidate load instruction to inspect.
@@ -568,10 +600,10 @@ func countIncomingJumps(_ *program.CompiledFunction, body []isa.Instruction, tar
 // Returns the 8-bit immediate value when matched, the load destination when matched, and
 // true when instr is a recognised small-uint-constant load.
 func matchSmallUintConstLoad(compiledFunction *program.CompiledFunction, instr isa.Instruction) (immediate, destinationRegister uint8, ok bool) {
-	if isa.InstrIsTier1SubOp(instr, isa.SubOpLoadUintConstSmall) {
+	if isa.InstrIsTier1SubOp(instr, isa.SubOpLoadUint64Immediate) {
 		return instr.C, instr.B, true
 	}
-	if instr.Op != isa.OpLoadUintConst || instr.C != 0 {
+	if instr.Op != isa.OpLoadUint64Constant || instr.C != 0 {
 		return 0, 0, false
 	}
 	if int(instr.B) >= len(compiledFunction.UintConstants) {
@@ -584,12 +616,8 @@ func matchSmallUintConstLoad(compiledFunction *program.CompiledFunction, instr i
 	return uint8(value), instr.A, true
 }
 
-// fuseIntArithConst fuses a LoadIntConst or LoadIntConstSmall followed by AddInt, SubInt,
-// or MulInt into the corresponding *IntConst superinstruction.
-//
-// The load must write the same register the arith op reads as its right operand, and the
-// slot immediately after the load must not be a jump target. A small load's value is
-// found in, or added to, the constant pool, whose index the fused op carries.
+// fuseIntArithConst fuses a LoadInt64Constant or LoadIntConstSmall followed by AddInt64,
+// SubtractInt64, or MultiplyInt64 into the corresponding *IntConst superinstruction.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
@@ -613,16 +641,16 @@ func fuseIntArithConst(compiledFunction *program.CompiledFunction,
 	}
 	var fusedOp isa.Opcode
 	switch next.Op {
-	case isa.OpSubInt:
-		fusedOp = isa.OpSubIntConst
-	case isa.OpAddInt:
-		fusedOp = isa.OpAddIntConst
-	case isa.OpMulInt:
-		fusedOp = isa.OpMulIntConst
+	case isa.OpSubtractInt64:
+		fusedOp = isa.OpSubtractInt64Constant
+	case isa.OpAddInt64:
+		fusedOp = isa.OpAddInt64Constant
+	case isa.OpMultiplyInt64:
+		fusedOp = isa.OpMultiplyInt64Constant
 	default:
 		return false
 	}
-	if !loadedRegisterConsumedOnlyByFusedOp(compiledFunction, body, i, loaded, isa.RegisterInt) {
+	if !loadedRegisterConsumedOnlyByFusedOp(compiledFunction, body, i, loaded, isa.RegisterInt64) {
 		return false
 	}
 	index, ok := intConstPoolIndex(compiledFunction, body[i])
@@ -630,7 +658,7 @@ func fuseIntArithConst(compiledFunction *program.CompiledFunction,
 		return false
 	}
 	body[i] = isa.NewInstruction(fusedOp, next.A, next.B, index)
-	body[i+1] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	body[i+1] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 	return true
 }
 
@@ -640,10 +668,10 @@ func fuseIntArithConst(compiledFunction *program.CompiledFunction,
 //
 // Returns the destination and whether inst is a pool or small int constant load.
 func intConstLoadDestination(inst isa.Instruction) (uint8, bool) {
-	if inst.Op == isa.OpLoadIntConst && inst.C == 0 {
+	if inst.Op == isa.OpLoadInt64Constant && inst.C == 0 {
 		return inst.A, true
 	}
-	if isa.InstrIsTier1SubOp(inst, isa.SubOpLoadIntConstSmall) {
+	if isa.InstrIsTier1SubOp(inst, isa.SubOpLoadInt64Immediate) {
 		return inst.B, true
 	}
 	return 0, false
@@ -658,7 +686,7 @@ func intConstLoadDestination(inst isa.Instruction) (uint8, bool) {
 //
 // Returns the index and false when it does not fit in one byte.
 func intConstPoolIndex(compiledFunction *program.CompiledFunction, inst isa.Instruction) (uint8, bool) {
-	if inst.Op == isa.OpLoadIntConst {
+	if inst.Op == isa.OpLoadInt64Constant {
 		return inst.B, true
 	}
 	value := int64(inst.C)
@@ -682,7 +710,7 @@ func intConstPoolIndex(compiledFunction *program.CompiledFunction, inst isa.Inst
 //
 // Returns the index and false when it does not fit in 16 bits.
 func uintConstPoolIndex(compiledFunction *program.CompiledFunction, inst isa.Instruction) (uint16, bool) {
-	if inst.Op == isa.OpLoadUintConst {
+	if inst.Op == isa.OpLoadUint64Constant {
 		return isa.JoinWide(inst.B, inst.C), true
 	}
 	value := uint64(inst.C)
@@ -723,13 +751,9 @@ func loadedRegisterConsumedOnlyByFusedOp(compiledFunction *program.CompiledFunct
 		registerDeadFrom(compiledFunction, body, i+2, kind, loaded)
 }
 
-// fuseUintArithConst fuses a LoadUintConst or LoadUintConstSmall followed by AddUint,
-// SubUint, or BitAndUint into a tier-1 subop carrying the constant via a trailing
-// isa.OpExt word.
-//
-// The uint constant pool index can be up to 16 bits, so it does not fit in the tier-1
-// operand budget alone; the isa.OpExt word holds the full index. The load's destination
-// must match the arith op's right operand register.
+// fuseUintArithConst fuses a LoadUint64Constant or LoadUintConstSmall followed by
+// AddUint64, SubtractUint64, or BitAndUint64 into a tier-1 subop carrying the constant
+// via a trailing isa.OpExtension word.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
@@ -747,7 +771,7 @@ func fuseUintArithConst(compiledFunction *program.CompiledFunction,
 		return false
 	}
 	_, loaded, ok := matchSmallUintConstLoad(compiledFunction, body[i])
-	if body[i].Op == isa.OpLoadUintConst {
+	if body[i].Op == isa.OpLoadUint64Constant {
 		loaded, ok = body[i].A, true
 	}
 	next := body[i+1]
@@ -756,16 +780,16 @@ func fuseUintArithConst(compiledFunction *program.CompiledFunction,
 	}
 	var fusedSubOp isa.SubOpcode
 	switch next.Op {
-	case isa.OpAddUint:
-		fusedSubOp = isa.SubOpAddUintConst
-	case isa.OpSubUint:
-		fusedSubOp = isa.SubOpSubUintConst
-	case isa.OpBitAndUint:
-		fusedSubOp = isa.SubOpBitAndUintConst
+	case isa.OpAddUint64:
+		fusedSubOp = isa.SubOpAddUint64Constant
+	case isa.OpSubtractUint64:
+		fusedSubOp = isa.SubOpSubtractUint64Constant
+	case isa.OpBitAndUint64:
+		fusedSubOp = isa.SubOpBitAndUint64Constant
 	default:
 		return false
 	}
-	if !loadedRegisterConsumedOnlyByFusedOp(compiledFunction, body, i, loaded, isa.RegisterUint) {
+	if !loadedRegisterConsumedOnlyByFusedOp(compiledFunction, body, i, loaded, isa.RegisterUint64) {
 		return false
 	}
 	index, ok := uintConstPoolIndex(compiledFunction, body[i])
@@ -774,7 +798,7 @@ func fuseUintArithConst(compiledFunction *program.CompiledFunction,
 	}
 	lo, hi := isa.SplitWide(index)
 	body[i] = isa.NewInstruction(isa.OpDrillTier1, uint8(fusedSubOp), next.A, next.B)
-	body[i+1] = isa.NewInstruction(isa.OpExt, lo, hi, 0)
+	body[i+1] = isa.NewInstruction(isa.OpExtension, lo, hi, 0)
 	return true
 }
 
@@ -838,11 +862,11 @@ func rangeCheckDroppedWritesDead(compiledFunction *program.CompiledFunction, bod
 		kind isa.RegisterKind
 		reg  uint8
 	}{
-		{kind: isa.RegisterUint, reg: shape.vRegLo},
-		{kind: isa.RegisterUint, reg: shape.vRegHi},
-		{kind: isa.RegisterInt, reg: body[i+1].A},
-		{kind: isa.RegisterInt, reg: body[i+program.RangeCheckSecondLoadOffset+1].A},
-		{kind: isa.RegisterInt, reg: condReg},
+		{kind: isa.RegisterUint64, reg: shape.vRegLo},
+		{kind: isa.RegisterUint64, reg: shape.vRegHi},
+		{kind: isa.RegisterInt64, reg: body[i+1].A},
+		{kind: isa.RegisterInt64, reg: body[i+program.RangeCheckSecondLoadOffset+1].A},
+		{kind: isa.RegisterInt64, reg: condReg},
 	}
 	for _, write := range dropped {
 		if !registerDeadAfterBranch(compiledFunction, body, branchPC, write.kind, write.reg) {
@@ -894,13 +918,13 @@ func tryFuseTier0AppendMove(compiledFunction *program.CompiledFunction, body []i
 		return false
 	}
 	body[i] = isa.NewInstruction(appendInstr.Op, appendInstr.B, appendInstr.B, appendInstr.C)
-	body[i+1] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	body[i+1] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 	return true
 }
 
-// tryFuseTier1AppendMove handles the DRILL_TIER1(subOpAppend*) + EXT + MOVE_GEN pattern.
-// The MOVE_GEN lives at body[i+2] (after the extension word) and the rewrite rebrands the
-// append destination so the runtime adapter takes the in-place helper path.
+// tryFuseTier1AppendMove handles the DRILL_TIER1(subOpAppend*) + EXTENSION + MOVE_GEN
+// pattern. The MOVE_GEN lives at body[i+2] (after the extension word) and the rewrite
+// rebrands the append destination so the runtime adapter takes the in-place helper path.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
 // the liveness guard reads.
@@ -921,7 +945,7 @@ func tryFuseTier1AppendMove(compiledFunction *program.CompiledFunction, body []i
 	if i+2 >= n || jumpTargets[i+2] {
 		return false
 	}
-	if body[i+1].Op != isa.OpExt {
+	if body[i+1].Op != isa.OpExtension {
 		return false
 	}
 	moveInstr := body[i+2]
@@ -935,7 +959,7 @@ func tryFuseTier1AppendMove(compiledFunction *program.CompiledFunction, body []i
 		return false
 	}
 	body[i] = isa.NewInstruction(isa.OpDrillTier1, appendInstr.A, appendInstr.C, appendInstr.C)
-	body[i+2] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	body[i+2] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 	return true
 }
 
@@ -947,26 +971,26 @@ func tryFuseTier1AppendMove(compiledFunction *program.CompiledFunction, body []i
 // Returns true when sub is in the supported append family.
 func isTier1AppendSubOp(sub isa.SubOpcode) bool {
 	switch sub {
-	case isa.SubOpAppendInt, isa.SubOpAppendString, isa.SubOpAppendFloat, isa.SubOpAppendBool, isa.SubOpAppendUint:
+	case isa.SubOpAppendInt64Wide, isa.SubOpAppendStringWide, isa.SubOpAppendFloat64Wide, isa.SubOpAppendBoolWide, isa.SubOpAppendUint64Wide:
 		return true
 	default:
 	}
 	return false
 }
 
-// isCanonicalNop reports whether instr is the tier-3 canonical NOP encoding emitted by
-// the peephole passes.
+// isCanonicalNoOperation reports whether instr is the tier-3 canonical NO_OPERATION
+// encoding emitted by the peephole passes.
 //
-// The canonical NOP is the tier-3 form {isa.OpDrillTier1, isa.SubOpDrillTier2,
-// isa.SubOpTier2DrillTier3, isa.SubOpTier3Nop} rather than an all-zero word so it
+// The canonical NO_OPERATION is the tier-3 form {isa.OpDrillTier1, isa.SubOpDrillTier2,
+// isa.SubOpTier2DrillTier3, isa.SubOpTier3NoOperation} rather than an all-zero word so it
 // dispatches deterministically through the drill cascade.
 //
 // Takes instr (instruction) which is the instruction to test.
 //
-// Returns true when instr is the canonical NOP encoding.
-func isCanonicalNop(instr isa.Instruction) bool {
+// Returns true when instr is the canonical NO_OPERATION encoding.
+func isCanonicalNoOperation(instr isa.Instruction) bool {
 	return instr.Op == isa.OpDrillTier1 &&
 		isa.SubOpcode(instr.A) == isa.SubOpDrillTier2 &&
 		isa.SubOpcodeTier2(instr.B) == isa.SubOpTier2DrillTier3 &&
-		isa.SubOpcodeTier3(instr.C) == isa.SubOpTier3Nop
+		isa.SubOpcodeTier3(instr.C) == isa.SubOpTier3NoOperation
 }

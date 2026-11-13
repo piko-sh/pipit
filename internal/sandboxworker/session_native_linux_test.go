@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxworker
 
@@ -41,39 +41,39 @@ func testNativeSession(t *testing.T, config sandboxlinux.WorkerConfig) {
 
 				scenarioConfig.OutputBytes = 10
 			}
-			process, err := sandboxlinux.LaunchWorker(context.Background(), scenarioConfig)
+			process, err := sandboxlinux.LaunchWorker(t.Context(), scenarioConfig)
 			if process != nil {
-				t.Cleanup(func() { _ = process.Close() })
+				t.Cleanup(func() { _ = process.Close(t.Context()) })
 			}
 			require.NoError(t, err)
-			session, err := OpenSession(process, Configuration{Profile: SessionProfile, Imports: nil})
+			session, err := OpenSession(t.Context(), process, Configuration{Profile: SessionProfile, Imports: nil})
 			requireWorkerOK(t, err, process, "open")
 			switch scenario {
 			case "retained state":
-				_, err = session.Submit("var value = 40")
+				_, err = session.Submit(t.Context(), "var value = 40")
 				require.NoError(t, err)
-				result, err := session.Submit("value + 2")
+				result, err := session.Submit(t.Context(), "value + 2")
 				require.NoError(t, err, "result=%+v", result)
 				require.Equal(t, "42", string(result.Value))
-				require.NoError(t, session.Close())
+				require.NoError(t, session.Close(t.Context()))
 			case "idle expiry":
 				session.expires = time.Now().Add(50 * time.Millisecond)
 				require.NoError(t, session.armIdle())
 				require.ErrorIs(t, process.Wait(), context.DeadlineExceeded, "idle process survived")
-				_, err = session.Submit("42")
+				_, err = session.Submit(t.Context(), "42")
 				require.Error(t, err, "an expired worker is not reused")
 			case "output budget":
-				_, err = session.Submit("print(\"abcd\")")
+				_, err = session.Submit(t.Context(), "print(\"abcd\")")
 				require.NoError(t, err)
-				result, err := session.Submit("print(\"abcd\")")
+				result, err := session.Submit(t.Context(), "print(\"abcd\")")
 				require.ErrorIs(t, err, sandboxlinux.ErrWorkerOutput, "the native output budget does not reset")
 				require.Nil(t, result.Value)
 			case "cancel active":
 				gate := gateSessionRead(t, session)
 				done := make(chan error, 1)
-				go func() { _, err := session.Submit("for {}"); done <- err }()
+				go func() { _, err := session.Submit(t.Context(), "for {}"); done <- err }()
 				<-gate.entered
-				_ = session.Close()
+				_ = session.Close(t.Context())
 				require.Error(t, <-done, "active close allowed success")
 			}
 		})

@@ -19,12 +19,14 @@
 package engine
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -40,8 +42,8 @@ func syntheticScriptType(t *testing.T, name string) reflect.Type {
 func TestPipitTypeStringerHandsBackItsText(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "main.Score", pipitTypeStringer("main.Score").String())
-	require.Empty(t, pipitTypeStringer("").String())
+	require.Equal(t, "main.Score", pipitTypeStringer{name: "main.Score"}.String())
+	require.Empty(t, pipitTypeStringer{name: ""}.String())
 }
 
 func TestPipitNamedTypeRendersTheSourceName(t *testing.T) {
@@ -140,13 +142,13 @@ func TestPipitMethodInOutTypesFallsBackToTheErasedShape(t *testing.T) {
 		t.Parallel()
 
 		callee := program.NewNamedFunction("Method")
-		callee.ParameterKinds = []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt, isa.RegisterString}
-		callee.ResultKinds = []isa.RegisterKind{isa.RegisterInt}
+		callee.ParameterKinds = []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt64, isa.RegisterString}
+		callee.ResultKinds = []isa.RegisterKind{isa.RegisterInt64}
 
 		in, out := pipitMethodInOutTypes(callee)
 		require.Len(t, in, 2, "the receiver occupies the first parameter slot")
 		require.Equal(t, reflect.TypeFor[any](), in[0])
-		require.Equal(t, []reflect.Type{program.KindDefaultReflectType(isa.RegisterInt)}, out)
+		require.Equal(t, []reflect.Type{program.KindDefaultReflectType(isa.RegisterInt64)}, out)
 	})
 
 	t.Run("a variadic erased shape ends in a slice", func(t *testing.T) {
@@ -309,4 +311,86 @@ func TestQualifiedNameFromStructSentinelReadsTheTrailingField(t *testing.T) {
 			require.Equal(t, tt.want, qualifiedNameFromStructSentinel(tt.reflectType))
 		})
 	}
+}
+
+func TestAnInterfaceMethodIsMatchedByNameAndRecordedSignature(t *testing.T) {
+	t.Parallel()
+
+	stringer := reflect.TypeFor[fmt.Stringer]().Method(0).Type
+	set := []pipitMethodEntry{
+		{name: "Len", callee: &program.CompiledFunction{SignatureReflectType: reflect.TypeFor[func() int]()}},
+		{name: "String", callee: &program.CompiledFunction{SignatureReflectType: reflect.TypeFor[func() string]()}},
+		{name: "Wrong", callee: &program.CompiledFunction{SignatureReflectType: reflect.TypeFor[func(int) string]()}},
+	}
+
+	entry, found := findPipitMethodEntry(set, "String")
+	require.True(t, found)
+	require.True(t, pipitMethodSignatureMatches(entry, stringer))
+	wrong, found := findPipitMethodEntry(set, "Wrong")
+	require.True(t, found)
+	require.False(t, pipitMethodSignatureMatches(wrong, stringer))
+	_, found = findPipitMethodEntry(set, "Missing")
+	require.False(t, found)
+	unrecorded := pipitMethodEntry{name: "String", callee: &program.CompiledFunction{}}
+	require.True(t, pipitMethodSignatureMatches(unrecorded, stringer), "a method without a recorded signature matches by name")
+	require.True(t, pipitMethodSignatureMatches(entry, nil), "a requirement without a type matches by name")
+	own, err := entry.forReceiver(nil, reflect.TypeFor[int]())
+	require.NoError(t, err)
+	require.Equal(t, entry, own, "a method with no receiver bodies is its own entry")
+}
+
+func genericReceiverRoot(t *testing.T) *program.CompiledFunction {
+	t.Helper()
+
+	root := program.NewNamedFunction("<root>")
+	root.Functions = []*program.CompiledFunction{
+		program.NewNamedFunction("Box.Get"), program.NewNamedFunction("Box.Get[spec:int]"),
+	}
+	program.RegisterReceiverMethod(root, reflect.TypeFor[receiverMethodValue](), 0, 1)
+	return root
+}
+
+func TestForReceiverReportsAMissingSpecialisedBody(t *testing.T) {
+	t.Parallel()
+
+	root := genericReceiverRoot(t)
+	entry := pipitMethodEntry{callee: root.Functions[0], methodRoot: root, name: "Get"}
+
+	specialised, err := entry.forReceiver(nil, reflect.TypeFor[receiverMethodValue]())
+	require.NoError(t, err)
+	require.Same(t, root.Functions[1], specialised.callee)
+
+	unchanged, err := entry.forReceiver(nil, reflect.TypeFor[struct{ W string }]())
+	require.ErrorIs(t, err, fault.ErrNoMethodBodyForReceiver, "the shared body must not answer for a receiver it was not compiled for")
+	require.Same(t, root.Functions[0], unchanged.callee)
+
+	unknown, err := entry.forReceiver(nil, nil)
+	require.NoError(t, err, "an unknown receiver type keeps the method the table named")
+	require.Same(t, root.Functions[0], unknown.callee)
+}
+
+func TestImplementsRaisesAMissingSpecialisedBody(t *testing.T) {
+	t.Parallel()
+
+	root := genericReceiverRoot(t)
+	set := []pipitMethodEntry{{callee: root.Functions[0], methodRoot: root, name: "Get"}}
+	getter := reflect.TypeFor[interface{ Get() int }]()
+
+	results, panicMessage, handled := pipitReflectImplements(nil, reflect.TypeFor[struct{ W string }](), set, []reflect.Value{reflect.ValueOf(getter)})
+	require.True(t, handled)
+	require.Nil(t, results)
+	require.Contains(t, panicMessage, fault.ErrNoMethodBodyForReceiver.Error())
+}
+
+func TestABoundMethodValueWithNoBodyForItsReceiverPanicsWhenCalled(t *testing.T) {
+	t.Parallel()
+
+	root := genericReceiverRoot(t)
+	vm := newTestVM(t)
+	entry := pipitMethodEntry{callee: root.Functions[0], methodRoot: root, name: "Get"}
+
+	bound := pipitBoundMethodValue(vm, entry, reflect.ValueOf(struct{ W string }{}))
+	require.True(t, bound.IsValid())
+	require.PanicsWithError(t, fmt.Sprintf("%s: Box.Get on struct { W string }", fault.ErrNoMethodBodyForReceiver), func() { bound.Call(nil) },
+		"a direct call raises the missing body, so a call through the method value must too")
 }

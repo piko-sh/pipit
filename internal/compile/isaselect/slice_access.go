@@ -43,11 +43,11 @@ type SliceAccessPlan struct {
 // Returns SliceAccessPlan which is the instruction.
 // Returns bool which is false when elementKind has no typed read.
 func PlanSliceGet(collectionKind, elementKind isa.RegisterKind, boundsSafe bool) (SliceAccessPlan, bool) {
-	if collectionKind == isa.RegisterSliceInt && elementKind == isa.RegisterInt {
+	if collectionKind == isa.RegisterSliceInt64 && elementKind == isa.RegisterInt64 {
 		if boundsSafe {
-			return SliceAccessPlan{Op: isa.OpSliceGetIntDirectUnchecked, Tier1: 0, UseTier1: false}, true
+			return SliceAccessPlan{Op: isa.OpGetSliceInt64ElementUnchecked, Tier1: 0, UseTier1: false}, true
 		}
-		return SliceAccessPlan{Op: isa.OpSliceGetIntDirect, Tier1: 0, UseTier1: false}, true
+		return SliceAccessPlan{Op: isa.OpGetSliceInt64Element, Tier1: 0, UseTier1: false}, true
 	}
 	if subOp, ok := typedSliceDirectGetTier1SubOp(collectionKind); ok && isa.ElementKindForTypedSlice(collectionKind) == elementKind {
 		return SliceAccessPlan{Op: 0, Tier1: subOp, UseTier1: true}, true
@@ -65,8 +65,8 @@ func PlanSliceGet(collectionKind, elementKind isa.RegisterKind, boundsSafe bool)
 // Returns SliceAccessPlan which is the instruction.
 // Returns bool which is false when elementKind has no typed write.
 func PlanSliceSet(collectionKind, elementKind isa.RegisterKind) (SliceAccessPlan, bool) {
-	if collectionKind == isa.RegisterSliceInt && elementKind == isa.RegisterInt {
-		return SliceAccessPlan{Op: isa.OpSliceSetIntDirect, Tier1: 0, UseTier1: false}, true
+	if collectionKind == isa.RegisterSliceInt64 && elementKind == isa.RegisterInt64 {
+		return SliceAccessPlan{Op: isa.OpSetSliceInt64Element, Tier1: 0, UseTier1: false}, true
 	}
 	if subOp, ok := typedSliceDirectSetTier1SubOp(collectionKind); ok && isa.ElementKindForTypedSlice(collectionKind) == elementKind {
 		return SliceAccessPlan{Op: 0, Tier1: subOp, UseTier1: true}, true
@@ -83,16 +83,16 @@ func PlanSliceSet(collectionKind, elementKind isa.RegisterKind) (SliceAccessPlan
 // Returns bool which is false for other kinds.
 func sliceGetOpForElement(elementKind isa.RegisterKind) (isa.Opcode, bool) {
 	switch elementKind {
-	case isa.RegisterInt:
-		return isa.OpSliceGetInt, true
-	case isa.RegisterFloat:
-		return isa.OpSliceGetFloat, true
+	case isa.RegisterInt64:
+		return isa.OpGetElementInt64, true
+	case isa.RegisterFloat64:
+		return isa.OpGetElementFloat64, true
 	case isa.RegisterString:
-		return isa.OpSliceGetString, true
+		return isa.OpGetElementString, true
 	case isa.RegisterBool:
-		return isa.OpSliceGetBool, true
-	case isa.RegisterUint:
-		return isa.OpSliceGetUint, true
+		return isa.OpGetElementBool, true
+	case isa.RegisterUint64:
+		return isa.OpGetElementUint64, true
 	default:
 		return 0, false
 	}
@@ -106,16 +106,16 @@ func sliceGetOpForElement(elementKind isa.RegisterKind) (isa.Opcode, bool) {
 // Returns bool which is false for other kinds.
 func sliceSetOpForElement(elementKind isa.RegisterKind) (isa.Opcode, bool) {
 	switch elementKind {
-	case isa.RegisterInt:
-		return isa.OpSliceSetInt, true
-	case isa.RegisterFloat:
-		return isa.OpSliceSetFloat, true
+	case isa.RegisterInt64:
+		return isa.OpSetElementInt64, true
+	case isa.RegisterFloat64:
+		return isa.OpSetElementFloat64, true
 	case isa.RegisterString:
-		return isa.OpSliceSetString, true
+		return isa.OpSetElementString, true
 	case isa.RegisterBool:
-		return isa.OpSliceSetBool, true
-	case isa.RegisterUint:
-		return isa.OpSliceSetUint, true
+		return isa.OpSetElementBool, true
+	case isa.RegisterUint64:
+		return isa.OpSetElementUint64, true
 	default:
 		return 0, false
 	}

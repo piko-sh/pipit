@@ -23,8 +23,8 @@ import (
 	"go/types"
 )
 
-// ConversionOperand returns the operand of call when the conversion preserves its
-// slice header.
+// ConversionOperand returns the operand of call when the conversion preserves its slice
+// header.
 //
 // Takes info (*types.Info) which recognises conversions; nil recognises none.
 // Takes call (*ast.CallExpr) which is the candidate conversion.

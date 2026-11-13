@@ -172,7 +172,7 @@ func TestControlRequestsFailWhileNothingIsPaused(t *testing.T) {
 	srv.handleContinue(&dap.ContinueRequest{Request: request, Arguments: dap.ContinueArguments{ThreadId: 1}})
 	srv.handleNext(&dap.NextRequest{Request: request, Arguments: dap.NextArguments{ThreadId: 1}})
 	srv.handlePause(&dap.PauseRequest{Request: request, Arguments: dap.PauseArguments{ThreadId: 1}})
-	srv.handleEvaluate(&dap.EvaluateRequest{Request: request, Arguments: dap.EvaluateArguments{Expression: "1", Context: "hover"}})
+	srv.handleEvaluate(t.Context(), &dap.EvaluateRequest{Request: request, Arguments: dap.EvaluateArguments{Expression: "1", Context: "hover"}})
 
 	messages := readOutMessages(t, out)
 	require.Len(t, messages, 4)

@@ -61,19 +61,23 @@ var (
 	_ asmgen.InlineCallOperationsPort = (*amd64InlineCallOps)(nil)
 )
 
-// EmitTailCallInline emits the top-level body of handlerTailCallInline. The handler is
-// NOSPLIT NOFRAME so DISPATCH_NEXT does not leak a leftover prologue frame.
+// EmitTailCallInline emits the top-level body of handlerTailCall. The handler is NOSPLIT
+// NOFRAME so DISPATCH_NEXT does not leak a leftover prologue frame.
+//
+// The tail call ends with a back-edge poll. A tail recursion has no other back edge, so
+// without it the deadline and cancellation would never stop one.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 func (*amd64InlineCallOps) EmitTailCallInline(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationDecrement64Bits, "R14")
 	inst(e, asmamd64.OperationMove64Bits, "R14, CTX_PC(R15)")
 	inst(e, asmamd64.OperationCall, "\xc2\xb7handlerTailCallInlineSubroutine(SB)")
+	emitBackEdgePoll(e)
 	e.Instruction(macroDispatchNext)
 }
 
-// EmitTailCallInlineSubroutine emits the body of the sub-routine that
-// handlerTailCallInline CALLs to perform the actual tail-call work.
+// EmitTailCallInlineSubroutine emits the body of the sub-routine that handlerTailCall
+// CALLs to perform the actual tail-call work.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 func (*amd64InlineCallOps) EmitTailCallInlineSubroutine(e *asmgen.Emitter) {
@@ -91,7 +95,7 @@ func (*amd64InlineCallOps) EmitTailCallInlineSubroutine(e *asmgen.Emitter) {
 	e.Instruction(asmamd64.OperationReturn)
 }
 
-// EmitCallInline emits the body of handlerCallInline.
+// EmitCallInline emits the body of handlerCall.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 func (o *amd64InlineCallOps) EmitCallInline(e *asmgen.Emitter) {
@@ -134,7 +138,7 @@ func (o *amd64InlineCallOps) EmitCallInlineScalar(e *asmgen.Emitter) {
 	o.emitCallInlineFallbackPaths(e)
 }
 
-// EmitReturnInline emits the body of handlerReturnInline.
+// EmitReturnInline emits the body of handlerReturn.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 func (o *amd64InlineCallOps) EmitReturnInline(e *asmgen.Emitter) {
@@ -153,8 +157,8 @@ func (o *amd64InlineCallOps) EmitReturnInline(e *asmgen.Emitter) {
 	o.emitReturnInlineFallbackPath(e, returnInlineLabelPrefix, "EXIT_RETURN")
 }
 
-// EmitReturnVoidInline emits the body of handlerReturnVoidInline. Same as ReturnInline
-// but skips the return value copy entirely.
+// EmitReturnVoidInline emits the body of handlerReturnVoid. Same as ReturnInline but
+// skips the return value copy entirely.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 func (o *amd64InlineCallOps) EmitReturnVoidInline(e *asmgen.Emitter) {
@@ -425,7 +429,8 @@ func (*amd64InlineCallOps) emitCallInlineComputeCalleeFrame(e *asmgen.Emitter) {
 }
 
 // emitCallInlineAllocateIntFloatRegisters allocates the integer and float register bank
-// slabs from their respective arenas.
+// slabs from their respective arenas. A callee with no registers of a kind gets a nil
+// bank pointer (emitNilPointerForEmptyBankAMD64).
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 func (*amd64InlineCallOps) emitCallInlineAllocateIntFloatRegisters(e *asmgen.Emitter) {
@@ -433,6 +438,7 @@ func (*amd64InlineCallOps) emitCallInlineAllocateIntFloatRegisters(e *asmgen.Emi
 	inst(e, asmamd64.OperationMove64Bits, "CTX_ARENA_INT_SLAB(R15), DX")
 	inst(e, asmamd64.OperationLoadEffectiveAddress64Bits, "(DX)(CX*8), DX")
 	inst(e, asmamd64.OperationMove64Bits, "ACI_CALLEE_NUM_INTS(AX), DI")
+	emitNilPointerForEmptyBankAMD64(e)
 	inst(e, asmamd64.OperationMove64Bits, "DX, CF_REGS_INTS_PTR(BX)")
 	inst(e, asmamd64.OperationMove64Bits, "DI, CF_REGS_INTS_LEN(BX)")
 	inst(e, asmamd64.OperationMove64Bits, "DI, CF_REGS_INTS_CAP(BX)")
@@ -444,6 +450,7 @@ func (*amd64InlineCallOps) emitCallInlineAllocateIntFloatRegisters(e *asmgen.Emi
 	inst(e, asmamd64.OperationMove64Bits, "CTX_ARENA_FLT_SLAB(R15), DX")
 	inst(e, asmamd64.OperationLoadEffectiveAddress64Bits, "(DX)(CX*8), DX")
 	inst(e, asmamd64.OperationMove64Bits, "ACI_CALLEE_NUM_FLOATS(AX), DI")
+	emitNilPointerForEmptyBankAMD64(e)
 	inst(e, asmamd64.OperationMove64Bits, "DX, CF_REGS_FLOATS_PTR(BX)")
 	inst(e, asmamd64.OperationMove64Bits, "DI, CF_REGS_FLOATS_LEN(BX)")
 	inst(e, asmamd64.OperationMove64Bits, "DI, CF_REGS_FLOATS_CAP(BX)")
@@ -451,6 +458,19 @@ func (*amd64InlineCallOps) emitCallInlineAllocateIntFloatRegisters(e *asmgen.Emi
 	inst(e, asmamd64.OperationMove64Bits, "CX, CTX_ARENA_FLT_IDX(R15)")
 	inst(e, asmamd64.OperationMove8Bits, "$1, CTX_ARENA_BANKS_DIRTY(R15)")
 	e.Blank()
+}
+
+// emitNilPointerForEmptyBankAMD64 replaces the bank pointer in DX with nil when the bank
+// length in DI is zero.
+//
+// The pointer is slab+index, which is one past the slab's end when the index has reached
+// the slab's length; a frame that kept it would hold a pointer the GC resolves to the
+// next heap object ("found pointer to free object" under GOGC=1).
+//
+// Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
+func emitNilPointerForEmptyBankAMD64(e *asmgen.Emitter) {
+	inst(e, asmamd64.OperationTest64Bits, "DI, DI")
+	inst(e, operationConditionalMove64BitsIfEqual, "DI, DX")
 }
 
 // emitCallInlineAllocateExtendedRegisters allocates the string, bool, uint and byte-slice
@@ -908,9 +928,7 @@ func (*amd64InlineCallOps) emitCallInlineFallbackPaths(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationReturn, "")
 }
 
-// emitReturnInlineGuardChecks emits the eligibility checks for the inline return path,
-// verifying that the frame is not the base frame, no defers have been pushed, and the
-// return count is zero or one.
+// emitReturnInlineGuardChecks emits the checks for the inline return path.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 func (*amd64InlineCallOps) emitReturnInlineGuardChecks(e *asmgen.Emitter) {
@@ -939,6 +957,7 @@ func (*amd64InlineCallOps) emitReturnInlineGuardChecks(e *asmgen.Emitter) {
 	e.Label("ri_no_simple_defer")
 	e.Blank()
 	emitReturnInlineFrameOwnershipGuards(e, "DI", labelRIFallback)
+	emitReturnInlineByteSliceBarrierGuard(e, returnInlineLabelPrefix, labelRIFallback)
 
 	inst(e, asmamd64.OperationMove32Bits, "DX, AX")
 	inst(e, asmamd64.OperationShiftRight32Bits, "$24, AX")
@@ -970,6 +989,46 @@ func emitReturnInlineFrameOwnershipGuards(e *asmgen.Emitter, frameRegister strin
 	inst(e, asmamd64.OperationJumpIfNotEqual, fallback)
 	inst(e, asmamd64.OperationCompare64Bits, "CF_SHARED_CELLS("+frameRegister+"), $0")
 	inst(e, asmamd64.OperationJumpIfNotEqual, fallback)
+	e.Blank()
+}
+
+// emitReturnInlineByteSliceBarrierGuard falls back to the Go return when the callee holds
+// byte-slice registers and the write barrier is on, because the inline clear of those
+// slots writes without one.
+//
+// Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
+// Takes prefix (string) which selects the label namespace.
+// Takes fallback (string) which is the label of the Go return path.
+func emitReturnInlineByteSliceBarrierGuard(e *asmgen.Emitter, prefix string, fallback string) {
+	inst(e, asmamd64.OperationMove64Bits, "CTX_ARENA_SLICEBYTE_IDX(R15), CX")
+	inst(e, asmamd64.OperationCompare64Bits, "CX, (CF_ARENA_SAVE+96)(DI)")
+	inst(e, asmamd64.OperationJumpIfLessOrEqualSigned, prefix+"_sb_guard_done")
+	inst(e, asmamd64.OperationCompare8Bits, "runtime·writeBarrier(SB), $0")
+	inst(e, asmamd64.OperationJumpIfNotEqual, fallback)
+	e.Label(prefix + "_sb_guard_done")
+	e.Blank()
+}
+
+// emitReturnInlineClearByteSliceArena zeroes the callee's byte-slice headers.
+//
+// Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
+// Takes prefix (string) which selects the label namespace.
+func emitReturnInlineClearByteSliceArena(e *asmgen.Emitter, prefix string) {
+	inst(e, asmamd64.OperationMove64Bits, "CTX_ARENA_SLICEBYTE_IDX(R15), SI")
+	inst(e, asmamd64.OperationMove64Bits, "(CF_ARENA_SAVE+96)(DI), CX")
+	inst(e, asmamd64.OperationSubtract64Bits, "CX, SI")
+	inst(e, asmamd64.OperationJumpIfLessOrEqualSigned, prefix+"_sb_clear_done")
+	inst(e, asmamd64.OperationLoadEffectiveAddress64Bits, "(CX)(CX*2), CX")
+	inst(e, asmamd64.OperationMove64Bits, "CTX_ARENA_SLICEBYTE_SLAB(R15), AX")
+	inst(e, asmamd64.OperationLoadEffectiveAddress64Bits, "(AX)(CX*8), AX")
+	e.Label(prefix + "_sb_clear_loop")
+	inst(e, asmamd64.OperationMove64Bits, "$0, (AX)")
+	inst(e, asmamd64.OperationMove64Bits, "$0, 8(AX)")
+	inst(e, asmamd64.OperationMove64Bits, "$0, 16(AX)")
+	inst(e, asmamd64.OperationAdd64Bits, "$24, AX")
+	inst(e, asmamd64.OperationDecrement64Bits, "SI")
+	inst(e, asmamd64.OperationJumpIfNotZero, prefix+"_sb_clear_loop")
+	e.Label(prefix + "_sb_clear_done")
 	e.Blank()
 }
 
@@ -1102,9 +1161,8 @@ func (*amd64InlineCallOps) emitReturnInlineCopyUnsignedIntegerReturn(e *asmgen.E
 	e.Blank()
 }
 
-// emitReturnInlineClearStringArena zeroes out string arena entries allocated by the
-// callee so the GC does not see stale string pointers, then restores all arena indices
-// from the callee frame's arenaSave block.
+// emitReturnInlineClearStringArena clears the callee's string slots and restores arena
+// indices.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 // Takes prefix (string) which selects the label namespace.
@@ -1134,6 +1192,7 @@ func (*amd64InlineCallOps) emitReturnInlineClearStringArena(e *asmgen.Emitter, p
 	e.Blank()
 
 	e.Label(prefix + "_str_clear_done")
+	emitReturnInlineClearByteSliceArena(e, prefix)
 	inst(e, asmamd64.OperationMove64Bits, "(CF_ARENA_SAVE+0)(DI), AX")
 	inst(e, asmamd64.OperationMove64Bits, "AX, CTX_ARENA_INT_IDX(R15)")
 	inst(e, asmamd64.OperationMove64Bits, "(CF_ARENA_SAVE+8)(DI), AX")
@@ -1225,8 +1284,7 @@ func (*amd64InlineCallOps) emitReturnInlineFallbackPath(e *asmgen.Emitter, prefi
 	inst(e, asmamd64.OperationReturn, "")
 }
 
-// emitReturnVoidInlineGuardChecks emits the eligibility checks for the inline void return
-// path, verifying the frame is not the base frame and no defers have been pushed.
+// emitReturnVoidInlineGuardChecks emits the checks for the inline void return path.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 func (*amd64InlineCallOps) emitReturnVoidInlineGuardChecks(e *asmgen.Emitter) {
@@ -1255,6 +1313,7 @@ func (*amd64InlineCallOps) emitReturnVoidInlineGuardChecks(e *asmgen.Emitter) {
 	e.Label("rvi_no_simple_defer")
 	e.Blank()
 	emitReturnInlineFrameOwnershipGuards(e, "DI", "rvi_fallback")
+	emitReturnInlineByteSliceBarrierGuard(e, returnValueInlineLabelPrefix, "rvi_fallback")
 
 	inst(e, asmamd64.OperationLoadEffectiveAddress64Bits, "-1(SI), R13")
 	inst(e, asmamd64.OperationMove64Bits, "$CALLFRAME_SIZE, CX")

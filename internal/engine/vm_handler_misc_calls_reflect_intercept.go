@@ -21,6 +21,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"iter"
 	"reflect"
 	"strings"
 
@@ -84,8 +85,10 @@ func tryInterceptPipitReflectTypeMethod(vm *VM, registers *Registers, site *prog
 		return interceptReflectTypePkgPath(registers, site, rt)
 	case "String":
 		return interceptReflectTypeString(registers, site, rt)
-	case "NumMethod", "Method", "MethodByName":
+	case "NumMethod", "Method", "MethodByName", "Implements", "Methods":
 		return interceptReflectTypeMethods(vm, registers, site, rt, methodName)
+	case reflectFieldsMethod, reflectFieldByIndexMethod:
+		return interceptReflectTypeFieldRoutes(vm, registers, site, rt, methodName)
 	}
 	return opContinue, false
 }
@@ -114,8 +117,8 @@ func interceptReflectTypeNumField(registers *Registers, site *program.CallSite, 
 
 // interceptReflectTypeField handles Field(i) on a pipit struct.
 //
-// Bounds-checks the index against the user-visible field count and raises an interpreted
-// panic when out of range.
+// Bounds-checks the index against the user-visible field count and raises the panic
+// reflect.Type.Field raises for an index past the last field.
 //
 // Takes vm (*VM) which owns the dispatch arena.
 // Takes registers (*Registers) which receives the call result.
@@ -141,7 +144,7 @@ func interceptReflectTypeField(vm *VM, registers *Registers, site *program.CallS
 	}
 	i := int(indexValue.Int())
 	if i < 0 || i >= userFieldCount {
-		return raiseNativePanicAsInterpreted(vm, "reflect: Field index out of range"), true
+		return raiseNativePanicAsInterpreted(vm, reflectTypeFieldIndexOutOfBounds), true
 	}
 	storeReflectResults(registers, site.Returns, []reflect.Value{reflect.ValueOf(restorePipitStructField(rt.Field(i)))})
 	return opContinue, true
@@ -232,8 +235,8 @@ func interceptReflectTypePkgPath(registers *Registers, site *program.CallSite, r
 // Returns OpResult which indicates the next execution step.
 // Returns bool which is true when the call was handled.
 func interceptReflectTypeName(registers *Registers, site *program.CallSite, rt reflect.Type) (OpResult, bool) {
-	if info, ok := typemodel.LookupNamedScalarPoolInfo(rt); ok {
-		storeReflectResults(registers, site.Returns, []reflect.Value{reflect.ValueOf(info.BareName)})
+	if info, ok := typemodel.LookupNamedTypeInfo(rt); ok {
+		storeReflectResults(registers, site.Returns, []reflect.Value{reflect.ValueOf(info.Name)})
 		return opContinue, true
 	}
 	if rt.Name() != "" {
@@ -257,7 +260,7 @@ func interceptReflectTypeName(registers *Registers, site *program.CallSite, rt r
 // Returns OpResult which indicates the next execution step.
 // Returns bool which is true when the call was handled.
 func interceptReflectTypeString(registers *Registers, site *program.CallSite, rt reflect.Type) (OpResult, bool) {
-	if info, ok := typemodel.LookupNamedScalarPoolInfo(rt); ok {
+	if info, ok := typemodel.LookupNamedTypeInfo(rt); ok {
 		storeReflectResults(registers, site.Returns, []reflect.Value{reflect.ValueOf(info.QualifiedName)})
 		return opContinue, true
 	}
@@ -551,6 +554,9 @@ func tryInterceptPipitReflectValueMethod(vm *VM, registers *Registers, site *pro
 	if methodName == reflectFieldByNameMethod && hasRenamedEmbeddedField(inner.Type()) {
 		return interceptPipitReflectFieldByName(vm, registers, site, inner)
 	}
+	if methodName == reflectFieldsMethod || methodName == reflectFieldByIndexMethod {
+		return interceptReflectValueFieldRoutes(vm, registers, site, inner, methodName)
+	}
 	typeName := pipitReflectValueTypeName(vm, inner)
 	if typeName == "" {
 		return opContinue, false
@@ -561,7 +567,11 @@ func tryInterceptPipitReflectValueMethod(vm *VM, registers *Registers, site *pro
 	case "Method":
 		return interceptReflectValueMethodIndex(vm, registers, site, inner, typeName)
 	case "NumMethod":
-		storeReflectResults(registers, site.Returns, []reflect.Value{reflect.ValueOf(len(pipitMethodSet(vm, typeName, inner.Kind() == reflect.Pointer)))})
+		storeReflectResults(registers, site.Returns, []reflect.Value{reflect.ValueOf(len(pipitReceiverMethodSet(vm, typeName, inner.Type())))})
+		return opContinue, true
+	case "Methods":
+		set := pipitReceiverMethodSet(vm, typeName, inner.Type())
+		storeReflectResults(registers, site.Returns, []reflect.Value{reflect.ValueOf(pipitReflectValueMethods(vm, inner, set))})
 		return opContinue, true
 	case "NumField":
 		return interceptPipitReflectNumField(registers, site, inner)
@@ -713,7 +723,14 @@ func interceptPipitReflectMethodByName(vm *VM, registers *Registers, site *progr
 	if !nameArgument.IsValid() || nameArgument.Kind() != reflect.String {
 		return opContinue, false
 	}
-	callable, found := buildPipitBoundMethodCallable(vm, inner, typeName, nameArgument.String())
+	callable, found, err := buildPipitBoundMethodCallable(vm, inner, typeName, nameArgument.String())
+	if err != nil {
+		vm.evalError = err
+		return opPanicError, true
+	}
+	if !found {
+		callable, found = promotedBoundMethod(vm, inner, typeName, nameArgument.String())
+	}
 	if !found {
 		storeReflectResults(registers, site.Returns, []reflect.Value{reflect.ValueOf(reflect.Value{})})
 		return opContinue, true
@@ -818,10 +835,10 @@ func pipitReflectValueTypeName(vm *VM, inner reflect.Value) string {
 
 // tryPipitReflectValueMethodGet handles the method-VALUE selector.
 //
-// Handles isa.SubOpGetMethod / isa.SubOpGetMethod for `reflect.Value` receivers whose
-// wrapped value is a pipit type. Native MethodByName / NumMethod cannot see pipit's
-// method set (it lives in the VM method table), so produces a native Go func value that
-// handleCallNative invokes.
+// Handles isa.SubOpBindMethodByName / isa.SubOpBindMethodByName for `reflect.Value`
+// receivers whose wrapped value is a pipit type. Native MethodByName / NumMethod cannot
+// see pipit's method set (it lives in the VM method table), so produces a native Go func
+// value that handleCallNative invokes.
 //
 // For `v.MethodByName("Add")` stores a `func(string) reflect.Value` that, given the
 // method name, returns a callable reflect.Value bound to the pipit method via
@@ -836,8 +853,8 @@ func pipitReflectValueTypeName(vm *VM, inner reflect.Value) string {
 // Takes methodName (string) which is the reflect.Value method being selected
 // (MethodByName / Method / NumMethod).
 //
-// Returns bool which is true when the selector was handled; false to fall through to
-// native reflect.Value method dispatch.
+// Returns bool which is true when the selector was handled. A false result falls through
+// to native reflect.Value method dispatch.
 func tryPipitReflectValueMethodGet(vm *VM, registers *Registers, destinationRegister uint8, receiverValue reflect.Value, methodName string) bool {
 	if !receiverValue.CanInterface() {
 		return false
@@ -852,6 +869,9 @@ func tryPipitReflectValueMethodGet(vm *VM, registers *Registers, destinationRegi
 
 	if methodName == reflectFieldMethod && hasRenamedEmbeddedField(inner.Type()) {
 		return installPipitReflectFieldOverride(registers, destinationRegister, inner)
+	}
+	if installReflectValueFieldRouteOverride(registers, destinationRegister, inner, methodName) {
+		return true
 	}
 	typeName := pipitReflectValueTypeName(vm, inner)
 	if typeName == "" {
@@ -877,16 +897,21 @@ func tryPipitReflectValueMethodGet(vm *VM, registers *Registers, destinationRegi
 func installPipitReflectMethodOverride(vm *VM, registers *Registers, destinationRegister uint8, inner reflect.Value, typeName, methodName string) bool {
 	switch methodName {
 	case "MethodByName":
+		vm.exportGuestCode()
 		registers.General[destinationRegister] = reflect.ValueOf(func(name string) reflect.Value {
-			callable, found := buildPipitBoundMethodCallable(vm, inner, typeName, name)
+			callable, found, err := buildPipitBoundMethodCallable(vm, inner, typeName, name)
+			if err != nil {
+				panic(err)
+			}
 			if !found {
-				return reflect.Value{}
+				callable, _ = promotedBoundMethod(vm, inner, typeName, name)
 			}
 			return callable
 		})
 		return true
 	case "Method":
-		set := pipitMethodSet(vm, typeName, inner.Kind() == reflect.Pointer)
+		set := pipitReceiverMethodSet(vm, typeName, inner.Type())
+		vm.exportGuestCode()
 		registers.General[destinationRegister] = reflect.ValueOf(func(index int) reflect.Value {
 			if index < 0 || index >= len(set) {
 				panic(reflectMethodOutOfRange)
@@ -895,8 +920,13 @@ func installPipitReflectMethodOverride(vm *VM, registers *Registers, destination
 		})
 		return true
 	case "NumMethod":
-		count := len(pipitMethodSet(vm, typeName, inner.Kind() == reflect.Pointer))
+		count := len(pipitReceiverMethodSet(vm, typeName, inner.Type()))
 		registers.General[destinationRegister] = reflect.ValueOf(func() int { return count })
+		return true
+	case "Methods":
+		set := pipitReceiverMethodSet(vm, typeName, inner.Type())
+		vm.exportGuestCode()
+		registers.General[destinationRegister] = reflect.ValueOf(func() iter.Seq2[reflect.Method, reflect.Value] { return pipitReflectValueMethods(vm, inner, set) })
 		return true
 	case "NumField":
 		return installPipitReflectNumFieldOverride(registers, destinationRegister, inner)
@@ -992,7 +1022,27 @@ func safeMethodByName(receiverValue reflect.Value, methodName string) (method re
 	if !receiverValue.IsValid() {
 		return reflect.Value{}, errors.New("invalid receiver")
 	}
-	return receiverValue.MethodByName(methodName), nil
+	return methodByNameCached(receiverValue, methodName), nil
+}
+
+// methodByNameCached is receiverValue.MethodByName(methodName) with the method's index
+// cached in processMethodIndexes.
+//
+// Takes receiverValue (reflect.Value) which is the valid receiver.
+// Takes methodName (string) which is the method name.
+//
+// Returns reflect.Value which is the bound method, or the zero Value when there is none.
+func methodByNameCached(receiverValue reflect.Value, methodName string) reflect.Value {
+	switch receiverValue.Kind() {
+	case reflect.Interface, reflect.Func:
+		return receiverValue.MethodByName(methodName)
+	default:
+	}
+	index, ok := processMethodIndex(methodCacheKey{typ: receiverValue.Type(), Name: methodName})
+	if !ok {
+		return reflect.Value{}
+	}
+	return receiverValue.Method(index)
 }
 
 // pipitStructTypeForValue returns the underlying struct reflect.Type.
@@ -1019,10 +1069,9 @@ func pipitStructTypeForValue(v reflect.Value) (reflect.Type, bool) {
 
 // buildPipitBoundMethodCallable synthesises a pipit-bound callable.
 //
-// Produces a callable reflect.Value for a pipit method bound to receiver, so
-// reflect.Value.MethodByName followed by .Call works on pipit types. The returned func
-// has interface-typed parameters (so exact-typed reflect args are accepted without an
-// assignability panic) and dispatches into the interpreter through boundMethodVM.
+// The returned func has interface-typed parameters (so exact-typed reflect args are
+// accepted without an assignability panic) and dispatches into the interpreter through
+// boundMethodVM.
 //
 // Takes vm (*VM) which provides the function table and dispatch.
 // Takes receiver (reflect.Value) which is the bound pipit value.
@@ -1030,21 +1079,51 @@ func pipitStructTypeForValue(v reflect.Value) (reflect.Type, bool) {
 // Takes methodName (string) which is the method to resolve.
 //
 // Returns reflect.Value which is the callable on success.
-// Returns bool which is true when the method exists; false and the zero Value otherwise.
-func buildPipitBoundMethodCallable(vm *VM, receiver reflect.Value, typeName, methodName string) (reflect.Value, bool) {
+// Returns bool which is true when the method exists.
+// Returns error which wraps fault.ErrNoMethodBodyForReceiver when the method exists but
+// no body was compiled for the receiver's type arguments.
+func buildPipitBoundMethodCallable(vm *VM, receiver reflect.Value, typeName, methodName string) (reflect.Value, bool, error) {
 	callee, methodRoot, ok := resolvePipitMethodCallee(vm, typeName, methodName)
 	if !ok {
-		return reflect.Value{}, false
+		return reflect.Value{}, false, nil
+	}
+	callable, err := pipitBoundMethodCallable(vm, receiver, callee, methodRoot)
+	if err != nil {
+		return reflect.Value{}, true, err
+	}
+	return callable, true, nil
+}
+
+// pipitBoundMethodCallable synthesises the callable buildPipitBoundMethodCallable
+// describes for a callee already resolved.
+//
+// Takes vm (*VM) which provides the function table and dispatch.
+// Takes receiver (reflect.Value) which is the bound pipit value.
+// Takes callee (*program.CompiledFunction) which is the method's body.
+// Takes methodRoot (*program.CompiledFunction) which owns callee, nil for this VM's own.
+//
+// Returns reflect.Value which is the callable.
+// Returns error which wraps fault.ErrNoMethodBodyForReceiver when no body was compiled
+// for the receiver's type arguments, which a direct call raises too.
+func pipitBoundMethodCallable(vm *VM, receiver reflect.Value, callee, methodRoot *program.CompiledFunction) (reflect.Value, error) {
+	owner := methodRoot
+	if owner == nil {
+		owner = vm.rootFunction
+	}
+	callee, err := receiverMethodBody(owner, receiver, callee)
+	if err != nil {
+		return reflect.Value{}, err
 	}
 	inTypes, outTypes := pipitMethodInOutTypes(callee)
 	functionType := reflect.FuncOf(callee.VariadicSafeInTypes(inTypes), outTypes, callee.IsVariadic)
+	vm.exportGuestCode()
 	callable := reflect.MakeFunc(functionType, func(arguments []reflect.Value) []reflect.Value {
 		bound := newCrossPackageBoundMethod(vm, methodRoot, callee)
 		boundReceiver := receiverValueFor(callee, receiver)
 		results := bound.invoke(boundReceiver, unwrapInterfaceArguments(arguments), identityArg)
 		return shapeBoundMethodResults(results, outTypes)
 	})
-	return callable, true
+	return callable, nil
 }
 
 // resolvePipitMethodCallee finds a pipit method's CompiledFunction.

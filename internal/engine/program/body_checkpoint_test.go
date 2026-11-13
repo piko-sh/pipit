@@ -37,23 +37,25 @@ var checkpointRewoundFields = []string{
 	"ResultReflectTypes", "IntConstIndex", "FloatConstIndex", "StringConstIndex",
 	"UintConstIndex", "ComplexConstIndex", "TypeRefIndex", "typeRefMethodsIndex",
 	"FieldStoreArenaSafePCs", "ArenaSafeAllocPCs", "InPlaceHeaderReusePCs", "PeepholeProvenance",
-	"GetMethodReceiverTypeNames", "DebugSourceMap", "DebugVarTable", "DebugEmitHook", "AliasInfo",
+	"LocalContainerAllocPCs", "LocalContainerStorePCs",
+	"BindMethodByNameReceiverTypeNames", "DebugSourceMap", "DebugVarTable", "DebugEmitHook", "AliasInfo",
 	"NumRegisters", "EmittedInlineBlocker", "CachedInlineRefusal", "HasRecover",
 	"InspectsCallStack", "JumpRangeExceeded",
 }
 
 var checkpointUntouchedFields = []string{
 	"VariableInitFunction", "GlobalBases", "GenericTypeParams", "GenericRecvTypeParams",
-	"ASMCallInfoTables", "TypeNames", "GenericDeclaration", "methodTable", "SpecialisationOrigin",
-	"Specialisations", "LayoutTypeWords", "MarshalShadowMemo", "SourceFile", "Name", "Functions",
+	"ASMCallInfoTables", "TypeNames", "GenericDeclaration", "methodTable", "receiverMethods",
+	"receiverBodies", "receiverMethodOwners", "SpecialisationOrigin",
+	"Specialisations", "LayoutTypeWords", "MarshalShadowMemo", "marshalShadowCount", "SourceFile", "Name", "Functions",
 	"PrecomputedAllocCounts", "maxConstantPoolSize", "maxSpecialisations", "ASMCallInfoBase",
 	"StructLiteralTableBase", "StructLiteralTableLength", "maxMethods", "EvalChildALayout",
 	"TinyLeafLayout", "EvalChildBLayout", "EvalChildCLayout", "EvalShapeOnce",
 	"ASMCallInfoTablesOnce", "ASMCallInfoBases", "LayoutTypeWordsOnce", "StructLiteralTableOnce",
-	"cachedMaxCallDepth", "observedCallDepth", "NonZeroBankMask", "NonEmptyConstantMask",
+	"cachedMaxCallDepth", "observedCallDepth", "optimisticMakePlaced", "optimisticMakeVetoed", "hostTopLevelCalls", "licenceRejected", "finaliserUse", "conversionArenaVetoes", "NonZeroBankMask", "NonEmptyConstantMask",
 	"EvalSiteC", "EvalSiteB", "EvalSiteA", "RequiresSpecialisation", "HasReceiver", "TinyLeafShape",
 	"HeapMutationClass", "EvalShape", "IsVariadic", "IsPointerReceiver", "IsGenericFunction",
-	"InRecursionCycle", "PrecomputedAllocCountsValid", "MethodSignatures", "SignatureReflectType",
+	"InRecursionCycle", "CannotObserveCallers", "PrecomputedAllocCountsValid", "MethodSignatures", "SignatureReflectType",
 	"VariadicSliceType", "MethodReceiverReflectType", "RuntimeName",
 }
 
@@ -79,7 +81,7 @@ func TestBodyCheckpointRestoresTheFunction(t *testing.T) {
 	t.Parallel()
 
 	function := NewNamedFunction("f")
-	Emit(function, isa.OpNop, 0, 0, 0)
+	Emit(function, isa.OpNoOperation, 0, 0, 0)
 	first, err := AddIntConstant(function, 7)
 	require.NoError(t, err)
 	stringType := reflect.TypeFor[string]()
@@ -88,7 +90,7 @@ func TestBodyCheckpointRestoresTheFunction(t *testing.T) {
 	function.ParameterRegisters = append(function.ParameterRegisters, 0)
 	checkpoint := CaptureBodyCheckpoint(function)
 
-	Emit(function, isa.OpNop, 1, 2, 3)
+	Emit(function, isa.OpNoOperation, 1, 2, 3)
 	_, err = AddIntConstant(function, 9)
 	require.NoError(t, err)
 	_, err = AddTypeRefWithMethods(function, reflect.TypeFor[int](), []string{"Len"})
@@ -97,7 +99,7 @@ func TestBodyCheckpointRestoresTheFunction(t *testing.T) {
 	require.NoError(t, err)
 	function.ParameterRegisters = append(function.ParameterRegisters, 4)
 	function.NamedResultNames = append(function.NamedResultNames, "r")
-	function.GetMethodReceiverTypeNames = map[uint32]string{1: "T"}
+	function.BindMethodByNameReceiverTypeNames = map[uint32]string{1: "T"}
 	function.EmittedInlineBlocker = InlineRefusal(1)
 
 	RestoreBodyCheckpoint(function, &checkpoint)
@@ -107,7 +109,7 @@ func TestBodyCheckpointRestoresTheFunction(t *testing.T) {
 	require.Empty(t, function.CallSites)
 	require.Equal(t, []uint8{0}, function.ParameterRegisters)
 	require.Empty(t, function.NamedResultNames)
-	require.Empty(t, function.GetMethodReceiverTypeNames)
+	require.Empty(t, function.BindMethodByNameReceiverTypeNames)
 	require.Zero(t, function.EmittedInlineBlocker)
 
 	again, err := AddIntConstant(function, 7)

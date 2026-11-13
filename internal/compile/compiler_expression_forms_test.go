@@ -247,12 +247,12 @@ func TestComparingUnsignedValuesUsesTheUnsignedComparisons(t *testing.T) {
 		source string
 		want   isa.Opcode
 	}{
-		{name: "less than", source: "func f(a, b uint64) bool { return a < b }", want: isa.OpLtUint},
-		{name: "less than or equal", source: "func f(a, b uint64) bool { return a <= b }", want: isa.OpLeUint},
-		{name: "greater than", source: "func f(a, b uint64) bool { return a > b }", want: isa.OpGtUint},
-		{name: "greater than or equal", source: "func f(a, b uint64) bool { return a >= b }", want: isa.OpGeUint},
-		{name: "equal", source: "func f(a, b uint64) bool { return a == b }", want: isa.OpEqUint},
-		{name: "not equal", source: "func f(a, b uint64) bool { return a != b }", want: isa.OpNeUint},
+		{name: "less than", source: "func f(a, b uint64) bool { return a < b }", want: isa.OpLessThanUint64},
+		{name: "less than or equal", source: "func f(a, b uint64) bool { return a <= b }", want: isa.OpLessOrEqualUint64},
+		{name: "greater than", source: "func f(a, b uint64) bool { return a > b }", want: isa.OpGreaterThanUint64},
+		{name: "greater than or equal", source: "func f(a, b uint64) bool { return a >= b }", want: isa.OpGreaterOrEqualUint64},
+		{name: "equal", source: "func f(a, b uint64) bool { return a == b }", want: isa.OpEqualUint64},
+		{name: "not equal", source: "func f(a, b uint64) bool { return a != b }", want: isa.OpNotEqualUint64},
 	}
 
 	for _, tt := range tests {

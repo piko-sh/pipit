@@ -25,38 +25,38 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerSubOpTier2IncInt increments ints[C] by one (tier-2 in-place sub-op).
-TEXT ·handlerSubOpTier2IncInt(SB), NOSPLIT|NOFRAME, $0
+// handlerIncrementInt64 increments ints[C] by one (tier-2 in-place sub-op).
+TEXT ·handlerIncrementInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $24, AX
 	INCQ    (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpTier2DecInt decrements ints[C] by one (tier-2 in-place sub-op).
-TEXT ·handlerSubOpTier2DecInt(SB), NOSPLIT|NOFRAME, $0
+// handlerDecrementInt64 decrements ints[C] by one (tier-2 in-place sub-op).
+TEXT ·handlerDecrementInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $24, AX
 	DECQ    (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpTier2IncUint increments uints[C] by one (tier-2 in-place sub-op).
-TEXT ·handlerSubOpTier2IncUint(SB), NOSPLIT|NOFRAME, $0
+// handlerIncrementUint64 increments uints[C] by one (tier-2 in-place sub-op).
+TEXT ·handlerIncrementUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $24, AX
 	MOVQ    CTX_UINTS_BASE(R15), BX
 	INCQ    (BX)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpTier2DecUint decrements uints[C] by one (tier-2 in-place sub-op).
-TEXT ·handlerSubOpTier2DecUint(SB), NOSPLIT|NOFRAME, $0
+// handlerDecrementUint64 decrements uints[C] by one (tier-2 in-place sub-op).
+TEXT ·handlerDecrementUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $24, AX
 	MOVQ    CTX_UINTS_BASE(R15), BX
 	DECQ    (BX)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpTier2IncInt32 increments ints[C] by one with int32 wrap-around.
-TEXT ·handlerSubOpTier2IncInt32(SB), NOSPLIT|NOFRAME, $0
+// handlerIncrementInt32 increments ints[C] by one with int32 wrap-around.
+TEXT ·handlerIncrementInt32(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $24, AX
 	INCQ    (R8)(AX*8)
@@ -64,8 +64,8 @@ TEXT ·handlerSubOpTier2IncInt32(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpTier2DecInt32 decrements ints[C] by one with int32 wrap-around.
-TEXT ·handlerSubOpTier2DecInt32(SB), NOSPLIT|NOFRAME, $0
+// handlerDecrementInt32 decrements ints[C] by one with int32 wrap-around.
+TEXT ·handlerDecrementInt32(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $24, AX
 	DECQ    (R8)(AX*8)

@@ -20,8 +20,8 @@ package engine
 
 import "pipit.sh/pipit/internal/isa"
 
-// decodeSpillIndex reads the isa.OpExt instruction following a spill/reload opcode and
-// returns the register file index for the spill slot. It advances the program counter
+// decodeSpillIndex reads the isa.OpExtension instruction following a spill/reload opcode
+// and returns the register file index for the spill slot. It advances the program counter
 // past the extension.
 //
 // Takes frame (*CallFrame) which provides access to the instruction stream and program
@@ -43,9 +43,9 @@ func decodeSpillIndex(frame *CallFrame) int {
 // Returns the number of slots in the selected bank.
 func spillBankSize(registers *Registers, kind isa.RegisterKind) int {
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return len(registers.Ints)
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return len(registers.Floats)
 	case isa.RegisterString:
 		return len(registers.Strings)
@@ -53,9 +53,9 @@ func spillBankSize(registers *Registers, kind isa.RegisterKind) int {
 		return len(registers.General)
 	case isa.RegisterBool:
 		return len(registers.Bools)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return len(registers.Uints)
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return len(registers.Complex)
 	default:
 		return 0
@@ -82,8 +82,8 @@ func checkSpillIndex(vm *VM, frame *CallFrame, registers *Registers, index int, 
 	return true
 }
 
-// handleSpill handles the isa.SubOpSpill instruction by copying a register value into the
-// spill area of the register file.
+// handleSpillBody handles the isa.SubOpSpill instruction by copying a register value into
+// the spill area of the register file.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which provides the instruction stream.
@@ -91,16 +91,16 @@ func checkSpillIndex(vm *VM, frame *CallFrame, registers *Registers, index int, 
 // Takes instruction (instruction) which encodes the source register and bank kind.
 //
 // Returns OpResult indicating the next execution step.
-func handleSpill(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSpillBody(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	index := decodeSpillIndex(frame)
 
 	if !checkSpillIndex(vm, frame, registers, index, isa.RegisterKind(instruction.B)) {
 		return opPanicError
 	}
 	switch isa.RegisterKind(instruction.B) {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		registers.Ints[index] = registers.Ints[instruction.A]
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.Floats[index] = registers.Floats[instruction.A]
 	case isa.RegisterString:
 		registers.Strings[index] = registers.Strings[instruction.A]
@@ -108,17 +108,17 @@ func handleSpill(vm *VM, frame *CallFrame, registers *Registers, instruction isa
 		registers.General[index] = registers.General[instruction.A]
 	case isa.RegisterBool:
 		registers.Bools[index] = registers.Bools[instruction.A]
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[index] = registers.Uints[instruction.A]
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.Complex[index] = registers.Complex[instruction.A]
 	default:
 	}
 	return opContinue
 }
 
-// handleReload handles the isa.SubOpReload instruction by copying a value from the spill
-// area back into a directly-addressable register.
+// handleReloadBody handles the isa.SubOpReload instruction by copying a value from the
+// spill area back into a directly-addressable register.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which provides the instruction stream.
@@ -126,16 +126,16 @@ func handleSpill(vm *VM, frame *CallFrame, registers *Registers, instruction isa
 // Takes instruction (instruction) which encodes the operand slots and bank kind.
 //
 // Returns OpResult indicating the next execution step.
-func handleReload(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleReloadBody(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	index := decodeSpillIndex(frame)
 
 	if !checkSpillIndex(vm, frame, registers, index, isa.RegisterKind(instruction.B)) {
 		return opPanicError
 	}
 	switch isa.RegisterKind(instruction.B) {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		registers.Ints[instruction.A] = registers.Ints[index]
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.Floats[instruction.A] = registers.Floats[index]
 	case isa.RegisterString:
 		registers.Strings[instruction.A] = registers.Strings[index]
@@ -143,9 +143,9 @@ func handleReload(vm *VM, frame *CallFrame, registers *Registers, instruction is
 		registers.General[instruction.A] = registers.General[index]
 	case isa.RegisterBool:
 		registers.Bools[instruction.A] = registers.Bools[index]
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[instruction.A] = registers.Uints[index]
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.Complex[instruction.A] = registers.Complex[index]
 	default:
 	}

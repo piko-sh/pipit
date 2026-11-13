@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxbroker
 
@@ -43,7 +43,7 @@ type supervisedFilesystemTransport interface {
 	// Close cancels, reaps and attempts cleanup of the process.
 	//
 	// Returns error when cancellation or cleanup fails.
-	Close() error
+	Close(ctx context.Context) error
 }
 
 // FilesystemClient owns host-side authorisation and one dedicated broker channel. The
@@ -91,36 +91,36 @@ func (client *FilesystemClient) Execute(ctx context.Context, payload json.RawMes
 	}
 	defer client.active.Store(false)
 	if ctx == nil {
-		return FilesystemResponse{}, errors.Join(sandboxwire.ErrProtocol, client.abort())
+		return FilesystemResponse{}, errors.Join(sandboxwire.ErrProtocol, client.abortWithoutContext())
 	}
 	finish := client.watchCancellation(ctx)
 	defer func() {
 		err = errors.Join(err, finish())
 		if err != nil {
-			err = errors.Join(err, client.abort())
+			err = errors.Join(err, client.abort(ctx))
 			response = FilesystemResponse{Code: "", Data: nil, Entries: nil, Written: 0, Skipped: 0}
 		}
 	}()
 	if err := ctx.Err(); err != nil {
 		return FilesystemResponse{}, err
 	}
-	return client.exchange(payload)
+	return client.exchange(ctx, payload)
 }
 
 // Close prevents admission and reaps the dedicated process, retaining retry ownership.
 // Idle sessions receive a bounded graceful close; active sessions are cancelled.
 //
 // Returns any shutdown, execution or cleanup error.
-func (client *FilesystemClient) Close() error {
+func (client *FilesystemClient) Close(ctx context.Context) error {
 	if client == nil {
 		return nil
 	}
 	if client.closed.Swap(true) || !client.active.CompareAndSwap(false, true) {
-		return client.abort()
+		return client.abort(ctx)
 	}
 	defer client.active.Store(false)
 	client.budget.Close()
-	return client.shutdown(true)
+	return client.shutdown(ctx, true)
 }
 
 // handshake accepts only the expected broker profile and exact empty Ready payload.
@@ -170,7 +170,7 @@ func (client *FilesystemClient) handshake() error {
 // protocol admission.
 //
 // Returns validated output only after accounting and enforcing the next deadline.
-func (client *FilesystemClient) exchange(payload json.RawMessage) (response FilesystemResponse, err error) {
+func (client *FilesystemClient) exchange(ctx context.Context, payload json.RawMessage) (response FilesystemResponse, err error) {
 	if client.closed.Load() {
 		return FilesystemResponse{}, ErrClosed
 	}
@@ -200,7 +200,7 @@ func (client *FilesystemClient) exchange(payload json.RawMessage) (response File
 	if client.budget.calls == client.budget.limits.Calls {
 		client.closed.Store(true)
 		client.budget.Close()
-		if err := client.shutdown(client.budget.limits.Calls < defaultCalls); err != nil {
+		if err := client.shutdown(ctx, client.budget.limits.Calls < defaultCalls); err != nil {
 			return FilesystemResponse{}, err
 		}
 	} else {
@@ -246,25 +246,35 @@ func (client *FilesystemClient) receive() (sandboxwire.Message, error) {
 // exit.
 //
 // Returns errors without suppressing resource cleanup failures.
-func (client *FilesystemClient) shutdown(graceful bool) error {
+func (client *FilesystemClient) shutdown(ctx context.Context, graceful bool) error {
 	if graceful {
 		if err := client.stream.SetDeadline(time.Now().Add(brokerOperationTimeout)); err != nil {
-			return errors.Join(err, client.stream.Close())
+			return errors.Join(err, closeForCleanup(ctx, client.stream))
 		}
 		if err := client.send(sandboxwire.Message{Kind: sandboxwire.Close, ID: 0, Payload: json.RawMessage("{}")}); err != nil {
-			return errors.Join(err, client.stream.Close())
+			return errors.Join(err, closeForCleanup(ctx, client.stream))
 		}
 	}
-	return errors.Join(client.stream.Wait(), client.stream.Close())
+	return errors.Join(client.stream.Wait(), closeForCleanup(ctx, client.stream))
 }
 
 // abort closes authority and cancels the process without concurrent protocol writes.
 //
 // Returns execution and cleanup errors, allowing the retained owner to retry.
-func (client *FilesystemClient) abort() error {
+func (client *FilesystemClient) abort(ctx context.Context) error {
 	client.closed.Store(true)
 	client.budget.Close()
-	return client.stream.Close()
+	return closeForCleanup(ctx, client.stream)
+}
+
+// abortWithoutContext aborts for a caller that passed no context, which is a programming
+// error, under a bounded background context.
+//
+// Returns execution and cleanup errors.
+func (client *FilesystemClient) abortWithoutContext() error {
+	client.closed.Store(true)
+	client.budget.Close()
+	return closeWithoutContext(client.stream)
 }
 
 // watchCancellation joins cancellation cleanup before an operation returns.
@@ -274,7 +284,7 @@ func (client *FilesystemClient) watchCancellation(ctx context.Context) func() er
 	done := make(chan struct{})
 	var cleanupErr error
 	stop := context.AfterFunc(ctx, func() {
-		cleanupErr = client.abort()
+		cleanupErr = client.abort(ctx)
 		close(done)
 	})
 	return func() error {
@@ -294,17 +304,40 @@ func (client *FilesystemClient) watchCancellation(ctx context.Context) func() er
 //
 // Returns a client, or an error after cancelling and reaping the supplied process.
 func OpenFilesystemClient(ctx context.Context, stream supervisedFilesystemTransport, grants []RootGrant, limits FilesystemLimits) (*FilesystemClient, error) {
-	if ctx == nil || stream == nil {
-		if stream != nil {
-			return nil, errors.Join(sandboxwire.ErrProtocol, stream.Close())
-		}
+	if stream == nil {
 		return nil, sandboxwire.ErrProtocol
+	}
+	if ctx == nil {
+		return nil, errors.Join(sandboxwire.ErrProtocol, closeWithoutContext(stream))
 	}
 	budget, err := NewFilesystemBudget(grants, limits)
 	if err != nil {
-		return nil, errors.Join(err, stream.Close())
+		return nil, errors.Join(err, closeForCleanup(ctx, stream))
 	}
 	return openFilesystemClient(ctx, stream, budget, nil, nil)
+}
+
+// closeForCleanup closes stream after a failure under ctx, keeping ctx's values without
+// its cancellation and bounding the close (sandboxwire.CleanupContext).
+//
+// Takes stream (supervisedFilesystemTransport) which is closed.
+//
+// Returns error from the close.
+func closeForCleanup(ctx context.Context, stream supervisedFilesystemTransport) error {
+	cleanupCtx, cancel := sandboxwire.CleanupContext(ctx)
+	defer cancel()
+	return stream.Close(cleanupCtx)
+}
+
+// closeWithoutContext closes stream for a caller that passed no context, which is a
+// programming error, so the close has no context of its own to keep and runs under a
+// bounded background context.
+//
+// Takes stream (supervisedFilesystemTransport) which is closed.
+//
+// Returns error from the close.
+func closeWithoutContext(stream supervisedFilesystemTransport) error {
+	return closeForCleanup(context.Background(), stream)
 }
 
 // openFilesystemClient starts a host client with an already selected authority ledger.
@@ -320,7 +353,7 @@ func openFilesystemClient(ctx context.Context, stream supervisedFilesystemTransp
 ) (*FilesystemClient, error) {
 	connection, err := newFilesystemConnection(stream)
 	if err != nil {
-		return nil, errors.Join(err, stream.Close())
+		return nil, errors.Join(err, closeForCleanup(ctx, stream))
 	}
 	client := &FilesystemClient{
 		stream: stream, connection: connection, budget: budget, nextID: 1,
@@ -331,7 +364,7 @@ func openFilesystemClient(ctx context.Context, stream supervisedFilesystemTransp
 	err = client.handshake()
 	err = errors.Join(err, finish())
 	if err != nil {
-		return nil, errors.Join(err, client.abort())
+		return nil, errors.Join(err, client.abort(ctx))
 	}
 	return client, nil
 }

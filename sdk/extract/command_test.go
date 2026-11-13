@@ -32,16 +32,16 @@ import (
 
 var testConfig = Config{ToolName: "tool extract", DefaultManifest: "tool-symbols.yaml"}.withDefaults()
 
-func runTestCommand(arguments ...string) (int, string, string) {
+func runTestCommand(tb testing.TB, arguments ...string) (int, string, string) {
 	var stdout, stderr bytes.Buffer
-	code := RunCommand(context.Background(), arguments, &stdout, &stderr, testConfig)
+	code := RunCommand(tb.Context(), arguments, &stdout, &stderr, testConfig)
 	return code, stdout.String(), stderr.String()
 }
 
 func TestRunCommandNoSubcommandPrintsHelp(t *testing.T) {
 	t.Parallel()
 
-	code, stdout, stderr := runTestCommand()
+	code, stdout, stderr := runTestCommand(t)
 
 	require.Equal(t, 0, code, "help output should exit 0")
 	require.Empty(t, stderr, "no error output when showing help")
@@ -57,7 +57,7 @@ func TestRunCommandHelpFlagPrintsHelp(t *testing.T) {
 	for _, flag := range []string{"-h", "--help"} {
 		t.Run(strings.TrimLeft(flag, "-"), func(t *testing.T) {
 			t.Parallel()
-			code, stdout, _ := runTestCommand(flag)
+			code, stdout, _ := runTestCommand(t, flag)
 			require.Equal(t, 0, code)
 			require.Contains(t, stdout, "Subcommands:")
 		})
@@ -67,7 +67,7 @@ func TestRunCommandHelpFlagPrintsHelp(t *testing.T) {
 func TestRunCommandUnknownSubcommandFails(t *testing.T) {
 	t.Parallel()
 
-	code, _, stderr := runTestCommand("bogus")
+	code, _, stderr := runTestCommand(t, "bogus")
 
 	require.Equal(t, 1, code)
 	require.Contains(t, stderr, "Unknown subcommand: bogus")
@@ -80,7 +80,7 @@ func TestRunCommandSubcommandHelpNamesTheTool(t *testing.T) {
 	for _, name := range []string{"generate", "discover", "init", "check"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			code, stdout, _ := runTestCommand(name, "--help")
+			code, stdout, _ := runTestCommand(t, name, "--help")
 			require.Equal(t, 0, code)
 			require.Contains(t, stdout, "Usage: tool extract "+name)
 		})
@@ -91,7 +91,7 @@ func TestRunCommandDefaultsNameTheTool(t *testing.T) {
 	t.Parallel()
 
 	var stdout, stderr bytes.Buffer
-	code := RunCommand(context.Background(), []string{"generate", "--help"}, &stdout, &stderr, Config{})
+	code := RunCommand(t.Context(), []string{"generate", "--help"}, &stdout, &stderr, Config{})
 
 	require.Equal(t, 0, code)
 	require.Contains(t, stdout.String(), "Usage: "+DefaultTool+" generate")
@@ -101,7 +101,7 @@ func TestRunCommandDefaultsNameTheTool(t *testing.T) {
 func TestRunGenerateMissingManifestFails(t *testing.T) {
 	t.Parallel()
 
-	code, _, stderr := runTestCommand("generate", "--manifest", "/nonexistent/tool-symbols.yaml")
+	code, _, stderr := runTestCommand(t, "generate", "--manifest", "/nonexistent/tool-symbols.yaml")
 
 	require.Equal(t, 1, code)
 	require.Contains(t, stderr, "Error")
@@ -110,7 +110,7 @@ func TestRunGenerateMissingManifestFails(t *testing.T) {
 func TestRunGenerateRejectsUnknownEmit(t *testing.T) {
 	t.Parallel()
 
-	code, _, stderr := runTestCommand("generate", "--emit", "everything")
+	code, _, stderr := runTestCommand(t, "generate", "--emit", "everything")
 
 	require.Equal(t, 1, code)
 	require.Contains(t, stderr, "Unknown --emit value: everything")
@@ -128,7 +128,7 @@ func TestRunGenerateListPrintsTheSelection(t *testing.T) {
 
 	manifest := writeTestManifest(t, "package: symbols\noutput: symbols\npackages:\n  - crypto\n  - crypto/aes\n  - cryptobyte\n  - strings\n")
 
-	code, stdout, stderr := runTestCommand("generate", "--manifest", manifest, "--select", "crypto", "--list")
+	code, stdout, stderr := runTestCommand(t, "generate", "--manifest", manifest, "--select", "crypto", "--list")
 
 	require.Equal(t, 0, code, stderr)
 	require.Equal(t, "crypto\ncrypto/aes\n", stdout, "--select keeps a prefix and the paths below it, not a longer name")
@@ -139,7 +139,7 @@ func TestRunGenerateSelectMatchingNothingFails(t *testing.T) {
 
 	manifest := writeTestManifest(t, "package: symbols\noutput: symbols\npackages:\n  - strings\n")
 
-	code, _, stderr := runTestCommand("generate", "--manifest", manifest, "--select", "net", "--list")
+	code, _, stderr := runTestCommand(t, "generate", "--manifest", manifest, "--select", "net", "--list")
 
 	require.Equal(t, 1, code)
 	require.Contains(t, stderr, "matched no package")
@@ -151,7 +151,7 @@ func TestRunGenerateWritesStampedFiles(t *testing.T) {
 	output := filepath.Join(t.TempDir(), "out", "symbols")
 	manifest := writeTestManifest(t, "package: symbols\noutput: "+output+"\npackages:\n  - strings\n")
 
-	code, stdout, stderr := runTestCommand("generate", "--manifest", manifest)
+	code, stdout, stderr := runTestCommand(t, "generate", "--manifest", manifest)
 	require.Equal(t, 0, code, stderr)
 	require.Contains(t, stdout, "Done.")
 
@@ -173,7 +173,7 @@ func TestRunGenerateIndexOnlyWritesTheIndex(t *testing.T) {
 	output := filepath.Join(t.TempDir(), "index")
 	manifest := writeTestManifest(t, "package: index\noutput: "+output+"\npackages:\n  - strings\n  - bytes\n")
 
-	code, _, stderr := runTestCommand("generate", "--manifest", manifest, "--emit", "index")
+	code, _, stderr := runTestCommand(t, "generate", "--manifest", manifest, "--emit", "index")
 	require.Equal(t, 0, code, stderr)
 
 	entries, err := os.ReadDir(output)
@@ -188,12 +188,46 @@ func TestRunGenerateDryRunWritesNothing(t *testing.T) {
 	output := filepath.Join(t.TempDir(), "dry")
 	manifest := writeTestManifest(t, "package: symbols\noutput: "+output+"\npackages:\n  - strings\n")
 
-	code, stdout, stderr := runTestCommand("generate", "--manifest", manifest, "--dry-run")
+	code, stdout, stderr := runTestCommand(t, "generate", "--manifest", manifest, "--dry-run")
 	require.Equal(t, 0, code, stderr)
 	require.Contains(t, stdout, "Dry run complete")
 
 	_, err := os.Stat(output)
 	require.True(t, os.IsNotExist(err), "a dry run must not create the output directory")
+}
+
+func TestRunGenerateNamesThePackagesItExtracts(t *testing.T) {
+	t.Parallel()
+
+	output := filepath.Join(t.TempDir(), "dry")
+	manifest := writeTestManifest(t, "package: symbols\noutput: "+output+"\npackages:\n  - strings\n")
+	code, stdout, stderr := runTestCommand(t, "generate", "--manifest", manifest, "--dry-run")
+	require.Equal(t, 0, code, stderr)
+	require.Contains(t, stdout, "Extracting 1 packages...")
+
+	missing := writeTestManifest(t, "package: symbols\noutput: "+output+"\npackages:\n  - pipit.invalid/missing\n")
+	code, _, stderr = runTestCommand(t, "generate", "--manifest", missing, "--dry-run")
+	require.Equal(t, 1, code)
+	require.Contains(t, stderr, "Error extracting packages: ")
+}
+
+func TestTypesExportVariantFilesNamesThePackagesItLoads(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	ec := emitContext{manifest: &Manifest{Package: "test", TypesExportVariants: []string{"safe"}}}
+	_, err := typesExportVariantFiles(ctx, []ExtractedPackage{{ImportPath: "strings"}}, "safe", ec)
+	require.ErrorContains(t, err, "loading packages with -tags=safe: ")
+}
+
+func TestGenerateUsageDocumentsThePackagesKey(t *testing.T) {
+	t.Parallel()
+
+	code, stdout, _ := runTestCommand(t, "generate", "--help")
+	require.Equal(t, 0, code)
+	require.Contains(t, stdout, "specifying which packages to extract")
+	require.Contains(t, stdout, "\n  packages:\n")
 }
 
 func TestRunDiscoverIgnoresTheProjectModule(t *testing.T) {
@@ -208,7 +242,7 @@ func TestRunDiscoverIgnoresTheProjectModule(t *testing.T) {
 	config := testConfig
 	config.IgnoreProjectModule = true
 	var stdout, stderr bytes.Buffer
-	code := RunCommand(context.Background(), []string{"discover", "--root", root}, &stdout, &stderr, config)
+	code := RunCommand(t.Context(), []string{"discover", "--root", root}, &stdout, &stderr, config)
 
 	require.Equal(t, 0, code, stderr.String())
 	require.Equal(t, "expvar\n", stdout.String())
@@ -226,7 +260,7 @@ func TestRunCheckUsesTheProvidedSet(t *testing.T) {
 	config := testConfig
 	config.AlreadyProvided = func() []string { return []string{"fmt"} }
 	var stdout, stderr bytes.Buffer
-	code := RunCommand(context.Background(), []string{"check", "--root", root, "--manifest", manifest}, &stdout, &stderr, config)
+	code := RunCommand(t.Context(), []string{"check", "--root", root, "--manifest", manifest}, &stdout, &stderr, config)
 
 	require.Equal(t, 0, code, "a provided package is not missing from the manifest: %s", stderr.String())
 }

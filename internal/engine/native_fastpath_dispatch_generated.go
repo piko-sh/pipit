@@ -21,6 +21,10 @@
 package engine
 
 import (
+	"go/ast"
+	"go/types"
+	"reflect"
+
 	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
 )
@@ -31,7 +35,6 @@ func fpDispatchStringString(vm *VM, cached any, site *program.CallSite, register
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Strings[site.Returns[0].Register] = f(readStringArg(registers, site.Arguments[0]))
 }
 
@@ -41,7 +44,6 @@ func fpDispatchStringInt(vm *VM, cached any, site *program.CallSite, registers *
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Ints[site.Returns[0].Register] = int64(f(readStringArg(registers, site.Arguments[0])))
 }
 
@@ -51,7 +53,6 @@ func fpDispatchStringBool(vm *VM, cached any, site *program.CallSite, registers 
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Bools[site.Returns[0].Register] = f(readStringArg(registers, site.Arguments[0]))
 }
 
@@ -61,7 +62,6 @@ func fpDispatchStringRuneBool(vm *VM, cached any, site *program.CallSite, regist
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Bools[site.Returns[0].Register] = f(
 		readStringArg(registers, site.Arguments[0]),
 		safeconv.Int64ToInt32(readIntArg(registers, site.Arguments[1])),
@@ -74,7 +74,6 @@ func fpDispatchStringRuneInt(vm *VM, cached any, site *program.CallSite, registe
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Ints[site.Returns[0].Register] = int64(f(
 		readStringArg(registers, site.Arguments[0]),
 		safeconv.Int64ToInt32(readIntArg(registers, site.Arguments[1])),
@@ -87,7 +86,6 @@ func fpDispatchString2Bool(vm *VM, cached any, site *program.CallSite, registers
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Bools[site.Returns[0].Register] = f(
 		readStringArg(registers, site.Arguments[0]),
 		readStringArg(registers, site.Arguments[1]),
@@ -100,7 +98,6 @@ func fpDispatchString2String(vm *VM, cached any, site *program.CallSite, registe
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Strings[site.Returns[0].Register] = f(
 		readStringArg(registers, site.Arguments[0]),
 		readStringArg(registers, site.Arguments[1]),
@@ -113,7 +110,6 @@ func fpDispatchString2Int(vm *VM, cached any, site *program.CallSite, registers 
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Ints[site.Returns[0].Register] = int64(f(
 		readStringArg(registers, site.Arguments[0]),
 		readStringArg(registers, site.Arguments[1]),
@@ -126,7 +122,6 @@ func fpDispatchString3String(vm *VM, cached any, site *program.CallSite, registe
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Strings[site.Returns[0].Register] = f(
 		readStringArg(registers, site.Arguments[0]),
 		readStringArg(registers, site.Arguments[1]),
@@ -140,7 +135,6 @@ func fpDispatchIntString(vm *VM, cached any, site *program.CallSite, registers *
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Strings[site.Returns[0].Register] = f(int(readIntArg(registers, site.Arguments[0])))
 }
 
@@ -150,7 +144,6 @@ func fpDispatchIntInt(vm *VM, cached any, site *program.CallSite, registers *Reg
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Ints[site.Returns[0].Register] = int64(f(int(readIntArg(registers, site.Arguments[0]))))
 }
 
@@ -160,8 +153,43 @@ func fpDispatchIntBool(vm *VM, cached any, site *program.CallSite, registers *Re
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Bools[site.Returns[0].Register] = f(int(readIntArg(registers, site.Arguments[0])))
+}
+
+func fpDispatchIntInt16(vm *VM, cached any, site *program.CallSite, registers *Registers) {
+	f, ok := cached.(func(int) int16)
+	if !ok {
+		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
+		return
+	}
+	registers.Ints[site.Returns[0].Register] = int64(f(int(readIntArg(registers, site.Arguments[0]))))
+}
+
+func fpDispatchIntInt32(vm *VM, cached any, site *program.CallSite, registers *Registers) {
+	f, ok := cached.(func(int) int32)
+	if !ok {
+		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
+		return
+	}
+	registers.Ints[site.Returns[0].Register] = int64(f(int(readIntArg(registers, site.Arguments[0]))))
+}
+
+func fpDispatchIntUint8(vm *VM, cached any, site *program.CallSite, registers *Registers) {
+	f, ok := cached.(func(int) uint8)
+	if !ok {
+		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
+		return
+	}
+	registers.Uints[site.Returns[0].Register] = uint64(f(int(readIntArg(registers, site.Arguments[0]))))
+}
+
+func fpDispatchIntUint16(vm *VM, cached any, site *program.CallSite, registers *Registers) {
+	f, ok := cached.(func(int) uint16)
+	if !ok {
+		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
+		return
+	}
+	registers.Uints[site.Returns[0].Register] = uint64(f(int(readIntArg(registers, site.Arguments[0]))))
 }
 
 func fpDispatchInt2Int(vm *VM, cached any, site *program.CallSite, registers *Registers) {
@@ -170,7 +198,6 @@ func fpDispatchInt2Int(vm *VM, cached any, site *program.CallSite, registers *Re
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Ints[site.Returns[0].Register] = int64(f(
 		int(readIntArg(registers, site.Arguments[0])),
 		int(readIntArg(registers, site.Arguments[1])),
@@ -183,7 +210,6 @@ func fpDispatchInt2Bool(vm *VM, cached any, site *program.CallSite, registers *R
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Bools[site.Returns[0].Register] = f(
 		int(readIntArg(registers, site.Arguments[0])),
 		int(readIntArg(registers, site.Arguments[1])),
@@ -196,7 +222,6 @@ func fpDispatchInt2String(vm *VM, cached any, site *program.CallSite, registers 
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Strings[site.Returns[0].Register] = f(
 		int(readIntArg(registers, site.Arguments[0])),
 		int(readIntArg(registers, site.Arguments[1])),
@@ -209,7 +234,6 @@ func fpDispatchInt64IntString(vm *VM, cached any, site *program.CallSite, regist
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Strings[site.Returns[0].Register] = f(
 		readIntArg(registers, site.Arguments[0]),
 		int(readIntArg(registers, site.Arguments[1])),
@@ -222,7 +246,6 @@ func fpDispatchFloat64Float64(vm *VM, cached any, site *program.CallSite, regist
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Floats[site.Returns[0].Register] = f(readFloatArg(registers, site.Arguments[0]))
 }
 
@@ -232,7 +255,6 @@ func fpDispatchFloat642Float64(vm *VM, cached any, site *program.CallSite, regis
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Floats[site.Returns[0].Register] = f(
 		readFloatArg(registers, site.Arguments[0]),
 		readFloatArg(registers, site.Arguments[1]),
@@ -245,7 +267,6 @@ func fpDispatchAnyBool(vm *VM, cached any, site *program.CallSite, registers *Re
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Bools[site.Returns[0].Register] = f(readNativeAnyArg(vm, cached, site, registers, 0))
 }
 
@@ -255,7 +276,6 @@ func fpDispatchAnyString(vm *VM, cached any, site *program.CallSite, registers *
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Strings[site.Returns[0].Register] = f(readNativeAnyArg(vm, cached, site, registers, 0))
 }
 
@@ -265,7 +285,6 @@ func fpDispatchAnyInt(vm *VM, cached any, site *program.CallSite, registers *Reg
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Ints[site.Returns[0].Register] = int64(f(readNativeAnyArg(vm, cached, site, registers, 0)))
 }
 
@@ -275,7 +294,6 @@ func fpDispatchAnyInt64(vm *VM, cached any, site *program.CallSite, registers *R
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Ints[site.Returns[0].Register] = f(readNativeAnyArg(vm, cached, site, registers, 0))
 }
 
@@ -285,7 +303,6 @@ func fpDispatchAnyFloat64(vm *VM, cached any, site *program.CallSite, registers 
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Floats[site.Returns[0].Register] = f(readNativeAnyArg(vm, cached, site, registers, 0))
 }
 
@@ -295,7 +312,6 @@ func fpDispatchRetString(vm *VM, cached any, site *program.CallSite, registers *
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Strings[site.Returns[0].Register] = f()
 }
 
@@ -305,7 +321,6 @@ func fpDispatchRetBool(vm *VM, cached any, site *program.CallSite, registers *Re
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Bools[site.Returns[0].Register] = f()
 }
 
@@ -315,7 +330,6 @@ func fpDispatchRetInt(vm *VM, cached any, site *program.CallSite, registers *Reg
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Ints[site.Returns[0].Register] = int64(f())
 }
 
@@ -325,7 +339,6 @@ func fpDispatchRetInt64(vm *VM, cached any, site *program.CallSite, registers *R
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Ints[site.Returns[0].Register] = f()
 }
 
@@ -335,7 +348,6 @@ func fpDispatchRetFloat64(vm *VM, cached any, site *program.CallSite, registers 
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	registers.Floats[site.Returns[0].Register] = f()
 }
 
@@ -345,7 +357,6 @@ func fpDispatchVoid(vm *VM, cached any, _ *program.CallSite, _ *Registers) {
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	f()
 }
 
@@ -355,7 +366,6 @@ func fpDispatchVoidString(vm *VM, cached any, site *program.CallSite, registers 
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	f(readStringArg(registers, site.Arguments[0]))
 }
 
@@ -365,7 +375,6 @@ func fpDispatchVoidInt(vm *VM, cached any, site *program.CallSite, registers *Re
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	f(int(readIntArg(registers, site.Arguments[0])))
 }
 
@@ -375,7 +384,6 @@ func fpDispatchVoidInt64(vm *VM, cached any, site *program.CallSite, registers *
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	f(readIntArg(registers, site.Arguments[0]))
 }
 
@@ -385,7 +393,6 @@ func fpDispatchVoidBool(vm *VM, cached any, site *program.CallSite, registers *R
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	f(readBoolArg(registers, site.Arguments[0]))
 }
 
@@ -395,9 +402,107 @@ func fpDispatchVoidString2(vm *VM, cached any, site *program.CallSite, registers
 		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
 		return
 	}
-
 	f(
 		readStringArg(registers, site.Arguments[0]),
 		readStringArg(registers, site.Arguments[1]),
 	)
+}
+
+func fpDispatchRetTypesType(vm *VM, cached any, site *program.CallSite, registers *Registers) {
+	f, ok := cached.(func() types.Type)
+	if !ok {
+		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
+		return
+	}
+	registers.General[site.Returns[0].Register] = nativeInterfaceResult(f())
+}
+
+func fpDispatchTypesTypeTypesType(vm *VM, cached any, site *program.CallSite, registers *Registers) {
+	f, ok := cached.(func(types.Type) types.Type)
+	if !ok {
+		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
+		return
+	}
+	registers.General[site.Returns[0].Register] = nativeInterfaceResult(f(nativeArgument[types.Type](readNativeAnyArg(vm, cached, site, registers, 0))))
+}
+
+func fpDispatchTypesTypeBool(vm *VM, cached any, site *program.CallSite, registers *Registers) {
+	f, ok := cached.(func(types.Type) bool)
+	if !ok {
+		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
+		return
+	}
+	registers.Bools[site.Returns[0].Register] = f(nativeArgument[types.Type](readNativeAnyArg(vm, cached, site, registers, 0)))
+}
+
+func fpDispatchRetSelectionKind(vm *VM, cached any, site *program.CallSite, registers *Registers) {
+	f, ok := cached.(func() types.SelectionKind)
+	if !ok {
+		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
+		return
+	}
+	registers.Ints[site.Returns[0].Register] = int64(f())
+}
+
+func fpDispatchRetBasicKind(vm *VM, cached any, site *program.CallSite, registers *Registers) {
+	f, ok := cached.(func() types.BasicKind)
+	if !ok {
+		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
+		return
+	}
+	registers.Ints[site.Returns[0].Register] = int64(f())
+}
+
+func fpDispatchRetTypesTuple(vm *VM, cached any, site *program.CallSite, registers *Registers) {
+	f, ok := cached.(func() *types.Tuple)
+	if !ok {
+		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
+		return
+	}
+	registers.General[site.Returns[0].Register] = reflect.ValueOf(f())
+}
+
+func fpDispatchRetTypesTypeName(vm *VM, cached any, site *program.CallSite, registers *Registers) {
+	f, ok := cached.(func() *types.TypeName)
+	if !ok {
+		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
+		return
+	}
+	registers.General[site.Returns[0].Register] = reflect.ValueOf(f())
+}
+
+func fpDispatchRetTypesPackage(vm *VM, cached any, site *program.CallSite, registers *Registers) {
+	f, ok := cached.(func() *types.Package)
+	if !ok {
+		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
+		return
+	}
+	registers.General[site.Returns[0].Register] = reflect.ValueOf(f())
+}
+
+func fpDispatchRetTypesVar(vm *VM, cached any, site *program.CallSite, registers *Registers) {
+	f, ok := cached.(func() *types.Var)
+	if !ok {
+		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
+		return
+	}
+	registers.General[site.Returns[0].Register] = reflect.ValueOf(f())
+}
+
+func fpDispatchIntTypesVar(vm *VM, cached any, site *program.CallSite, registers *Registers) {
+	f, ok := cached.(func(int) *types.Var)
+	if !ok {
+		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
+		return
+	}
+	registers.General[site.Returns[0].Register] = reflect.ValueOf(f(int(readIntArg(registers, site.Arguments[0]))))
+}
+
+func fpDispatchAstExprAstExpr(vm *VM, cached any, site *program.CallSite, registers *Registers) {
+	f, ok := cached.(func(ast.Expr) ast.Expr)
+	if !ok {
+		_ = RecordFastPathTypeMismatch(vm, -1, fastPathDispatcherTag, reflectTypeName(cached))
+		return
+	}
+	registers.General[site.Returns[0].Register] = nativeInterfaceResult(f(nativeArgument[ast.Expr](readNativeAnyArg(vm, cached, site, registers, 0))))
 }

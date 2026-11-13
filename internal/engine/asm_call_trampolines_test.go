@@ -141,7 +141,7 @@ func TestCollectionTrampolinesReadTheGeneralBank(t *testing.T) {
 		_, registers, context := newTrampolineContext(t)
 		registers.General[1] = reflect.ValueOf(make([]int, 2, 7))
 
-		asmCallCap(context, 0, 1)
+		asmCallCapacityGeneral(context, 0, 1)
 		require.Equal(t, int64(7), registers.Ints[0])
 	})
 
@@ -151,7 +151,7 @@ func TestCollectionTrampolinesReadTheGeneralBank(t *testing.T) {
 		_, registers, context := newTrampolineContext(t)
 		registers.General[1] = reflect.ValueOf([]byte("text"))
 
-		asmCallBytesToString(context, 0, 1)
+		asmCallConvertBytesToString(context, 0, 1)
 		require.Equal(t, "text", registers.Strings[0])
 	})
 
@@ -161,7 +161,7 @@ func TestCollectionTrampolinesReadTheGeneralBank(t *testing.T) {
 		_, registers, context := newTrampolineContext(t)
 		registers.SlicesInt[1] = []int64{1, 2, 3}
 
-		asmCallBoxSliceInt(context, 0, 1)
+		asmCallBoxSliceInt64(context, 0, 1)
 		require.Equal(t, 3, registers.General[0].Len())
 	})
 }
@@ -176,7 +176,7 @@ func TestAppendTrampolinesGrowTheTypedBanks(t *testing.T) {
 		registers.SlicesInt[1] = []int64{1}
 		registers.Ints[2] = 9
 
-		asmCallAppendSliceIntDirect(context, 0, 1, 2)
+		asmCallAppendSliceInt64(context, 0, 1, 2)
 		require.Equal(t, []int64{1, 9}, registers.SlicesInt[0])
 	})
 
@@ -187,7 +187,7 @@ func TestAppendTrampolinesGrowTheTypedBanks(t *testing.T) {
 		registers.slicesFloat[1] = []float64{1.5}
 		registers.Floats[2] = 2.5
 
-		asmCallAppendSliceFloatDirect(context, 0, 1, 2)
+		asmCallAppendSliceFloat64(context, 0, 1, 2)
 		require.Equal(t, []float64{1.5, 2.5}, registers.slicesFloat[0])
 	})
 
@@ -198,7 +198,7 @@ func TestAppendTrampolinesGrowTheTypedBanks(t *testing.T) {
 		registers.slicesString[1] = []string{"a"}
 		registers.Strings[2] = "b"
 
-		asmCallAppendSliceStringDirect(context, 0, 1, 2)
+		asmCallAppendSliceString(context, 0, 1, 2)
 		require.Equal(t, []string{"a", "b"}, registers.slicesString[0])
 	})
 
@@ -209,7 +209,7 @@ func TestAppendTrampolinesGrowTheTypedBanks(t *testing.T) {
 		registers.slicesBool[1] = []bool{true}
 		registers.Bools[2] = false
 
-		asmCallAppendSliceBoolDirect(context, 0, 1, 2)
+		asmCallAppendSliceBool(context, 0, 1, 2)
 		require.Equal(t, []bool{true, false}, registers.slicesBool[0])
 	})
 
@@ -220,7 +220,7 @@ func TestAppendTrampolinesGrowTheTypedBanks(t *testing.T) {
 		registers.slicesUint[1] = []uint64{1}
 		registers.Uints[2] = 2
 
-		asmCallAppendSliceUintDirect(context, 0, 1, 2)
+		asmCallAppendSliceUint64(context, 0, 1, 2)
 		require.Equal(t, []uint64{1, 2}, registers.slicesUint[0])
 	})
 
@@ -231,7 +231,7 @@ func TestAppendTrampolinesGrowTheTypedBanks(t *testing.T) {
 		registers.slicesByte[1] = []byte{1}
 		registers.Uints[2] = 2
 
-		asmCallAppendSliceByteDirect(context, 0, 1, 2)
+		asmCallAppendSliceByte(context, 0, 1, 2)
 		require.Equal(t, []byte{1, 2}, registers.slicesByte[0])
 	})
 }
@@ -251,22 +251,22 @@ func TestStructFieldStepTrampolinesWalkEveryWidth(t *testing.T) {
 	}{
 		{
 			name: "a signed 64-bit field", fieldName: "Signed", kind: reflect.Int64,
-			increment: asmCallIncStructFieldInt, decrement: asmCallDecStructFieldInt,
+			increment: asmCallIncrementStructFieldInt64, decrement: asmCallDecrementStructFieldInt64,
 			read: func(c *trampolineCounters) int64 { return c.Signed },
 		},
 		{
 			name: "a signed 32-bit field", fieldName: "Narrow", kind: reflect.Int32,
-			increment: asmCallIncStructFieldInt, decrement: asmCallDecStructFieldInt,
+			increment: asmCallIncrementStructFieldInt64, decrement: asmCallDecrementStructFieldInt64,
 			read: func(c *trampolineCounters) int64 { return int64(c.Narrow) },
 		},
 		{
 			name: "an unsigned 64-bit field", fieldName: "Unsigned", kind: reflect.Uint64,
-			increment: asmCallIncStructFieldUint, decrement: asmCallDecStructFieldUint,
+			increment: asmCallIncrementStructFieldUint64, decrement: asmCallDecrementStructFieldUint64,
 			read: func(c *trampolineCounters) int64 { return int64(c.Unsigned) },
 		},
 		{
 			name: "an unsigned 8-bit field", fieldName: "Small", kind: reflect.Uint8,
-			increment: asmCallIncStructFieldUint, decrement: asmCallDecStructFieldUint,
+			increment: asmCallIncrementStructFieldUint64, decrement: asmCallDecrementStructFieldUint64,
 			read: func(c *trampolineCounters) int64 { return int64(c.Small) },
 		},
 	}
@@ -312,7 +312,7 @@ func TestStructFieldStepTrampolinesFallBackOnAMismatch(t *testing.T) {
 		counters := &trampolineCounters{Text: "unchanged"}
 		registers.General[1] = reflect.ValueOf(counters)
 
-		require.NotPanics(t, func() { asmCallIncStructFieldInt(context, 1, 0) },
+		require.NotPanics(t, func() { asmCallIncrementStructFieldInt64(context, 1, 0) },
 			"a shape the fast path declines routes through the reflect walk, not a crash")
 		require.Equal(t, "unchanged", counters.Text)
 	})
@@ -330,7 +330,7 @@ func TestStructFieldStepTrampolinesFallBackOnAMismatch(t *testing.T) {
 		receiver := reflect.New(counterType).Elem()
 		registers.General[1] = receiver
 
-		require.NotPanics(t, func() { asmCallIncStructFieldUint(context, 1, 0) },
+		require.NotPanics(t, func() { asmCallIncrementStructFieldUint64(context, 1, 0) },
 			"a receiver the fast path declines routes through the reflect walk, not a crash")
 		require.Equal(t, uint64(1), receiver.Interface().(trampolineCounters).Unsigned)
 	})
@@ -389,8 +389,8 @@ func TestPathBTrampolineRunsTheHandlerAndAdvancesTheCounter(t *testing.T) {
 	registers.Ints[1] = 20
 	registers.Ints[2] = 22
 
-	word := isa.Instruction{Op: isa.OpAddInt, A: 0, B: 1, C: 2}
-	pathBTrampoline(context, *(*uint32)(unsafe.Pointer(&word)), handleAddInt)
+	word := isa.Instruction{Op: isa.OpAddInt64, A: 0, B: 1, C: 2}
+	pathBTrampoline(context, *(*uint32)(unsafe.Pointer(&word)), handleAddInt64)
 
 	require.Equal(t, int64(42), registers.Ints[0], "the handler runs against the live register bank")
 	require.Zero(t, context.handlerResult, "a clean continue leaves no handler result to surface")

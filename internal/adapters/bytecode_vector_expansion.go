@@ -66,6 +66,7 @@ func validateFunctionVectors(ctx context.Context, function *schemagen.CompiledFu
 		function.TypeTableDescriptorsLength(), function.TypeNamesLength(), function.CallSitesLength(),
 		function.UpvalueDescriptorsLength(), function.FunctionsLength(), function.NamedResultLocationsLength(),
 		function.MethodTableLength(), function.StructLayoutTableLength(), function.TypeTableInterfaceMethodsLength(),
+		function.ReceiverMethodsLength(),
 	); err != nil {
 		return err
 	}
@@ -90,7 +91,8 @@ func validateCallVectors(ctx context.Context, function *schemagen.CompiledFuncti
 			return err
 		}
 		if function.CallSites(&site, index) {
-			if err := budget.chargeVectors(payloadLen, site.ArgumentsLength(), site.ReturnsLength()); err != nil {
+			if err := budget.chargeVectors(payloadLen, site.ArgumentsLength(), site.ReturnsLength(),
+				site.ArgumentStaticTypeNamesLength(), site.ArgumentStaticTypeStringsLength(), site.LinkedTypeArgsLength()); err != nil {
 				return err
 			}
 		}
@@ -114,6 +116,30 @@ func validateMethodVectors(ctx context.Context, function *schemagen.CompiledFunc
 		}
 		if function.TypeTableInterfaceMethods(&methods, index) {
 			if err := budget.chargeVectors(payloadLen, methods.MethodsLength()); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// validateNamedInterfaceVectors charges each named interface's method list. Entries may
+// alias one table, so every occurrence is charged against the file-wide allowance.
+//
+// Takes fileSet (*schemagen.CompiledFileSet) which has already had its named-interface
+// vector admitted.
+// Takes payloadLen (int) which is the total payload size.
+// Takes budget (*bytecodeExpansionBudget) which tracks the shared expansion budget.
+//
+// Returns error when nested vector expansion exceeds the remaining allowance.
+func validateNamedInterfaceVectors(ctx context.Context, fileSet *schemagen.CompiledFileSet, payloadLen int, budget *bytecodeExpansionBudget) error {
+	var entry schemagen.NamedInterfaceEntry
+	for index := range fileSet.NamedInterfacesLength() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if fileSet.NamedInterfaces(&entry, index) {
+			if err := budget.chargeVectors(payloadLen, entry.MethodsLength()); err != nil {
 				return err
 			}
 		}

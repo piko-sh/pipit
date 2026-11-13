@@ -75,20 +75,20 @@ func bootstrapHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// truncateNarrowHandler returns the HandlerDefinition for handlerTruncateNarrow, which
+// truncateToWidthHandler returns the HandlerDefinition for handlerTruncateToWidth, which
 // narrows register A to B bits with sign-extension for ints or zero-masking for uints.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort].
-func truncateNarrowHandler() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func truncateToWidthHandler() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerTruncateNarrow",
-		Comment: "handlerTruncateNarrow implements opTruncateNarrow (tier-0 ASM lift). " +
+		Name: "handlerTruncateToWidth",
+		Comment: "handlerTruncateToWidth implements opTruncateToWidth (tier-0 ASM lift). " +
 			"Narrows register A to B bits. registerKind C selects sign-extending " +
-			"int path or zero-masking uint path; never leaves the dispatch loop.",
+			"int path or zero-masking uint path. It never leaves the dispatch loop.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, arch BytecodeArchitecturePort) {
-			arch.EmitTruncateNarrow(emitter)
+			arch.EmitTruncateToWidth(emitter)
 		},
 	}
 }
@@ -98,6 +98,6 @@ func truncateNarrowHandler() asmgen.HandlerDefinition[BytecodeArchitecturePort] 
 // Returns []asmgen.HandlerDefinition[BytecodeArchitecturePort] in emission order.
 func truncateHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		truncateNarrowHandler(),
+		truncateToWidthHandler(),
 	}
 }

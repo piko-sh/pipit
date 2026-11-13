@@ -33,8 +33,8 @@ const (
 	// rewritten to a same-bank tier-1 MOVE.
 	peepholeRewriteCseTier1Umbrella
 
-	// peepholeRewriteCseTier1Ext marks the EXT word of a CSE'd tier-1 read that was nopped
-	// because the umbrella was rewritten to a move and no longer consumes its layout
+	// peepholeRewriteCseTier1Ext marks the EXTENSION word of a CSE'd tier-1 read that was
+	// nopped because the umbrella was rewritten to a move and no longer consumes its layout
 	// extension.
 	peepholeRewriteCseTier1Ext
 
@@ -52,8 +52,7 @@ const (
 	peepholeRewriteGvn
 
 	// peepholeRewriteBce marks a slice / string index access whose runtime bounds check was
-	// elided in favour of the unchecked opcode variant. origin records the PC of the proof
-	// source (the range loop header, or the guarding LtInt comparison).
+	// elided in favour of the unchecked opcode variant.
 	peepholeRewriteBce
 
 	// PeepholeRewriteUnroll marks the leading instruction of an inlined copy of a
@@ -146,7 +145,7 @@ func FormatPeepholeAnnotation(ann program.PeepholeAnnotation) string {
 	case peepholeRewriteCseTier1Umbrella:
 		return fmt.Sprintf("CSE'd from PC %d (tier-1 read)", ann.Origin)
 	case peepholeRewriteCseTier1Ext:
-		return "CSE'd EXT word"
+		return "CSE'd EXTENSION word"
 	case peepholeRewriteCsePostSet:
 		return fmt.Sprintf("CSE'd from SET at PC %d", ann.Origin)
 	case peepholeRewriteLicmHoist:

@@ -24,6 +24,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/logging"
 )
 
 func TestSplitGlobalFlagsRecognisesEverySpelling(t *testing.T) {
@@ -66,18 +68,15 @@ func TestSplitGlobalFlagsRejectsBadValues(t *testing.T) {
 	}
 }
 
-func TestLoggerOptionsFollowTheConfiguredLogger(t *testing.T) {
+func TestTheInvocationContextCarriesTheConfiguredLogger(t *testing.T) {
 	t.Parallel()
-
-	ctx := t.Context()
-	require.Nil(t, loggerOptions(ctx))
 
 	buffer := &bytes.Buffer{}
 	logger := newStderrLogger(slog.LevelDebug, buffer)
-	ctx = withConfig(ctx, newConfig([]Option{WithLogger(logger)}))
-	require.Same(t, logger, loggerFromContext(ctx))
-	require.Len(t, loggerOptions(ctx), 1)
+	ctx := invocationContext(t.Context(), newConfig([]Option{WithLogger(logger)}))
+	_, bound := logging.From(ctx)
+	require.Same(t, logger, bound, "library calls under the invocation's context log through the configured logger")
 
-	logger.Debug("hello")
+	bound.Debug("hello")
 	require.Contains(t, buffer.String(), "hello", "the logger writes the record")
 }

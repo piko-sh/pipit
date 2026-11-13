@@ -146,7 +146,7 @@ func (sess *Session) compileSubmission(ctx context.Context, code string) (func(c
 
 	info := frontend.NewTypesInfo()
 	options := typeCheckOptions{interpretedPaths: nil, allowUnusedImports: true}
-	if _, err := sess.service.checkPackageTypes(mainPackageName, []*ast.File{file}, info, options); err != nil {
+	if _, err := sess.service.checkPackageTypes(ctx, mainPackageName, []*ast.File{file}, info, options); err != nil {
 		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, err)
 	}
 	hasResult = hasResult && expressionYieldsValue(info, lastExpr)
@@ -451,6 +451,9 @@ func (sess *Session) executeSessionVarInits(ctx context.Context, variableInit *p
 	}
 	if joinErr := vm.JoinSpawnedGoroutines(); joinErr != nil {
 		return fmt.Errorf(errVarinitFmt, joinErr)
+	}
+	if info := vm.TakeGoroutinePanic(); info != nil {
+		return fmt.Errorf(errVarinitFmt, engine.NewGoroutinePanicError(info.Value()))
 	}
 	vm.MaterialiseGlobalStrings()
 	return nil

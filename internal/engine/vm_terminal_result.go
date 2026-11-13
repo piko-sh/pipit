@@ -70,9 +70,7 @@ func (vm *VM) raiseDivByZeroForDispatch() (any, dispatchAction, error) {
 }
 
 // resolveTerminalResult maps a terminal OpResult to its outcome. It is the one place that
-// turns OpDone, OpDivByZero, OpStackOverflow and opPanicError into what the caller sees;
-// every dispatch loop and HandleOpResult route through it, so a divide by zero raises the
-// same interpreted, recoverable panic on every path.
+// turns opDone, opDivByZero, opStackOverflow and opPanicError into what the caller sees.
 //
 // Takes rc (OpResult) which a handler returned.
 //

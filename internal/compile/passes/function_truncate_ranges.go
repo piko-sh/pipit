@@ -20,9 +20,10 @@ package passes
 
 import (
 	"context"
-	"maps"
+	"fmt"
 	"math"
 	"math/bits"
+	"slices"
 
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
@@ -61,12 +62,13 @@ func (elideRangedTruncatesPass) Name() string { return "elide-ranged-truncates" 
 // Takes state (*PassContext) which carries the shared analysis, invalidated on change.
 // Takes compiledFunction (*program.CompiledFunction) whose body is rewritten in place.
 //
-// Returns error (always nil).
-func (elideRangedTruncatesPass) Run(_ context.Context, state *PassContext, compiledFunction *program.CompiledFunction) error {
-	if elideRangedTruncates(compiledFunction) {
+// Returns error when cancellation interrupts the range analysis.
+func (elideRangedTruncatesPass) Run(ctx context.Context, state *PassContext, compiledFunction *program.CompiledFunction) error {
+	removed, err := elideRangedTruncates(ctx, compiledFunction)
+	if removed {
 		state.Analysis.invalidate()
 	}
-	return nil
+	return err
 }
 
 // intRange is an inclusive range of int-bank values.
@@ -87,54 +89,128 @@ type uintRange struct {
 	hi uint64
 }
 
-// rangeState holds the known ranges of int and uint registers; an absent register may
-// hold any value.
+// rangeState holds the ranges of the int and uint registers.
 type rangeState struct {
-	// ints maps an int register to its range.
-	ints map[uint8]intRange
+	// ints holds the range of each int register.
+	ints []intRange
 
-	// uints maps a uint register to its range.
-	uints map[uint8]uintRange
+	// uints holds the range of each uint register.
+	uints []uintRange
 }
 
 // newRangeState returns a state that knows nothing.
 //
+// Takes ints (int) which is the number of int registers.
+// Takes uints (int) which is the number of uint registers.
+//
 // Returns the empty state.
-func newRangeState() rangeState {
-	return rangeState{ints: make(map[uint8]intRange), uints: make(map[uint8]uintRange)}
+func newRangeState(ints, uints int) rangeState {
+	state := rangeState{ints: make([]intRange, ints), uints: make([]uintRange, uints)}
+	state.forget()
+	return state
+}
+
+// intAt returns what the state knows about an int register.
+//
+// Takes reg (uint8) which is the register.
+//
+// Returns intRange which is its range.
+// Returns bool which is false when nothing is known.
+func (state rangeState) intAt(reg uint8) (intRange, bool) {
+	if int(reg) >= len(state.ints) || state.ints[reg] == wholeIntRange() {
+		return intRange{lo: 0, hi: 0}, false
+	}
+	return state.ints[reg], true
+}
+
+// uintAt returns what the state knows about a uint register.
+//
+// Takes reg (uint8) which is the register.
+//
+// Returns uintRange which is its range.
+// Returns bool which is false when nothing is known.
+func (state rangeState) uintAt(reg uint8) (uintRange, bool) {
+	if int(reg) >= len(state.uints) || state.uints[reg] == wholeUintRange() {
+		return uintRange{lo: 0, hi: 0}, false
+	}
+	return state.uints[reg], true
+}
+
+// setInt records an int register's range. A register beyond the function's count stays
+// unknown.
+//
+// Takes reg (uint8) which is the register.
+// Takes known (intRange) which is its range.
+func (state rangeState) setInt(reg uint8, known intRange) {
+	if int(reg) < len(state.ints) {
+		state.ints[reg] = known
+	}
+}
+
+// setUint records a uint register's range. A register beyond the function's count stays
+// unknown.
+//
+// Takes reg (uint8) which is the register.
+// Takes known (uintRange) which is its range.
+func (state rangeState) setUint(reg uint8, known uintRange) {
+	if int(reg) < len(state.uints) {
+		state.uints[reg] = known
+	}
 }
 
 // clone copies the state.
 //
 // Returns the copy.
 func (state rangeState) clone() rangeState {
-	return rangeState{ints: maps.Clone(state.ints), uints: maps.Clone(state.uints)}
+	return rangeState{ints: slices.Clone(state.ints), uints: slices.Clone(state.uints)}
 }
 
 // forget drops everything the state knows.
 func (state rangeState) forget() {
-	clear(state.ints)
-	clear(state.uints)
+	for reg := range state.ints {
+		state.ints[reg] = wholeIntRange()
+	}
+	for reg := range state.uints {
+		state.uints[reg] = wholeUintRange()
+	}
 }
 
-// join keeps the registers both states know, with the hull of their ranges.
+// join gives each register the hull of its two ranges, so a register either state knows
+// nothing about comes out unknown.
 //
-// Takes other (rangeState) which is the incoming state.
+// Takes other (rangeState) which is the incoming state, of the same function.
 //
 // Returns the joined state.
 func (state rangeState) join(other rangeState) rangeState {
-	joined := newRangeState()
-	for reg, known := range state.ints {
-		if incoming, ok := other.ints[reg]; ok {
-			joined.ints[reg] = intRange{lo: min(known.lo, incoming.lo), hi: max(known.hi, incoming.hi)}
-		}
+	joined := state.clone()
+	for reg, incoming := range other.ints {
+		known := joined.ints[reg]
+		joined.ints[reg] = intRange{lo: min(known.lo, incoming.lo), hi: max(known.hi, incoming.hi)}
 	}
-	for reg, known := range state.uints {
-		if incoming, ok := other.uints[reg]; ok {
-			joined.uints[reg] = uintRange{lo: min(known.lo, incoming.lo), hi: max(known.hi, incoming.hi)}
-		}
+	for reg, incoming := range other.uints {
+		known := joined.uints[reg]
+		joined.uints[reg] = uintRange{lo: min(known.lo, incoming.lo), hi: max(known.hi, incoming.hi)}
 	}
 	return joined
+}
+
+// absorbs reports whether every range in other is contained in this state's range.
+//
+// Takes other (rangeState) which is the incoming state, of the same function.
+//
+// Returns true when the join changes nothing.
+func (state rangeState) absorbs(other rangeState) bool {
+	for reg, incoming := range other.ints {
+		if known := state.ints[reg]; incoming.lo < known.lo || incoming.hi > known.hi {
+			return false
+		}
+	}
+	for reg, incoming := range other.uints {
+		if known := state.uints[reg]; incoming.lo < known.lo || incoming.hi > known.hi {
+			return false
+		}
+	}
+	return true
 }
 
 // widen keeps only the ranges unchanged between the previous and next states.
@@ -143,27 +219,18 @@ func (state rangeState) join(other rangeState) rangeState {
 //
 // Returns the stable part.
 func (state rangeState) widen(next rangeState) rangeState {
-	stable := newRangeState()
+	stable := next.clone()
 	for reg, known := range next.ints {
-		if state.ints[reg] == known {
-			stable.ints[reg] = known
+		if state.ints[reg] != known {
+			stable.ints[reg] = wholeIntRange()
 		}
 	}
 	for reg, known := range next.uints {
-		if previous, ok := state.uints[reg]; ok && previous == known {
-			stable.uints[reg] = known
+		if state.uints[reg] != known {
+			stable.uints[reg] = wholeUintRange()
 		}
 	}
 	return stable
-}
-
-// equal reports whether two states know the same ranges.
-//
-// Takes other (rangeState) which is the state to compare.
-//
-// Returns true when they match.
-func (state rangeState) equal(other rangeState) bool {
-	return maps.Equal(state.ints, other.ints) && maps.Equal(state.uints, other.uints)
 }
 
 // rangeBlock is a basic block of the range analysis.
@@ -178,19 +245,74 @@ type rangeBlock struct {
 	end int
 }
 
+// rangeSolver holds the worklist state of solveRanges().
+type rangeSolver struct {
+	// entries maps each reached block to its entry state.
+	entries map[int]rangeState
+
+	// visits counts the entry-state changes of each block.
+	visits map[int]int
+
+	// pending lists the blocks whose entry state changed.
+	pending []int
+}
+
+// flow merges a predecessor's exit state into a successor's entry state, queueing the
+// successor when it changed and widening once it has changed too often.
+//
+// Takes successor (int) which is the block index.
+// Takes state (rangeState) which is the predecessor's exit state.
+func (solver *rangeSolver) flow(successor int, state rangeState) {
+	previous, seen := solver.entries[successor]
+	if !seen {
+		solver.entries[successor] = state.clone()
+		solver.pending = append(solver.pending, successor)
+		return
+	}
+	if previous.absorbs(state) {
+		return
+	}
+	next := previous.join(state)
+	solver.visits[successor]++
+	if solver.visits[successor] > rangeWideningVisits {
+		next = previous.widen(next)
+	}
+	solver.entries[successor] = next
+	solver.pending = append(solver.pending, successor)
+}
+
+// wholeIntRange returns the range of an int register nothing is known about.
+//
+// Returns intRange which spans every int64.
+func wholeIntRange() intRange {
+	return intRange{lo: math.MinInt64, hi: math.MaxInt64}
+}
+
+// wholeUintRange returns the range of a uint register nothing is known about.
+//
+// Returns uintRange which spans every uint64.
+func wholeUintRange() uintRange {
+	return uintRange{lo: 0, hi: math.MaxUint64}
+}
+
 // elideRangedTruncates finds the truncations whose input already fits and turns them into
-// NOPs.
+// NO_OPERATION words.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose body is rewritten.
 //
-// Returns true when a truncation was removed.
-func elideRangedTruncates(compiledFunction *program.CompiledFunction) bool {
+// Returns bool which is true when a truncation was removed.
+// Returns error when cancellation interrupts the analysis, before anything is removed.
+func elideRangedTruncates(ctx context.Context, compiledFunction *program.CompiledFunction) (bool, error) {
 	body := compiledFunction.Body
-	if len(body) == 0 || len(body) > maxRangeAnalysisWords || bodyHasTypeSwitch(body) || program.MayCreateSharedCells(compiledFunction) {
-		return false
+	if len(body) == 0 || len(body) > maxRangeAnalysisWords || !bodyHasTruncation(body) || bodyHasTypeSwitch(body) ||
+		program.MayCreateSharedCells(compiledFunction) {
+		return false, nil
 	}
 	blocks, blockAt := rangeBlocks(body)
-	entries := solveRanges(compiledFunction, blocks, blockAt)
+	entries, err := solveRanges(ctx, compiledFunction, blocks, blockAt)
+	if err != nil {
+		return false, err
+	}
 	removed := false
 	for index, block := range blocks {
 		entry, reached := entries[index]
@@ -200,12 +322,21 @@ func elideRangedTruncates(compiledFunction *program.CompiledFunction) bool {
 		state := entry.clone()
 		for pc := block.start; pc < block.end; pc += instructionFootprint(body, pc) {
 			if applyRangeTransfer(compiledFunction, state, pc) {
-				body[pc] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+				body[pc] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 				removed = true
 			}
 		}
 	}
-	return removed
+	return removed, nil
+}
+
+// bodyHasTruncation reports whether the body holds a truncation.
+//
+// Takes body ([]isa.Instruction) which is the instruction stream.
+//
+// Returns true when some word is an isa.OpTruncateToWidth.
+func bodyHasTruncation(body []isa.Instruction) bool {
+	return slices.ContainsFunc(body, func(word isa.Instruction) bool { return word.Op == isa.OpTruncateToWidth })
 }
 
 // rangeBlocks splits the body into basic blocks.
@@ -278,10 +409,18 @@ func rangeSuccessors(body []isa.Instruction, block rangeBlock, blockAt map[int]i
 // Takes blocks ([]rangeBlock) which are the basic blocks.
 // Takes blockAt (map[int]int) which maps block starts to indices.
 //
-// Returns the entry state of every reached block.
-func solveRanges(compiledFunction *program.CompiledFunction, blocks []rangeBlock, blockAt map[int]int) map[int]rangeState {
-	solver := rangeSolver{entries: map[int]rangeState{blockAt[0]: newRangeState()}, visits: make(map[int]int), pending: []int{blockAt[0]}}
-	for len(solver.pending) > 0 {
+// Returns map[int]rangeState which is the entry state of every reached block.
+// Returns error when cancellation interrupts the fixed point.
+func solveRanges(ctx context.Context, compiledFunction *program.CompiledFunction, blocks []rangeBlock, blockAt map[int]int) (map[int]rangeState, error) {
+	counts := compiledFunction.NumRegisters
+	entry := newRangeState(int(counts[isa.RegisterInt64]), int(counts[isa.RegisterUint64]))
+	solver := rangeSolver{entries: map[int]rangeState{blockAt[0]: entry}, visits: make(map[int]int), pending: []int{blockAt[0]}}
+	for pops := 0; len(solver.pending) > 0; pops++ {
+		if pops&program.OptimisationLoopCheckMask == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, fmt.Errorf("elideRangedTruncates cancelled: %w", err)
+			}
+		}
 		index := solver.pending[len(solver.pending)-1]
 		solver.pending = solver.pending[:len(solver.pending)-1]
 		state := solver.entries[index].clone()
@@ -292,41 +431,7 @@ func solveRanges(compiledFunction *program.CompiledFunction, blocks []rangeBlock
 			solver.flow(successor, state)
 		}
 	}
-	return solver.entries
-}
-
-// rangeSolver holds the worklist state of solveRanges().
-type rangeSolver struct {
-	// entries maps each reached block to its entry state.
-	entries map[int]rangeState
-
-	// visits counts the entry-state changes of each block.
-	visits map[int]int
-
-	// pending lists the blocks whose entry state changed.
-	pending []int
-}
-
-// flow merges a predecessor's exit state into a successor's entry state, queueing the
-// successor when it changed and widening once it has changed too often.
-//
-// Takes successor (int) which is the block index.
-// Takes state (rangeState) which is the predecessor's exit state.
-func (solver *rangeSolver) flow(successor int, state rangeState) {
-	previous, seen := solver.entries[successor]
-	next := state
-	if seen {
-		next = previous.join(state)
-		if next.equal(previous) {
-			return
-		}
-		solver.visits[successor]++
-		if solver.visits[successor] > rangeWideningVisits {
-			next = previous.widen(next)
-		}
-	}
-	solver.entries[successor] = next.clone()
-	solver.pending = append(solver.pending, successor)
+	return solver.entries, nil
 }
 
 // applyRangeTransfer updates state for the instruction at pc.
@@ -339,9 +444,9 @@ func (solver *rangeSolver) flow(successor int, state rangeState) {
 func applyRangeTransfer(compiledFunction *program.CompiledFunction, state rangeState, pc int) bool {
 	inst := compiledFunction.Body[pc]
 	switch {
-	case isCanonicalNop(inst):
+	case isCanonicalNoOperation(inst):
 		return false
-	case inst.Op == isa.OpTruncateNarrow:
+	case inst.Op == isa.OpTruncateToWidth:
 		return truncateRange(state, inst)
 	case inst.Op == isa.OpDrillTier1:
 		if tier1RangeTransfer(compiledFunction, state, pc) {
@@ -367,21 +472,21 @@ func truncateRange(state rangeState, inst isa.Instruction) bool {
 	if width == 0 || width >= registerBits {
 		return false
 	}
-	if isa.RegisterKind(inst.C) == isa.RegisterUint {
+	if isa.RegisterKind(inst.C) == isa.RegisterUint64 {
 		limit := uint64(1)<<width - 1
-		known, ok := state.uints[inst.A]
-		state.uints[inst.A] = uintRange{lo: 0, hi: limit}
+		known, ok := state.uintAt(inst.A)
+		state.setUint(inst.A, uintRange{lo: 0, hi: limit})
 		if ok && known.hi <= limit {
-			state.uints[inst.A] = known
+			state.setUint(inst.A, known)
 			return true
 		}
 		return false
 	}
 	bounds := intRange{lo: -1 << (width - 1), hi: 1<<(width-1) - 1}
-	known, ok := state.ints[inst.A]
-	state.ints[inst.A] = bounds
+	known, ok := state.intAt(inst.A)
+	state.setInt(inst.A, bounds)
 	if ok && known.lo >= bounds.lo && known.hi <= bounds.hi {
-		state.ints[inst.A] = known
+		state.setInt(inst.A, known)
 		return true
 	}
 	return false
@@ -396,24 +501,24 @@ func truncateRange(state rangeState, inst isa.Instruction) bool {
 //
 // Returns true when the instruction was modelled.
 func intRangeTransfer(compiledFunction *program.CompiledFunction, state rangeState, inst isa.Instruction) bool {
-	b, bKnown := state.ints[inst.B]
-	c, cKnown := state.ints[inst.C]
+	b, bKnown := state.intAt(inst.B)
+	c, cKnown := state.intAt(inst.C)
 	switch inst.Op {
-	case isa.OpLoadIntConst:
+	case isa.OpLoadInt64Constant:
 		if inst.C != 0 || int(inst.B) >= len(compiledFunction.IntConstants) {
 			return false
 		}
 		value := compiledFunction.IntConstants[inst.B]
-		state.ints[inst.A] = intRange{lo: value, hi: value}
-	case isa.OpAddInt, isa.OpSubInt, isa.OpMulInt:
+		state.setInt(inst.A, intRange{lo: value, hi: value})
+	case isa.OpAddInt64, isa.OpSubtractInt64, isa.OpMultiplyInt64:
 		setIntResult(state, inst.A, combineInts(inst.Op, b, c), bKnown && cKnown)
-	case isa.OpAddIntConst, isa.OpSubIntConst, isa.OpMulIntConst:
+	case isa.OpAddInt64Constant, isa.OpSubtractInt64Constant, isa.OpMultiplyInt64Constant:
 		constant, ok := intPoolRange(compiledFunction, inst.C)
 		setIntResult(state, inst.A, combineInts(fusedIntBase(inst.Op), b, constant), bKnown && ok)
-	case isa.OpBitAnd:
+	case isa.OpBitAndInt64:
 		result, ok := andIntRange(b, bKnown, c, cKnown)
 		setIntResult(state, inst.A, result, ok)
-	case isa.OpShiftRight:
+	case isa.OpShiftRightInt64:
 		setIntResult(state, inst.A, intRange{lo: min(b.lo, 0), hi: max(b.hi, 0)}, bKnown)
 	default:
 		return false
@@ -430,32 +535,78 @@ func intRangeTransfer(compiledFunction *program.CompiledFunction, state rangeSta
 //
 // Returns true when the instruction was modelled.
 func uintRangeTransfer(compiledFunction *program.CompiledFunction, state rangeState, inst isa.Instruction) bool {
-	b, bKnown := state.uints[inst.B]
-	c, cKnown := state.uints[inst.C]
+	b, bKnown := state.uintAt(inst.B)
+	c, cKnown := state.uintAt(inst.C)
 	switch inst.Op {
-	case isa.OpLoadUintConst:
+	case isa.OpLoadUint64Constant:
 		if inst.C != 0 || int(inst.B) >= len(compiledFunction.UintConstants) {
 			return false
 		}
 		value := compiledFunction.UintConstants[inst.B]
-		state.uints[inst.A] = uintRange{lo: value, hi: value}
-	case isa.OpAddUint:
+		state.setUint(inst.A, uintRange{lo: value, hi: value})
+	case isa.OpAddUint64:
 		lo, _ := bits.Add64(b.lo, c.lo, 0)
 		hi, carry := bits.Add64(b.hi, c.hi, 0)
 		setUintResult(state, inst.A, uintRange{lo: lo, hi: hi}, bKnown && cKnown && carry == 0)
-	case isa.OpBitAndUint:
+	case isa.OpBitAndUint64:
 		setUintResult(state, inst.A, uintRange{lo: 0, hi: min(boundOrMax(b, bKnown), boundOrMax(c, cKnown))}, bKnown || cKnown)
-	case isa.OpBitOrUint, isa.OpBitXorUint:
+	case isa.OpBitOrUint64, isa.OpBitXorUint64:
 		setUintResult(state, inst.A, uintRange{lo: 0, hi: allOnesCovering(max(b.hi, c.hi))}, bKnown && cKnown)
-	case isa.OpShiftRightUint:
+	case isa.OpShiftRightUint64:
 		if !cKnown {
 			c = uintRange{lo: 0, hi: math.MaxUint64}
 		}
 		setUintResult(state, inst.A, uintRange{lo: shiftRightUint(b.lo, c.hi), hi: shiftRightUint(b.hi, c.lo)}, bKnown)
 	default:
+		return uintArithmeticRangeTransfer(state, inst)
+	}
+	return true
+}
+
+// uintArithmeticRangeTransfer models the uint subtraction, multiplication and remainder,
+// and the read of a string's byte.
+//
+// Takes state (rangeState) which is updated in place.
+// Takes inst (isa.Instruction) which is the instruction.
+//
+// Returns true when the instruction was modelled.
+func uintArithmeticRangeTransfer(state rangeState, inst isa.Instruction) bool {
+	b, bKnown := state.uintAt(inst.B)
+	c, cKnown := state.uintAt(inst.C)
+	switch inst.Op {
+	case isa.OpGetStringByte:
+		state.setUint(inst.A, uintRange{lo: 0, hi: byteValueMax})
+	case isa.OpSubtractUint64:
+		setUintResult(state, inst.A, uintRange{lo: b.lo - c.hi, hi: b.hi - c.lo}, bKnown && cKnown && b.lo >= c.hi)
+	case isa.OpMultiplyUint64:
+		_, lo := bits.Mul64(b.lo, c.lo)
+		overflow, hi := bits.Mul64(b.hi, c.hi)
+		setUintResult(state, inst.A, uintRange{lo: lo, hi: hi}, bKnown && cKnown && overflow == 0)
+	case isa.OpRemainderUint64:
+		setUintResult(state, inst.A, remainderUintRange(b, bKnown, c, cKnown), bKnown || (cKnown && c.hi > 0))
+	default:
 		return false
 	}
 	return true
+}
+
+// remainderUintRange bounds an unsigned remainder.
+//
+// A zero divisor panics instead of producing a value, so the divisor's lower bound does
+// not matter.
+//
+// Takes dividend (uintRange) which is the dividend's range.
+// Takes dividendKnown (bool) which reports whether that range is known.
+// Takes divisor (uintRange) which is the divisor's range.
+// Takes divisorKnown (bool) which reports whether that range is known.
+//
+// Returns uintRange which is meaningful when either input is known.
+func remainderUintRange(dividend uintRange, dividendKnown bool, divisor uintRange, divisorKnown bool) uintRange {
+	hi := boundOrMax(dividend, dividendKnown)
+	if divisorKnown && divisor.hi > 0 {
+		hi = min(hi, divisor.hi-1)
+	}
+	return uintRange{lo: 0, hi: hi}
 }
 
 // shiftRightUint shifts as the VM does, giving zero for counts of 64 or more.
@@ -482,32 +633,55 @@ func tier1RangeTransfer(compiledFunction *program.CompiledFunction, state rangeS
 	body := compiledFunction.Body
 	inst := body[pc]
 	switch {
-	case isa.InstrIsTier1SubOp(inst, isa.SubOpLoadIntConstSmall):
-		state.ints[inst.B] = intRange{lo: int64(inst.C), hi: int64(inst.C)}
-	case isa.InstrIsTier1SubOp(inst, isa.SubOpLoadUintConstSmall):
-		state.uints[inst.B] = uintRange{lo: uint64(inst.C), hi: uint64(inst.C)}
-	case isa.InstrIsTier1SubOp(inst, isa.SubOpMoveInt):
-		known, ok := state.ints[inst.C]
+	case isa.InstrIsTier1SubOp(inst, isa.SubOpLoadInt64Immediate):
+		state.setInt(inst.B, intRange{lo: int64(inst.C), hi: int64(inst.C)})
+	case isa.InstrIsTier1SubOp(inst, isa.SubOpLoadUint64Immediate):
+		state.setUint(inst.B, uintRange{lo: uint64(inst.C), hi: uint64(inst.C)})
+	case isa.InstrIsTier1SubOp(inst, isa.SubOpMoveInt64):
+		known, ok := state.intAt(inst.C)
 		setIntResult(state, inst.B, known, ok)
-	case isa.InstrIsTier1SubOp(inst, isa.SubOpMoveUint):
-		known, ok := state.uints[inst.C]
+	case isa.InstrIsTier1SubOp(inst, isa.SubOpMoveUint64):
+		known, ok := state.uintAt(inst.C)
 		setUintResult(state, inst.B, known, ok)
-	case isa.InstrIsTier1SubOp(inst, isa.SubOpUintToInt):
-		known, ok := state.uints[inst.C]
+	case isa.InstrIsTier1SubOp(inst, isa.SubOpConvertUint64ToInt64):
+		known, ok := state.uintAt(inst.C)
 		setIntResult(state, inst.B, intRange{lo: int64(min(known.lo, math.MaxInt64)), hi: int64(min(known.hi, math.MaxInt64))}, ok && known.hi <= math.MaxInt64)
-	case isa.InstrIsTier1SubOp(inst, isa.SubOpIntToUint):
-		known, ok := state.ints[inst.C]
+	case isa.InstrIsTier1SubOp(inst, isa.SubOpConvertInt64ToUint64):
+		known, ok := state.intAt(inst.C)
 		setUintResult(state, inst.B, uintRange{lo: uint64(max(known.lo, 0)), hi: uint64(max(known.hi, 0))}, ok && known.lo >= 0)
-	case isa.InstrIsTier1SubOp(inst, isa.SubOpSliceGetByteDirect):
-		state.uints[inst.B] = uintRange{lo: 0, hi: byteValueMax}
-	case isa.InstrIsTier1SubOp(inst, isa.SubOpBitAndUintConst) && pc+1 < len(body):
-		mask, ok := uintPoolBound(compiledFunction, isa.JoinWide(body[pc+1].A, body[pc+1].B))
-		known, sourceKnown := state.uints[inst.C]
-		setUintResult(state, inst.B, uintRange{lo: 0, hi: min(boundOrMax(uintRange{lo: 0, hi: mask}, ok), boundOrMax(known, sourceKnown))}, ok || sourceKnown)
+	case isa.InstrIsTier1SubOp(inst, isa.SubOpGetSliceByteElement):
+		state.setUint(inst.B, uintRange{lo: 0, hi: byteValueMax})
 	case isa.InstrIsTier1SubOp(inst, isa.SubOpGetGlobalWide):
 		forgetRegister(state, isa.RegisterKind(inst.C), inst.B)
 	case isa.InstrIsTier1SubOp(inst, isa.SubOpSetGlobalWide), isa.InstrIsTier1SubOp(inst, isa.SubOpSetStructFieldSliceByte),
 		isa.InstrIsTier1SubOp(inst, isa.SubOpGetStructFieldSliceByte):
+	default:
+		return pc+1 < len(body) && uintConstantRangeTransfer(compiledFunction, state, inst, body[pc+1])
+	}
+	return true
+}
+
+// uintConstantRangeTransfer models tier-1 uint operations with an extension-word
+// constant.
+//
+// Takes compiledFunction (*program.CompiledFunction) which supplies the uint pool.
+// Takes state (rangeState) which is updated in place.
+// Takes inst (isa.Instruction) which is the instruction.
+// Takes extension (isa.Instruction) which is the word after it.
+//
+// Returns true when the instruction was modelled.
+func uintConstantRangeTransfer(compiledFunction *program.CompiledFunction, state rangeState, inst, extension isa.Instruction) bool {
+	constant, ok := uintPoolBound(compiledFunction, isa.JoinWide(extension.A, extension.B))
+	known, sourceKnown := state.uintAt(inst.C)
+	switch {
+	case isa.InstrIsTier1SubOp(inst, isa.SubOpBitAndUint64Constant):
+		hi := min(boundOrMax(uintRange{lo: 0, hi: constant}, ok), boundOrMax(known, sourceKnown))
+		setUintResult(state, inst.B, uintRange{lo: 0, hi: hi}, ok || sourceKnown)
+	case isa.InstrIsTier1SubOp(inst, isa.SubOpAddUint64Constant):
+		hi, carry := bits.Add64(known.hi, constant, 0)
+		setUintResult(state, inst.B, uintRange{lo: known.lo + constant, hi: hi}, ok && sourceKnown && carry == 0)
+	case isa.InstrIsTier1SubOp(inst, isa.SubOpSubtractUint64Constant):
+		setUintResult(state, inst.B, uintRange{lo: known.lo - constant, hi: known.hi - constant}, ok && sourceKnown && known.lo >= constant)
 	default:
 		return false
 	}
@@ -528,17 +702,17 @@ func forgetWrites(body []isa.Instruction, state rangeState, pc int) {
 		state.forget()
 		return
 	}
-	intWrites := registersWrittenInBank(inst, isa.RoleForKind(isa.RegisterInt))
-	uintWrites := registersWrittenInBank(inst, isa.RoleForKind(isa.RegisterUint))
+	intWrites := registersWrittenInBank(inst, isa.RoleForKind(isa.RegisterInt64))
+	uintWrites := registersWrittenInBank(inst, isa.RoleForKind(isa.RegisterUint64))
 	if intWrites.any || uintWrites.any || !forgetExtensionWrites(body, state, pc) {
 		state.forget()
 		return
 	}
 	for _, reg := range intWrites.registers() {
-		delete(state.ints, reg)
+		state.setInt(reg, wholeIntRange())
 	}
 	for _, reg := range uintWrites.registers() {
-		delete(state.uints, reg)
+		state.setUint(reg, wholeUintRange())
 	}
 }
 
@@ -561,8 +735,8 @@ func forgetExtensionWrites(body []isa.Instruction, state rangeState, pc int) boo
 	}
 	end := pc + instructionFootprint(body, pc)
 	for word := pc + 1; word < end; word++ {
-		if !forgetExtensionWordWrites(body, state, pc, word, isa.RegisterInt) ||
-			!forgetExtensionWordWrites(body, state, pc, word, isa.RegisterUint) {
+		if !forgetExtensionWordWrites(body, state, pc, word, isa.RegisterInt64) ||
+			!forgetExtensionWordWrites(body, state, pc, word, isa.RegisterUint64) {
 			return false
 		}
 	}
@@ -602,10 +776,10 @@ func forgetExtensionWordWrites(body []isa.Instruction, state rangeState, owner, 
 // Takes known (bool) which is false when the range is not known.
 func setIntResult(state rangeState, reg uint8, result intRange, known bool) {
 	if !known {
-		delete(state.ints, reg)
+		state.setInt(reg, wholeIntRange())
 		return
 	}
-	state.ints[reg] = result
+	state.setInt(reg, result)
 }
 
 // setUintResult records a uint register's range, or forgets it when unknown.
@@ -616,10 +790,10 @@ func setIntResult(state rangeState, reg uint8, result intRange, known bool) {
 // Takes known (bool) which is false when the range is not known.
 func setUintResult(state rangeState, reg uint8, result uintRange, known bool) {
 	if !known {
-		delete(state.uints, reg)
+		state.setUint(reg, wholeUintRange())
 		return
 	}
-	state.uints[reg] = result
+	state.setUint(reg, result)
 }
 
 // forgetRegister drops what the state knows about reg when it is in the int or uint bank.
@@ -629,10 +803,10 @@ func setUintResult(state rangeState, reg uint8, result uintRange, known bool) {
 // Takes reg (uint8) which is the register.
 func forgetRegister(state rangeState, kind isa.RegisterKind, reg uint8) {
 	switch kind {
-	case isa.RegisterInt:
-		delete(state.ints, reg)
-	case isa.RegisterUint:
-		delete(state.uints, reg)
+	case isa.RegisterInt64:
+		state.setInt(reg, wholeIntRange())
+	case isa.RegisterUint64:
+		state.setUint(reg, wholeUintRange())
 	default:
 	}
 }
@@ -640,7 +814,7 @@ func forgetRegister(state rangeState, kind isa.RegisterKind, reg uint8) {
 // combineInts computes the range of an int addition, subtraction or multiplication,
 // returning the full range when any corner overflows.
 //
-// Takes op (isa.Opcode) which is OpAddInt, OpSubInt or OpMulInt.
+// Takes op (isa.Opcode) which is OpAddInt64, OpSubtractInt64 or OpMultiplyInt64.
 // Takes b (intRange) which is the left operand.
 // Takes c (intRange) which is the right operand.
 //
@@ -661,17 +835,17 @@ func combineInts(op isa.Opcode, b, c intRange) intRange {
 
 // intCorner applies op to one pair of range corners.
 //
-// Takes op (isa.Opcode) which is OpAddInt, OpSubInt or OpMulInt.
+// Takes op (isa.Opcode) which is OpAddInt64, OpSubtractInt64 or OpMultiplyInt64.
 // Takes x (int64) which is the left value.
 // Takes y (int64) which is the right value.
 //
 // Returns the result and false on overflow.
 func intCorner(op isa.Opcode, x, y int64) (int64, bool) {
 	switch op {
-	case isa.OpAddInt:
+	case isa.OpAddInt64:
 		sum := x + y
 		return sum, (sum > x) == (y > 0) || y == 0
-	case isa.OpSubInt:
+	case isa.OpSubtractInt64:
 		difference := x - y
 		return difference, (difference < x) == (y > 0) || y == 0
 	default:
@@ -690,12 +864,12 @@ func intCorner(op isa.Opcode, x, y int64) (int64, bool) {
 // Returns the plain op.
 func fusedIntBase(op isa.Opcode) isa.Opcode {
 	switch op {
-	case isa.OpSubIntConst:
-		return isa.OpSubInt
-	case isa.OpMulIntConst:
-		return isa.OpMulInt
+	case isa.OpSubtractInt64Constant:
+		return isa.OpSubtractInt64
+	case isa.OpMultiplyInt64Constant:
+		return isa.OpMultiplyInt64
 	default:
-		return isa.OpAddInt
+		return isa.OpAddInt64
 	}
 }
 

@@ -244,3 +244,90 @@ func TestShortPackageName(t *testing.T) {
 		})
 	}
 }
+
+func TestATypeFromReflectAnswersAsItsNativeType(t *testing.T) {
+	t.Parallel()
+
+	type point struct {
+		X int32
+		Y float32
+	}
+	structure := newTypeFromReflect(reflect.TypeFor[point]())
+	require.Equal(t, reflect.TypeFor[point]().Size(), structure.Size())
+	require.Equal(t, reflect.TypeFor[point]().Align(), structure.Align())
+	require.Equal(t, reflect.TypeFor[point]().FieldAlign(), structure.FieldAlign())
+	names := make([]string, 0, 2)
+	for field := range structure.Fields() {
+		names = append(names, field.Name)
+	}
+	require.Equal(t, []string{"X", "Y"}, names)
+	require.Equal(t, "Y", structure.FieldByIndex([]int{1}).Name)
+	field, ok := structure.FieldByName("X")
+	require.True(t, ok)
+	require.Equal(t, "X", field.Name)
+	_, ok = structure.FieldByNameFunc(func(name string) bool { return name == "Z" })
+	require.False(t, ok)
+
+	narrow := newTypeFromReflect(reflect.TypeFor[uint8]())
+	require.Equal(t, 8, narrow.Bits())
+	require.True(t, narrow.OverflowUint(300))
+	require.True(t, newTypeFromReflect(reflect.TypeFor[float32]()).OverflowFloat(1e300))
+	require.False(t, newTypeFromReflect(reflect.TypeFor[complex128]()).OverflowComplex(1))
+
+	function := newTypeFromReflect(reflect.TypeFor[func(int, string) bool]())
+	var ins, outs int
+	for range function.Ins() {
+		ins++
+	}
+	for range function.Outs() {
+		outs++
+	}
+	require.Equal(t, 2, ins)
+	require.Equal(t, 1, outs)
+
+	var none *Type
+	require.Zero(t, none.Size())
+	require.Zero(t, none.Align())
+	require.Zero(t, none.FieldAlign())
+	require.Zero(t, none.Bits())
+	require.False(t, none.OverflowUint(1))
+	require.False(t, none.OverflowFloat(1))
+	require.False(t, none.OverflowComplex(1))
+	require.Empty(t, none.FieldByIndex([]int{0}).Name)
+	_, ok = none.FieldByName("X")
+	require.False(t, ok)
+	_, ok = none.FieldByNameFunc(func(string) bool { return true })
+	require.False(t, ok)
+	for range none.Fields() {
+		require.Fail(t, "a nil type has no fields")
+	}
+	for range none.Ins() {
+		require.Fail(t, "a nil type has no parameters")
+	}
+	for range none.Outs() {
+		require.Fail(t, "a nil type has no results")
+	}
+}
+
+func TestANamedInterfaceTypeReportsItsParts(t *testing.T) {
+	t.Parallel()
+
+	named := NewNamedInterfaceType("example.com/shapes", "Shape", []string{"Area", "Perimeter"})
+	pkgPath, name, methods, ok := named.NamedInterfaceParts()
+	require.True(t, ok)
+	require.Equal(t, "example.com/shapes", pkgPath)
+	require.Equal(t, "Shape", name)
+	require.Equal(t, []string{"Area", "Perimeter"}, methods)
+	_, _, _, ok = newTypeFromReflect(reflect.TypeFor[int]()).NamedInterfaceParts()
+	require.False(t, ok)
+}
+
+func TestIdentityTransparentFunctionsAreRemembered(t *testing.T) {
+	transparent := func(value any) any { return value }
+	before := IdentityTransparentFunctionCount()
+	RegisterIdentityTransparentFunction(transparent)
+	RegisterIdentityTransparentFunction(nil)
+	RegisterIdentityTransparentFunction(42)
+	require.True(t, IsIdentityTransparentFunction(reflect.ValueOf(transparent).Pointer()))
+	require.Equal(t, before+1, IdentityTransparentFunctionCount())
+}

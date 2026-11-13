@@ -74,6 +74,10 @@ type adapterMethodRef struct {
 	// root is the compiled root owning the method, or nil for the VM's own root.
 	root *program.CompiledFunction
 
+	// path is the runtime indices of the embedded fields a promoted method is reached
+	// through from the wrapped value, and nil for a method the type declares itself.
+	path []int
+
 	// index is the method's slot in root's function table.
 	index uint16
 }
@@ -145,8 +149,12 @@ func (c *AdapterCore) Invoke(method string, arguments ...reflect.Value) (results
 		results = nil
 		err = fmt.Errorf("pipit adapter for %s: %s panicked: %v", c.typeName, method, recovered)
 	}()
+	underlying := c.underlying
+	if ref.path != nil {
+		underlying = promotedMethodReceiver(underlying, ref.path)
+	}
 	bound := newCrossPackageBoundMethod(c.vm, root, callee)
-	receiver := receiverValueFor(callee, c.underlying)
+	receiver := receiverValueFor(callee, underlying)
 	return bound.invokeResult(receiver, arguments, identityArg)
 }
 
@@ -172,8 +180,8 @@ func (c *AdapterCore) InvokeRecordingError(method string, arguments ...reflect.V
 	return nil
 }
 
-// ResultError converts an interpreted method result into a native error, using the
-// error adapter when needed.
+// ResultError converts an interpreted method result into a native error, using the error
+// adapter when needed.
 //
 // Takes results ([]reflect.Value) which are the method's results.
 // Takes index (int) which selects the error result.
@@ -299,8 +307,8 @@ func (c *AdapterCore) typedResult[T any](method string, results []reflect.Value,
 // and the adapter's embedded *AdapterCore, panicking on invalid registrations.
 //
 // Takes iface (reflect.Type) which must be an interface type with at least one method.
-// Takes build (adapterBuilder) which constructs the adapter; must not be nil. The
-// adapter must embed *AdapterCore.
+// Takes build (adapterBuilder) which constructs the adapter; must not be nil. The adapter
+// must embed *AdapterCore.
 func RegisterInterfaceAdapter(iface reflect.Type, build adapterBuilder) {
 	registerAdapterFamily([]reflect.Type{iface}, nil, build)
 }
@@ -394,7 +402,7 @@ func buildRegisteredAdapter(vm *VM, argument reflect.Value, expectedType reflect
 	}
 	methods := make(map[string]adapterMethodRef, expectedType.NumMethod())
 	for method := range expectedType.Methods() {
-		root, index, found := lookupAdapterMethod(vm, typeName+"."+method.Name)
+		root, index, path, found := lookupAdapterMethodOrPromoted(vm, argument, typeName, method.Name)
 		if !found {
 			return reflect.Value{}
 		}
@@ -404,12 +412,13 @@ func buildRegisteredAdapter(vm *VM, argument reflect.Value, expectedType reflect
 		if !methodReceiverSatisfiesValueIn(root, vm, index, argument) {
 			return reflect.Value{}
 		}
-		methods[method.Name] = adapterMethodRef{root: root, index: index}
+		methods[method.Name] = adapterMethodRef{root: root, index: index, path: path}
 	}
 	for _, iface := range registered.optional {
 		resolveOptionalMethods(vm, argument, typeName, iface, methods)
 	}
-	adapter := registered.build(&AdapterCore{vm: vm, underlying: argument, typeName: typeName, methods: methods})
+	vm.exportGuestCode()
+	adapter := registered.build(&AdapterCore{vm: vm, underlying: adapterHeldValue(vm, argument), typeName: typeName, methods: methods})
 	if !adapter.IsValid() || !adapter.Type().Implements(expectedType) || !adapter.Type().Implements(adapterUnwrapperReflectType) {
 		return reflect.Value{}
 	}
@@ -452,19 +461,19 @@ func resolveOptionalMethods(vm *VM, argument reflect.Value, typeName string, ifa
 		if _, done := methods[method.Name]; done {
 			continue
 		}
-		root, index, found := lookupAdapterMethod(vm, typeName+"."+method.Name)
+		root, index, path, found := lookupAdapterMethodOrPromoted(vm, argument, typeName, method.Name)
 		if !found || !adapterMethodHasSignature(vm, root, index, method.Type) ||
 			!methodReceiverSatisfiesValueIn(root, vm, index, argument) {
 			return
 		}
-		resolved[method.Name] = adapterMethodRef{root: root, index: index}
+		resolved[method.Name] = adapterMethodRef{root: root, index: index, path: path}
 	}
 	maps.Copy(methods, resolved)
 }
 
-// adapterMethodHasSignature checks parameter and result counts and scalar register
-// banks against an interface signature. When a static Go type was recorded, all types
-// must match exactly.
+// adapterMethodHasSignature checks parameter and result counts and scalar register banks
+// against an interface signature. When a static Go type was recorded, all types must
+// match exactly.
 //
 // Takes vm (*VM) which resolves the method.
 // Takes methodRoot (*program.CompiledFunction) which owns the method; nil for the VM's
@@ -511,14 +520,14 @@ func scalarBankOrGeneral(kind isa.RegisterKind, t reflect.Type) isa.RegisterKind
 	case reflect.String:
 		return isa.RegisterString
 	case reflect.Complex64, reflect.Complex128:
-		return isa.RegisterComplex
+		return isa.RegisterComplex128
 	default:
 	}
 	if bank := tinyLeafScalarFieldBank(t.Kind()); bank != isa.RegisterGeneral {
 		return bank
 	}
 	switch kind {
-	case isa.RegisterInt, isa.RegisterUint, isa.RegisterFloat, isa.RegisterBool, isa.RegisterString, isa.RegisterComplex:
+	case isa.RegisterInt64, isa.RegisterUint64, isa.RegisterFloat64, isa.RegisterBool, isa.RegisterString, isa.RegisterComplex128:
 		return isa.RegisterGeneral
 	default:
 		return kind

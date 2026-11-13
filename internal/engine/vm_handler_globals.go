@@ -40,9 +40,9 @@ import (
 // Returns the number of slots in the selected bank.
 func globalBankSize(globals *GlobalStore, kind isa.RegisterKind) int {
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return len(globals.ints)
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return len(globals.floats)
 	case isa.RegisterString:
 		return len(globals.Strings)
@@ -50,9 +50,9 @@ func globalBankSize(globals *GlobalStore, kind isa.RegisterKind) int {
 		return len(globals.general)
 	case isa.RegisterBool:
 		return len(globals.bools)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return len(globals.uints)
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return len(globals.complexes)
 	default:
 		return 0
@@ -90,9 +90,9 @@ func checkGlobalIndex(vm *VM, frame *CallFrame, index int, kind isa.RegisterKind
 // Takes instruction (instruction) which encodes the operand slots and register kind.
 func globalGetByKind(registers *Registers, globals *GlobalStore, index int, instruction isa.Instruction) {
 	switch isa.RegisterKind(instruction.C) {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		registers.Ints[instruction.A] = globals.GetInt(index)
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.Floats[instruction.A] = globals.GetFloat(index)
 	case isa.RegisterString:
 		registers.Strings[instruction.A] = globals.GetString(index)
@@ -100,9 +100,9 @@ func globalGetByKind(registers *Registers, globals *GlobalStore, index int, inst
 		registers.General[instruction.A] = globals.GetGeneral(index)
 	case isa.RegisterBool:
 		registers.Bools[instruction.A] = globals.GetBool(index)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[instruction.A] = globals.GetUint(index)
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.Complex[instruction.A] = globals.getComplex(index)
 	default:
 	}
@@ -125,23 +125,27 @@ func globalGetByKind(registers *Registers, globals *GlobalStore, index int, inst
 // Takes arena (*RegisterArena) which provides the string arena for materialisation.
 func globalSetByKind(registers *Registers, globals *GlobalStore, index int, instruction isa.Instruction, hasGoroutines bool, arena *RegisterArena) {
 	switch isa.RegisterKind(instruction.C) {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		globals.SetInt(index, registers.Ints[instruction.A])
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		globals.SetFloat(index, registers.Floats[instruction.A])
 	case isa.RegisterString:
 		s := registers.Strings[instruction.A]
-		if hasGoroutines {
+
+		if hasGoroutines || reusedWithoutLicence(arena) {
 			s = materialiseStringUnconditional(arena, s)
 		}
+		noteHandOffString(arena, handOffUntracedContainer, s)
 		globals.SetString(index, s)
 	case isa.RegisterGeneral:
-		globals.SetGeneral(index, escapeArenaValueForGlobal(arena, registers.General[instruction.A]))
+		escaped := escapeArenaValueForGlobal(arena, registers.General[instruction.A])
+		noteBoxedHandOff(arena, handOffUntracedContainer, escaped, true)
+		globals.SetGeneral(index, escaped)
 	case isa.RegisterBool:
 		globals.SetBool(index, registers.Bools[instruction.A])
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		globals.SetUint(index, registers.Uints[instruction.A])
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		globals.setComplex(index, registers.Complex[instruction.A])
 	default:
 	}
@@ -180,6 +184,12 @@ func escapeArenaValueForGlobal(arena *RegisterArena, v reflect.Value) reflect.Va
 			return safeBuildEscapeSliceHeader(materialiseArenaValueUnconditional(arena, v))
 		}
 		return materialiseArenaValueUnconditional(arena, v)
+	case reflect.Struct, reflect.Array:
+		escaped := materialiseArenaValueUnconditional(arena, v)
+		if krefCompositeOwned(arena, escaped) && krefHolderMustCopy(arena) {
+			return krefCopy(escaped)
+		}
+		return escaped
 	default:
 		return materialiseArenaValueUnconditional(arena, v)
 	}
@@ -216,11 +226,62 @@ func safeBuildEscapeSliceHeader(v reflect.Value) reflect.Value {
 func handleGetGlobal(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	kind := isa.RegisterKind(instruction.C)
 	index := int(instruction.B) + bundleSlotBase(frame.Function, kind)
+	if readUnsharedGlobal(registers, vm.Globals, kind, instruction.A, index) {
+		return opContinue
+	}
 	if !checkGlobalIndex(vm, frame, index, kind) {
 		return opPanicError
 	}
 	globalGetByKind(registers, vm.Globals, index, instruction)
 	return opContinue
+}
+
+// readUnsharedGlobal loads a scalar or general global of a store no other goroutine
+// shares, straight from the store's slice. A string or complex global takes the general
+// route.
+//
+// Takes registers (*Registers) which receives the value.
+// Takes globals (*GlobalStore) which holds the global.
+// Takes kind (isa.RegisterKind) which is the global's bank.
+// Takes destination (uint8) which is the register to load into.
+// Takes index (int) which is the global's slot.
+//
+// Returns bool which is false when the store is shared, the bank is another one or the
+// slot is out of range, in which case the caller takes the general route.
+func readUnsharedGlobal(registers *Registers, globals *GlobalStore, kind isa.RegisterKind, destination uint8, index int) bool {
+	if globals.shared.Load() {
+		return false
+	}
+	switch kind {
+	case isa.RegisterInt64:
+		if uint(index) >= uint(len(globals.ints)) {
+			return false
+		}
+		registers.Ints[destination] = globals.ints[index]
+	case isa.RegisterGeneral:
+		if uint(index) >= uint(len(globals.general)) {
+			return false
+		}
+		registers.General[destination] = globals.general[index]
+	case isa.RegisterUint64:
+		if uint(index) >= uint(len(globals.uints)) {
+			return false
+		}
+		registers.Uints[destination] = globals.uints[index]
+	case isa.RegisterFloat64:
+		if uint(index) >= uint(len(globals.floats)) {
+			return false
+		}
+		registers.Floats[destination] = globals.floats[index]
+	case isa.RegisterBool:
+		if uint(index) >= uint(len(globals.bools)) {
+			return false
+		}
+		registers.Bools[destination] = globals.bools[index]
+	default:
+		return false
+	}
+	return true
 }
 
 // handleSetGlobal implements isa.OpSetGlobal. It stores register instruction.a of the
@@ -258,6 +319,9 @@ func handleGetGlobalWide(vm *VM, frame *CallFrame, registers *Registers, instruc
 	frame.ProgramCounter++
 	kind := isa.RegisterKind(instruction.C)
 	index := int(uint16(extensionWord.A)|uint16(extensionWord.B)<<isa.WideBitShift) + bundleSlotBase(frame.Function, kind)
+	if readUnsharedGlobal(registers, vm.Globals, kind, instruction.B, index) {
+		return opContinue
+	}
 	if !checkGlobalIndex(vm, frame, index, kind) {
 		return opPanicError
 	}

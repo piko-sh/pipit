@@ -20,6 +20,7 @@ package typemap
 
 import (
 	"context"
+	"fmt"
 	"go/types"
 	"log/slog"
 	"reflect"
@@ -51,6 +52,16 @@ const (
 	// CycleBrokenTagKey.
 	CycleBrokenTagValue = isa.CycleBrokenTagValue
 
+	// maxConversionSteps bounds the types one conversion visits.
+	maxConversionSteps = 1 << 20
+
+	// maxConversionDepth bounds the nesting of one conversion, well below the depth at which
+	// the goroutine stack would run out.
+	maxConversionDepth = 1 << 13
+
+	// conversionCancelCheckInterval is how many steps pass between checks of the context.
+	conversionCancelCheckInterval = 1 << 10
+
 	// braceNestingHint is the expected nesting depth of struct and interface literals in a
 	// rendered type string. Deeper strings grow the tracking slice.
 	braceNestingHint = 4
@@ -59,6 +70,11 @@ const (
 // typeConverterState carries registry lookups, the active cycle-detection set, and an
 // optional shared cache through one typeToReflect call chain.
 type typeConverterState struct {
+	// conversionErr is the first failure of the conversion, such as a named composite type
+	// that could not be given its own runtime type or a type past the step budget. Once it
+	// is set every further conversion gives `any`, and the caller fails the compile.
+	conversionErr error
+
 	// symbols resolves pre-registered native types via the SymbolRegistry. May be nil when
 	// conversion runs outside a registered-symbol context.
 	symbols *symtab.SymbolRegistry
@@ -77,9 +93,23 @@ type typeConverterState struct {
 	// be nil outside a Service context.
 	globals *engine.GlobalStore
 
+	// cycleTypes maps the members of a group of self-referential named composite types being
+	// built to their forged runtime types (convertNamedCompositeCycle).
+	cycleTypes map[*types.Named]reflect.Type
+
+	// cycles finds the groups of self-referential named composite types. It lives on the
+	// TypeCache when there is one, so a compile walks each type once.
+	cycles *cycleIndex
+
 	// processingStructs tracks the anonymous struct types on the active recursion path
 	// during type conversion.
 	processingStructs []*types.Struct
+
+	// steps counts the types the conversion has visited, which maxConversionSteps bounds.
+	steps int
+
+	// depth is the current nesting of convertType calls, which maxConversionDepth bounds.
+	depth int
 }
 
 // braceRewriter is the state of reflectStyleBraces.
@@ -151,28 +181,99 @@ func (r *braceRewriter) closeBrace(rendered string, i int) {
 	r.out.WriteByte('}')
 }
 
-// TypeToReflectCached converts a go/types.Type to a reflect.Type using an optional shared
-// cache so repeated conversions of the same nominal type yield identity-stable
-// reflect.Types.
+// step charges one visited type to the conversion's budget and checks the context now and
+// then.
 //
-// Takes t (types.Type) which is the go/types.Type to convert.
-// Takes symbols (*SymbolRegistry) which resolves pre-registered native reflect.Types. May
-// be nil.
-// Takes cache (map[types.Type]reflect.Type) which is the shared identity map across
-// calls. May be nil.
+// Returns error which wraps fault.ErrCompileTypeTooComplex past maxConversionSteps, or
+// the context's cause when ctx is done.
+func (state *typeConverterState) step(ctx context.Context) error {
+	state.steps++
+	if state.steps > maxConversionSteps {
+		return tooComplex(fmt.Sprintf("more than %d steps", maxConversionSteps))
+	}
+	if state.steps%conversionCancelCheckInterval == 0 && ctx.Err() != nil {
+		return fmt.Errorf("type conversion stopped: %w", context.Cause(ctx))
+	}
+	return nil
+}
+
+// descend charges one step and checks a recursion's depth.
+//
+// Takes depth (int) which is the recursion's current depth.
+//
+// Returns error which wraps fault.ErrCompileTypeTooComplex past maxConversionDepth or
+// maxConversionSteps, or the context's cause when ctx is done.
+func (state *typeConverterState) descend(ctx context.Context, depth int) error {
+	if depth > maxConversionDepth {
+		return tooComplex(fmt.Sprintf("nested more than %d levels", maxConversionDepth))
+	}
+	return state.step(ctx)
+}
+
+// fail records the conversion's first failure.
+//
+// Takes err (error) which is the failure.
+//
+// Returns reflect.Type which is `any`, standing in for the type until the compile fails.
+func (state *typeConverterState) fail(err error) reflect.Type {
+	if state.conversionErr == nil {
+		state.conversionErr = err
+	}
+	return reflect.TypeFor[any]()
+}
+
+// quota returns the named composite quota of the conversion's symbol registry.
+//
+// Returns *typemodel.NamedCompositeQuota which is nil without a registry.
+func (state *typeConverterState) quota() *typemodel.NamedCompositeQuota {
+	return state.symbols.NamedCompositeQuota()
+}
+
+// TypeToReflectCached converts a go/types.Type to a reflect.Type through cache, so
+// mutually recursive named types share identity across calls and each type is converted
+// once per compile.
+//
+// Takes t (types.Type) which is the type to convert.
+// Takes symbols (*symtab.SymbolRegistry) which resolves host types and supplies the named
+// composite quota. May be nil.
+// Takes cache (*TypeCache) which is the compile's memory of converted types. May be nil.
 // Takes globals (*GlobalStore) which receives user-declared named interface registrations
 // as a side effect. May be nil.
 //
-// Returns the synthesised reflect.Type for t.
-func TypeToReflectCached(ctx context.Context, t types.Type, symbols *symtab.SymbolRegistry, cache map[types.Type]reflect.Type, globals *engine.GlobalStore) reflect.Type {
+// Returns reflect.Type which is the synthesised reflect.Type for t.
+// Returns error which wraps typemodel.ErrNamedCompositeLimit,
+// typemodel.ErrNamedCompositeQuota or typemodel.ErrNamedCompositeUnsupported when a named
+// array, slice, map, channel or function type that t reaches could not be given its own
+// runtime type, fault.ErrCompileTypeTooComplex when the conversion passed its step or
+// depth bound, or the context's cause when ctx was done. The returned type then stands in
+// for the real one and must not run. Every later call through the same cache returns the
+// same error at once.
+func TypeToReflectCached(ctx context.Context, t types.Type, symbols *symtab.SymbolRegistry, cache *TypeCache, globals *engine.GlobalStore) (reflect.Type, error) {
+	if cache != nil && cache.failure != nil {
+		return reflect.TypeFor[any](), cache.failure
+	}
 	state := &typeConverterState{
 		symbols:           symbols,
 		processing:        make(map[types.Type]bool),
-		cache:             cache,
+		cache:             nil,
 		globals:           globals,
 		processingStructs: nil,
+		cycleTypes:        nil,
+		cycles:            nil,
+		conversionErr:     nil,
+		steps:             0,
+		depth:             0,
 	}
-	return convertType(ctx, state, t)
+	if cache != nil {
+		state.cache, state.cycles = cache.types, cache.cycles
+	} else {
+		state.cycles = newCycleIndex()
+	}
+	result := convertType(ctx, state, t)
+	if state.conversionErr != nil && cache != nil {
+		cache.failure = state.conversionErr
+	}
+	return result, state.conversionErr
 }
 
 // RuntimeTypeString renders t the way Go's runtime prints it (`reflect.Type.String`,
@@ -233,31 +334,6 @@ func ResolveRegisteredType(object *types.TypeName, symbols *symtab.SymbolRegistr
 		return nil
 	}
 	return rt
-}
-
-// SubstituteType lowers t through subs, replacing TypeParams in place.
-//
-// Takes t (types.Type) which is the type to substitute. Nil returns nil.
-// Takes subs (map[*types.TypeParam]types.Type) which maps each generic type parameter to
-// its concrete instantiation. May be nil or empty (returns t unchanged).
-// Takes cache (map[types.Type]types.Type) which memoises results. Pass nil for one-shot
-// calls or a fresh empty map for repeated recursion.
-//
-// Returns the substituted types.Type, or t when the substitution would be a no-op.
-func SubstituteType(t types.Type, subs map[*types.TypeParam]types.Type, cache map[types.Type]types.Type) types.Type {
-	if t == nil || len(subs) == 0 {
-		return t
-	}
-	if cache != nil {
-		if cached, ok := cache[t]; ok {
-			return cached
-		}
-	}
-	result := substituteTypeUncached(t, subs, cache)
-	if cache != nil {
-		cache[t] = result
-	}
-	return result
 }
 
 // ContainsTypeParameter reports whether t mentions a type parameter anywhere in its
@@ -385,8 +461,8 @@ func logTypeCycle(ctx context.Context, named *types.Named, processing map[types.
 		}
 	}
 
-	l := logging.LoggerFrom(ctx)
-	l.Debug("Type cycle detected in compiler type conversion",
+	_, logger := logging.From(ctx)
+	logger.Debug("Type cycle detected in compiler type conversion",
 		slog.String("type", typePath),
 		slog.Any("activeChain", chain),
 	)
@@ -454,9 +530,6 @@ func embeddedFieldNeedsRename(f *types.Var, fieldType reflect.Type) bool {
 
 // appendCycleBrokenTag returns the struct tag with the CycleBrokenTagKey marker appended,
 // or returns the marker alone when tag is empty.
-//
-// buildStructFieldLayout consults the marker to decide whether the field qualifies for
-// the isa.OpGetStructFieldRawPointerT0 specialisation.
 //
 // Takes tag (string) which is the existing struct tag string.
 //
@@ -668,6 +741,14 @@ func compactTypeArgumentLists(rendered string) string {
 //
 // Returns the synthesised or registered reflect.Type for t.
 func convertType(ctx context.Context, state *typeConverterState, t types.Type) reflect.Type {
+	if state.conversionErr != nil {
+		return reflect.TypeFor[any]()
+	}
+	if err := state.descend(ctx, state.depth); err != nil {
+		return state.fail(err)
+	}
+	state.depth++
+	defer func() { state.depth-- }()
 	if alias, ok := t.(*types.Alias); ok {
 		if rt := ResolveRegisteredType(alias.Obj(), state.symbols); rt != nil {
 			return rt
@@ -734,11 +815,130 @@ func convertNamedType(ctx context.Context, state *typeConverterState, named *typ
 		return reflect.TypeFor[any]()
 	}
 	if _, isBasic := named.Underlying().(*types.Basic); isBasic {
-		if poolType := typemodel.NamedScalarPoolTypeFor(named); poolType != nil {
+		if poolType := typemodel.NamedScalarPoolTypeFor(ctx, named); poolType != nil {
 			return poolType
 		}
 	}
+	if IsNamedCompositeType(named) && !declaredInHostPackage(state, named) {
+		return convertNamedComposite(ctx, state, named)
+	}
 	return nil
+}
+
+// declaredInHostPackage reports whether named belongs to a package the symbol registry
+// supplies.
+//
+// Takes state (*typeConverterState) which holds the symbol registry.
+// Takes named (*types.Named) which is the type.
+//
+// Returns bool which is true for a host package's type.
+func declaredInHostPackage(state *typeConverterState, named *types.Named) bool {
+	pkg := named.Obj().Pkg()
+	return pkg != nil && state.symbols != nil && state.symbols.HasPackage(pkg.Path())
+}
+
+// convertNamedComposite converts a named array, slice, map, channel or function type to
+// the runtime type typemodel builds for it, so values of the type keep their identity
+// when stored in interfaces (see typemodel's namedCompositeRegistry).
+//
+// A failure to build the type is recorded on state and the underlying type is returned in
+// its place, so the caller can fail the compile. A build without the forging code gives
+// the type its underlying type's runtime type, as before named composite types had their
+// own (typemodel.NamedCompositeTypesSupported).
+//
+// Takes state (*typeConverterState) which carries the cache and the recursion path.
+// Takes named (*types.Named) which IsNamedCompositeType accepted.
+//
+// Returns reflect.Type which is the named type's runtime type.
+func convertNamedComposite(ctx context.Context, state *typeConverterState, named *types.Named) reflect.Type {
+	if rt := cachedReflectType(state, named); rt != nil {
+		return rt
+	}
+	if rt, building := state.cycleTypes[named]; building {
+		return rt
+	}
+	if state.processing[named] {
+		logTypeCycle(ctx, named, state.processing)
+		return reflect.TypeFor[any]()
+	}
+	members, component, err := state.cycles.membersOf(ctx, state, named)
+	if err != nil {
+		return state.fail(err)
+	}
+	if !typemodel.NamedCompositeTypesSupported() {
+		return convertSharedNamedComposite(ctx, state, named, members != nil)
+	}
+	if members != nil {
+		return convertNamedCompositeCycle(ctx, state, named, members, component)
+	}
+	underlying := convertNamedNonStruct(ctx, state, named)
+	if state.conversionErr != nil {
+		return underlying
+	}
+	result, err := state.quota().TypeFor(NamedCompositeIdentityOf(named), underlying)
+	if err != nil {
+		state.fail(err)
+		return underlying
+	}
+	storeReflectType(state, named, result)
+	return result
+}
+
+// convertSharedNamedComposite converts a named composite type in a build without the
+// forging code, where it shares its underlying type's runtime type.
+//
+// Takes state (*typeConverterState) which carries the cache and the recursion path.
+// Takes named (*types.Named) which is the type.
+// Takes cyclic (bool) which is true when named reaches itself.
+//
+// Returns reflect.Type which is the underlying type's runtime type.
+func convertSharedNamedComposite(ctx context.Context, state *typeConverterState, named *types.Named, cyclic bool) reflect.Type {
+	result := convertNamedNonStruct(ctx, state, named)
+	if !cyclic && state.conversionErr == nil {
+		storeReflectType(state, named, result)
+	}
+	return result
+}
+
+// IsNamedCompositeType reports whether t is a named array, slice, map, channel or
+// function type with no type parameters, which gets a runtime type of its own. A
+// self-referential type such as `type List []List` is built with the types it reaches
+// (convertNamedCompositeCycle).
+//
+// Takes t (types.Type) which may be an alias.
+//
+// Returns bool which is true for such a type.
+func IsNamedCompositeType(t types.Type) bool {
+	named, ok := types.Unalias(t).(*types.Named)
+	if !ok || named.Obj() == nil {
+		return false
+	}
+	switch named.Underlying().(type) {
+	case *types.Slice, *types.Array, *types.Map, *types.Chan, *types.Signature:
+		return !ContainsTypeParameter(named)
+	default:
+		return false
+	}
+}
+
+// NamedCompositeIdentityOf names a named composite type the way the runtime prints it.
+//
+// Takes named (*types.Named) which is the type.
+//
+// Returns typemodel.NamedCompositeIdentity which carries its package, its name with any
+// type arguments, and its declared identifier.
+func NamedCompositeIdentityOf(named *types.Named) typemodel.NamedCompositeIdentity {
+	identity := typemodel.NamedCompositeIdentity{
+		PkgPath:  "",
+		PkgName:  "",
+		Name:     RuntimeTypeString(named),
+		BareName: named.Obj().Name(),
+	}
+	if pkg := named.Obj().Pkg(); pkg != nil {
+		identity.PkgPath, identity.PkgName = pkg.Path(), pkg.Name()
+		identity.Name = strings.TrimPrefix(identity.Name, pkg.Name()+".")
+	}
+	return identity
 }
 
 // registerUserNamedInterfacePipitType publishes a symtab.Type for a user-declared named
@@ -1053,223 +1253,6 @@ func basicToReflect(k types.BasicKind) reflect.Type {
 	default:
 		return reflect.TypeFor[any]()
 	}
-}
-
-// substituteTypeUncached is the core walker. Separated from SubstituteType to keep the
-// cache-management code out of the hot recursive switch.
-//
-// Takes t (types.Type) which is the type to substitute (non-nil, subs non-empty per
-// SubstituteType's preconditions).
-// Takes subs (map[*types.TypeParam]types.Type) which is the substitution map.
-// Takes cache (map[types.Type]types.Type) which memoises results.
-//
-// Returns the substituted types.Type.
-func substituteTypeUncached(t types.Type, subs map[*types.TypeParam]types.Type, cache map[types.Type]types.Type) types.Type {
-	switch u := t.(type) {
-	case *types.TypeParam:
-		if substituted, ok := subs[u]; ok {
-			return substituted
-		}
-		return t
-	case *types.Basic:
-		return t
-	case *types.Pointer:
-		element := SubstituteType(u.Elem(), subs, cache)
-		if element == u.Elem() {
-			return t
-		}
-		return types.NewPointer(element)
-	case *types.Slice:
-		element := SubstituteType(u.Elem(), subs, cache)
-		if element == u.Elem() {
-			return t
-		}
-		return types.NewSlice(element)
-	case *types.Array:
-		return substituteArrayElement(u, subs, cache)
-	case *types.Map:
-		return substituteMap(u, subs, cache)
-	case *types.Chan:
-		return substituteChannel(u, subs, cache)
-	case *types.Tuple:
-		return substituteTuple(u, subs, cache)
-	case *types.Signature:
-		return substituteSignature(u, subs, cache)
-	case *types.Struct:
-		return substituteStruct(u, subs, cache)
-	case *types.Named:
-		return substituteNamed(u, subs, cache)
-	case *types.Alias:
-		return SubstituteType(types.Unalias(t), subs, cache)
-	case *types.Interface:
-
-		return t
-	default:
-		return t
-	}
-}
-
-// substituteArrayElement substitutes the element type of a fixed-length array, preserving
-// the array length when reconstructing.
-//
-// Takes u (*types.Array) which is the array type to substitute.
-// Takes subs (map[*types.TypeParam]types.Type) which carries the active substitution map.
-// Takes cache (map[types.Type]types.Type) which memoises walks across shared subtrees.
-//
-// Returns the substituted array type, or u when no substitution fires.
-func substituteArrayElement(u *types.Array, subs map[*types.TypeParam]types.Type, cache map[types.Type]types.Type) types.Type {
-	element := SubstituteType(u.Elem(), subs, cache)
-	if element == u.Elem() {
-		return u
-	}
-	return types.NewArray(element, u.Len())
-}
-
-// substituteMap substitutes both key and element of a map type.
-//
-// Takes u (*types.Map) which is the map type to substitute.
-// Takes subs (map[*types.TypeParam]types.Type) which carries the active substitution map.
-// Takes cache (map[types.Type]types.Type) which memoises walks across shared subtrees.
-//
-// Returns the substituted map type, or u when no substitution fires.
-func substituteMap(u *types.Map, subs map[*types.TypeParam]types.Type, cache map[types.Type]types.Type) types.Type {
-	key := SubstituteType(u.Key(), subs, cache)
-	element := SubstituteType(u.Elem(), subs, cache)
-	if key == u.Key() && element == u.Elem() {
-		return u
-	}
-	return types.NewMap(key, element)
-}
-
-// substituteChannel substitutes the element type of a channel, preserving its direction.
-//
-// Takes u (*types.Chan) which is the channel type to substitute.
-// Takes subs (map[*types.TypeParam]types.Type) which carries the active substitution map.
-// Takes cache (map[types.Type]types.Type) which memoises walks across shared subtrees.
-//
-// Returns the substituted channel type, or u when no substitution fires.
-func substituteChannel(u *types.Chan, subs map[*types.TypeParam]types.Type, cache map[types.Type]types.Type) types.Type {
-	element := SubstituteType(u.Elem(), subs, cache)
-	if element == u.Elem() {
-		return u
-	}
-	return types.NewChan(u.Dir(), element)
-}
-
-// substituteTuple substitutes each variable in a tuple. Returns the original tuple
-// unchanged when no substitution fires.
-//
-// Takes u (*types.Tuple) which is the tuple to substitute.
-// Takes subs (map[*types.TypeParam]types.Type) which carries the active substitution map.
-// Takes cache (map[types.Type]types.Type) which memoises walks across shared subtrees.
-//
-// Returns the substituted tuple type, or u when no substitution fires.
-func substituteTuple(u *types.Tuple, subs map[*types.TypeParam]types.Type, cache map[types.Type]types.Type) *types.Tuple {
-	if u == nil || u.Len() == 0 {
-		return u
-	}
-	changed := false
-	fields := make([]*types.Var, u.Len())
-	for i := range u.Len() {
-		original := u.At(i)
-		subType := SubstituteType(original.Type(), subs, cache)
-		if subType == original.Type() {
-			fields[i] = original
-			continue
-		}
-		changed = true
-		fields[i] = types.NewVar(original.Pos(), original.Pkg(), original.Name(), subType)
-	}
-	if !changed {
-		return u
-	}
-	return types.NewTuple(fields...)
-}
-
-// substituteSignature substitutes parameter, result, and receiver types of a function
-// signature. The result has nil type parameters, so callers must read them from the
-// original signature.
-//
-// Takes u (*types.Signature) which is the signature to substitute.
-// Takes subs (map[*types.TypeParam]types.Type) which carries the active substitution map.
-// Takes cache (map[types.Type]types.Type) which memoises walks across shared subtrees.
-//
-// Returns the substituted signature, or u when no substitution fires.
-func substituteSignature(u *types.Signature, subs map[*types.TypeParam]types.Type, cache map[types.Type]types.Type) types.Type {
-	parameters := substituteTuple(u.Params(), subs, cache)
-	results := substituteTuple(u.Results(), subs, cache)
-	receiver := u.Recv()
-	if receiver != nil {
-		subType := SubstituteType(receiver.Type(), subs, cache)
-		if subType != receiver.Type() {
-			receiver = types.NewVar(receiver.Pos(), receiver.Pkg(), receiver.Name(), subType)
-		}
-	}
-	if parameters == u.Params() && results == u.Results() && receiver == u.Recv() {
-		return u
-	}
-	return types.NewSignatureType(receiver, nil, nil, parameters, results, u.Variadic())
-}
-
-// substituteStruct substitutes each field's type while preserving struct tags and field
-// embedding flags.
-//
-// Takes u (*types.Struct) which is the struct type to substitute.
-// Takes subs (map[*types.TypeParam]types.Type) which carries the active substitution map.
-// Takes cache (map[types.Type]types.Type) which memoises walks across shared subtrees.
-//
-// Returns the substituted struct type, or u when no substitution fires.
-func substituteStruct(u *types.Struct, subs map[*types.TypeParam]types.Type, cache map[types.Type]types.Type) types.Type {
-	changed := false
-	fields := make([]*types.Var, u.NumFields())
-	tags := make([]string, u.NumFields())
-	for i := range u.NumFields() {
-		original := u.Field(i)
-		subType := SubstituteType(original.Type(), subs, cache)
-		if subType == original.Type() {
-			fields[i] = original
-		} else {
-			changed = true
-			fields[i] = types.NewField(original.Pos(), original.Pkg(), original.Name(), subType, original.Embedded())
-		}
-		tags[i] = u.Tag(i)
-	}
-	if !changed {
-		return u
-	}
-	return types.NewStruct(fields, tags)
-}
-
-// substituteNamed substitutes the type-args of a named type and re-instantiates against
-// its origin. Returns the original named type when it has no type-args or when
-// instantiation fails.
-//
-// Takes u (*types.Named) which is the named type to substitute.
-// Takes subs (map[*types.TypeParam]types.Type) which carries the active substitution map.
-// Takes cache (map[types.Type]types.Type) which memoises walks across shared subtrees.
-//
-// Returns the substituted named type, or u when no substitution fires.
-func substituteNamed(u *types.Named, subs map[*types.TypeParam]types.Type, cache map[types.Type]types.Type) types.Type {
-	if u.TypeArgs() == nil || u.TypeArgs().Len() == 0 {
-		return u
-	}
-	changed := false
-	args := make([]types.Type, u.TypeArgs().Len())
-	for i := range u.TypeArgs().Len() {
-		original := u.TypeArgs().At(i)
-		args[i] = SubstituteType(original, subs, cache)
-		if args[i] != original {
-			changed = true
-		}
-	}
-	if !changed {
-		return u
-	}
-	instantiated, err := types.Instantiate(nil, u.Origin(), args, false)
-	if err != nil {
-		return u
-	}
-	return instantiated
 }
 
 // containsTypeParameter is the cycle-guarded worker behind ContainsTypeParameter.

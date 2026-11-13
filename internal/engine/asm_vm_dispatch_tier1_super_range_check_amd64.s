@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerSubOpRangeCheckUintJumpFalse jumps if uints[C] < ext1.a or uints[C] > ext1.b; offset packed in ext2.
-TEXT ·handlerSubOpRangeCheckUintJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerInRangeUint64ThenJumpIfFalse jumps if uints[C] < ext1.a or uints[C] > ext1.b. The offset is packed in ext2.
+TEXT ·handlerInRangeUint64ThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $24, BX
 	MOVBLZX BL, BX
@@ -63,8 +63,8 @@ poll_ok:
 rangeCheckUintDispatch:
 	DISPATCH_NEXT()
 
-// handlerSubOpEqUintConstJumpFalse jumps by the ext offset when uints[B] != C, stepping past the ext word and the trailing no-op either way.
-TEXT ·handlerSubOpEqUintConstJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerEqualUint64ImmediateThenJumpIfFalse jumps by the ext offset when uints[B] != C, stepping past the ext word and the trailing no-op either way.
+TEXT ·handlerEqualUint64ImmediateThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $16, BX
 	MOVBLZX BL, BX
@@ -93,8 +93,8 @@ poll_ok:
 eqUintConstDispatch:
 	DISPATCH_NEXT()
 
-// handlerLeIntConstJumpFalse compares ints[B] <= intConstants[C] and jumps if false.
-TEXT ·handlerLeIntConstJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerLessOrEqualInt64ConstantThenJumpIfFalse compares ints[B] <= intConstants[C] and jumps if false.
+TEXT ·handlerLessOrEqualInt64ConstantThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -124,8 +124,8 @@ taken:
 dispatch:
 	DISPATCH_NEXT()
 
-// handlerLtIntConstJumpFalse compares ints[B] < intConstants[C] and jumps if false.
-TEXT ·handlerLtIntConstJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerLessThanInt64ConstantThenJumpIfFalse compares ints[B] < intConstants[C] and jumps if false.
+TEXT ·handlerLessThanInt64ConstantThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -155,8 +155,8 @@ taken:
 dispatch:
 	DISPATCH_NEXT()
 
-// handlerEqIntConstJumpFalse compares ints[B] == intConstants[C] and jumps if false.
-TEXT ·handlerEqIntConstJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerEqualInt64ConstantThenJumpIfFalse compares ints[B] == intConstants[C] and jumps if false.
+TEXT ·handlerEqualInt64ConstantThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -186,8 +186,8 @@ taken:
 dispatch:
 	DISPATCH_NEXT()
 
-// handlerEqIntConstJumpTrue compares ints[B] == intConstants[C] and jumps if true.
-TEXT ·handlerEqIntConstJumpTrue(SB), NOSPLIT|NOFRAME, $0
+// handlerEqualInt64ConstantThenJumpIfTrue compares ints[B] == intConstants[C] and jumps if true.
+TEXT ·handlerEqualInt64ConstantThenJumpIfTrue(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -217,8 +217,8 @@ taken:
 dispatch:
 	DISPATCH_NEXT()
 
-// handlerGeIntConstJumpFalse compares ints[B] >= intConstants[C] and jumps if false.
-TEXT ·handlerGeIntConstJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterOrEqualInt64ConstantThenJumpIfFalse compares ints[B] >= intConstants[C] and jumps if false.
+TEXT ·handlerGreaterOrEqualInt64ConstantThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -248,8 +248,8 @@ taken:
 dispatch:
 	DISPATCH_NEXT()
 
-// handlerGtIntConstJumpFalse compares ints[B] > intConstants[C] and jumps if false.
-TEXT ·handlerGtIntConstJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterThanInt64ConstantThenJumpIfFalse compares ints[B] > intConstants[C] and jumps if false.
+TEXT ·handlerGreaterThanInt64ConstantThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -279,8 +279,8 @@ taken:
 dispatch:
 	DISPATCH_NEXT()
 
-// handlerLtIntJumpFalse compares ints[B] < ints[C] and jumps if false.
-TEXT ·handlerLtIntJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerLessThanInt64ThenJumpIfFalse compares ints[B] < ints[C] and jumps if false.
+TEXT ·handlerLessThanInt64ThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -310,8 +310,8 @@ taken:
 dispatch:
 	DISPATCH_NEXT()
 
-// handlerLeIntJumpFalse compares ints[B] <= ints[C] and jumps if false.
-TEXT ·handlerLeIntJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerLessOrEqualInt64ThenJumpIfFalse compares ints[B] <= ints[C] and jumps if false.
+TEXT ·handlerLessOrEqualInt64ThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -341,8 +341,8 @@ taken:
 dispatch:
 	DISPATCH_NEXT()
 
-// handlerGtIntJumpFalse compares ints[B] > ints[C] and jumps if false.
-TEXT ·handlerGtIntJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterThanInt64ThenJumpIfFalse compares ints[B] > ints[C] and jumps if false.
+TEXT ·handlerGreaterThanInt64ThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -372,8 +372,8 @@ taken:
 dispatch:
 	DISPATCH_NEXT()
 
-// handlerGeIntJumpFalse compares ints[B] >= ints[C] and jumps if false.
-TEXT ·handlerGeIntJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterOrEqualInt64ThenJumpIfFalse compares ints[B] >= ints[C] and jumps if false.
+TEXT ·handlerGreaterOrEqualInt64ThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -403,8 +403,8 @@ taken:
 dispatch:
 	DISPATCH_NEXT()
 
-// handlerEqIntJumpFalse compares ints[B] == ints[C] and jumps if false.
-TEXT ·handlerEqIntJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerEqualInt64ThenJumpIfFalse compares ints[B] == ints[C] and jumps if false.
+TEXT ·handlerEqualInt64ThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -434,8 +434,8 @@ taken:
 dispatch:
 	DISPATCH_NEXT()
 
-// handlerNeIntJumpFalse compares ints[B] != ints[C] and jumps if false.
-TEXT ·handlerNeIntJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerNotEqualInt64ThenJumpIfFalse compares ints[B] != ints[C] and jumps if false.
+TEXT ·handlerNotEqualInt64ThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -443,6 +443,70 @@ TEXT ·handlerNeIntJumpFalse(SB), NOSPLIT|NOFRAME, $0
 	SHRQ    $24, BX
 	MOVQ    (R8)(AX*8), SI
 	CMPQ    SI, (R8)(BX*8)
+	JNE     taken
+	MOVL    (R12)(R14*4), DX
+	INCQ    R14
+	SHRQ    $8, DX
+	MOVWLZX DX, AX
+	MOVWQSX AX, AX
+	ADDQ    AX, R14
+	DECQ    CTX_POLL_BUDGET(R15)
+	JG      poll_ok
+	MOVQ    R14, CTX_PC(R15)
+	MOVQ    $EXIT_POLL, CTX_EXIT_REASON(R15)
+	MOVQ    R14, CTX_EXIT_PC(R15)
+	RET     
+poll_ok:
+	JMP     dispatch
+
+taken:
+	INCQ    R14
+
+dispatch:
+	DISPATCH_NEXT()
+
+// handlerEqualUint64ThenJumpIfFalse compares uints[B] == uints[C] and jumps if false.
+TEXT ·handlerEqualUint64ThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	MOVQ    DX, BX
+	SHRQ    $24, BX
+	MOVQ    CTX_UINTS_BASE(R15), DI
+	MOVQ    (DI)(AX*8), SI
+	CMPQ    SI, (DI)(BX*8)
+	JE      taken
+	MOVL    (R12)(R14*4), DX
+	INCQ    R14
+	SHRQ    $8, DX
+	MOVWLZX DX, AX
+	MOVWQSX AX, AX
+	ADDQ    AX, R14
+	DECQ    CTX_POLL_BUDGET(R15)
+	JG      poll_ok
+	MOVQ    R14, CTX_PC(R15)
+	MOVQ    $EXIT_POLL, CTX_EXIT_REASON(R15)
+	MOVQ    R14, CTX_EXIT_PC(R15)
+	RET     
+poll_ok:
+	JMP     dispatch
+
+taken:
+	INCQ    R14
+
+dispatch:
+	DISPATCH_NEXT()
+
+// handlerNotEqualUint64ThenJumpIfFalse compares uints[B] != uints[C] and jumps if false.
+TEXT ·handlerNotEqualUint64ThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	MOVQ    DX, BX
+	SHRQ    $24, BX
+	MOVQ    CTX_UINTS_BASE(R15), DI
+	MOVQ    (DI)(AX*8), SI
+	CMPQ    SI, (DI)(BX*8)
 	JNE     taken
 	MOVL    (R12)(R14*4), DX
 	INCQ    R14

@@ -62,39 +62,39 @@ var (
 	//
 	//nolint:revive // line-length-limit: one intrinsic per row keeps the table scannable
 	intrinsicTable = map[string]intrinsicDefinition{
-		"strings.ContainsRune": {opcode: isa.OpStrContainsRune, returnKind: isa.RegisterBool, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterInt}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"strings.Contains":     {opcode: isa.OpStrContains, returnKind: isa.RegisterBool, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"strings.HasPrefix":    {opcode: isa.OpStrHasPrefix, returnKind: isa.RegisterBool, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"strings.HasSuffix":    {opcode: isa.OpStrHasSuffix, returnKind: isa.RegisterBool, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"strings.EqualFold":    {opcode: isa.OpStrEqualFold, returnKind: isa.RegisterBool, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"strings.Index":        {opcode: isa.OpStrIndex, returnKind: isa.RegisterInt, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"strings.Count":        {opcode: isa.OpStrCount, returnKind: isa.RegisterInt, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"strings.IndexRune":    {opcode: isa.OpStrIndexRune, returnKind: isa.RegisterInt, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterInt}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"strings.ToUpper":      {useUmbrella: true, subOp: isa.SubOpStrToUpper, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterString}, argumentCount: 1, opcode: 0},
-		"strings.ToLower":      {useUmbrella: true, subOp: isa.SubOpStrToLower, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterString}, argumentCount: 1, opcode: 0},
-		"strings.TrimSpace":    {useUmbrella: true, subOp: isa.SubOpStrTrimSpace, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterString}, argumentCount: 1, opcode: 0},
-		"strings.TrimPrefix":   {opcode: isa.OpStrTrimPrefix, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"strings.TrimSuffix":   {opcode: isa.OpStrTrimSuffix, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"strings.Trim":         {opcode: isa.OpStrTrim, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"strings.Repeat":       {opcode: isa.OpStrRepeat, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterInt}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"strings.LastIndex":    {opcode: isa.OpStrLastIndex, returnKind: isa.RegisterInt, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"strings.Join":         {opcode: isa.OpStrJoin, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterGeneral, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"strings.Split":        {opcode: isa.OpStrSplit, returnKind: isa.RegisterGeneral, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"math.Abs":             {useUmbrella: true, subOp: isa.SubOpMathAbs, returnKind: isa.RegisterFloat, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat}, argumentCount: 1, opcode: 0},
-		"math.Sqrt":            {useUmbrella: true, subOp: isa.SubOpMathSqrt, returnKind: isa.RegisterFloat, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat}, argumentCount: 1, opcode: 0},
-		"math.Floor":           {useUmbrella: true, subOp: isa.SubOpMathFloor, returnKind: isa.RegisterFloat, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat}, argumentCount: 1, opcode: 0},
-		"math.Ceil":            {useUmbrella: true, subOp: isa.SubOpMathCeil, returnKind: isa.RegisterFloat, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat}, argumentCount: 1, opcode: 0},
-		"math.Round":           {useUmbrella: true, subOp: isa.SubOpMathRound, returnKind: isa.RegisterFloat, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat}, argumentCount: 1, opcode: 0},
-		"math.Pow":             {opcode: isa.OpMathPow, returnKind: isa.RegisterFloat, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat, isa.RegisterFloat}, argumentCount: 2, subOp: 0, useUmbrella: false},
-		"math.Exp":             {useUmbrella: true, subOp: isa.SubOpMathExp, returnKind: isa.RegisterFloat, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat}, argumentCount: 1, opcode: 0},
-		"math.Sin":             {useUmbrella: true, subOp: isa.SubOpMathSin, returnKind: isa.RegisterFloat, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat}, argumentCount: 1, opcode: 0},
-		"math.Cos":             {useUmbrella: true, subOp: isa.SubOpMathCos, returnKind: isa.RegisterFloat, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat}, argumentCount: 1, opcode: 0},
-		"math.Tan":             {useUmbrella: true, subOp: isa.SubOpMathTan, returnKind: isa.RegisterFloat, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat}, argumentCount: 1, opcode: 0},
-		"math.Mod":             {useUmbrella: true, subOp: isa.SubOpMathMod, returnKind: isa.RegisterFloat, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat, isa.RegisterFloat}, argumentCount: 2, opcode: 0},
-		"math.Trunc":           {useUmbrella: true, subOp: isa.SubOpMathTrunc, returnKind: isa.RegisterFloat, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat}, argumentCount: 1, opcode: 0},
-		"strconv.Itoa":         {useUmbrella: true, subOp: isa.SubOpStrconvItoa, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterInt}, argumentCount: 1, opcode: 0},
+		"strings.ContainsRune": {opcode: isa.OpStringsContainsRune, returnKind: isa.RegisterBool, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterInt64}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"strings.Contains":     {opcode: isa.OpStringsContains, returnKind: isa.RegisterBool, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"strings.HasPrefix":    {opcode: isa.OpStringsHasPrefix, returnKind: isa.RegisterBool, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"strings.HasSuffix":    {opcode: isa.OpStringsHasSuffix, returnKind: isa.RegisterBool, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"strings.EqualFold":    {opcode: isa.OpStringsEqualFold, returnKind: isa.RegisterBool, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"strings.Index":        {opcode: isa.OpStringsIndex, returnKind: isa.RegisterInt64, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"strings.Count":        {opcode: isa.OpStringsCount, returnKind: isa.RegisterInt64, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"strings.IndexRune":    {opcode: isa.OpStringsIndexRune, returnKind: isa.RegisterInt64, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterInt64}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"strings.ToUpper":      {useUmbrella: true, subOp: isa.SubOpStringsToUpper, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterString}, argumentCount: 1, opcode: 0},
+		"strings.ToLower":      {useUmbrella: true, subOp: isa.SubOpStringsToLower, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterString}, argumentCount: 1, opcode: 0},
+		"strings.TrimSpace":    {useUmbrella: true, subOp: isa.SubOpStringsTrimSpace, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterString}, argumentCount: 1, opcode: 0},
+		"strings.TrimPrefix":   {opcode: isa.OpStringsTrimPrefix, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"strings.TrimSuffix":   {opcode: isa.OpStringsTrimSuffix, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"strings.Trim":         {opcode: isa.OpStringsTrim, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"strings.Repeat":       {opcode: isa.OpStringsRepeat, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterInt64}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"strings.LastIndex":    {opcode: isa.OpStringsLastIndex, returnKind: isa.RegisterInt64, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"strings.Join":         {opcode: isa.OpStringsJoin, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterGeneral, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"strings.Split":        {opcode: isa.OpStringsSplit, returnKind: isa.RegisterGeneral, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"math.Abs":             {useUmbrella: true, subOp: isa.SubOpMathAbs, returnKind: isa.RegisterFloat64, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat64}, argumentCount: 1, opcode: 0},
+		"math.Sqrt":            {useUmbrella: true, subOp: isa.SubOpMathSqrt, returnKind: isa.RegisterFloat64, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat64}, argumentCount: 1, opcode: 0},
+		"math.Floor":           {useUmbrella: true, subOp: isa.SubOpMathFloor, returnKind: isa.RegisterFloat64, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat64}, argumentCount: 1, opcode: 0},
+		"math.Ceil":            {useUmbrella: true, subOp: isa.SubOpMathCeil, returnKind: isa.RegisterFloat64, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat64}, argumentCount: 1, opcode: 0},
+		"math.Round":           {useUmbrella: true, subOp: isa.SubOpMathRound, returnKind: isa.RegisterFloat64, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat64}, argumentCount: 1, opcode: 0},
+		"math.Pow":             {opcode: isa.OpMathPow, returnKind: isa.RegisterFloat64, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat64, isa.RegisterFloat64}, argumentCount: 2, subOp: 0, useUmbrella: false},
+		"math.Exp":             {useUmbrella: true, subOp: isa.SubOpMathExp, returnKind: isa.RegisterFloat64, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat64}, argumentCount: 1, opcode: 0},
+		"math.Sin":             {useUmbrella: true, subOp: isa.SubOpMathSin, returnKind: isa.RegisterFloat64, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat64}, argumentCount: 1, opcode: 0},
+		"math.Cos":             {useUmbrella: true, subOp: isa.SubOpMathCos, returnKind: isa.RegisterFloat64, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat64}, argumentCount: 1, opcode: 0},
+		"math.Tan":             {useUmbrella: true, subOp: isa.SubOpMathTan, returnKind: isa.RegisterFloat64, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat64}, argumentCount: 1, opcode: 0},
+		"math.Mod":             {useUmbrella: true, subOp: isa.SubOpMathMod, returnKind: isa.RegisterFloat64, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat64, isa.RegisterFloat64}, argumentCount: 2, opcode: 0},
+		"math.Trunc":           {useUmbrella: true, subOp: isa.SubOpMathTrunc, returnKind: isa.RegisterFloat64, argumentKinds: [2]isa.RegisterKind{isa.RegisterFloat64}, argumentCount: 1, opcode: 0},
+		"strconv.Itoa":         {useUmbrella: true, subOp: isa.SubOpStrconvItoa, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterInt64}, argumentCount: 1, opcode: 0},
 		"strconv.FormatBool":   {useUmbrella: true, subOp: isa.SubOpStrconvFormatBool, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterBool}, argumentCount: 1, opcode: 0},
-		"strconv.FormatInt":    {useUmbrella: true, subOp: isa.SubOpStrconvFormatInt, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterInt, isa.RegisterInt}, argumentCount: 2, opcode: 0},
+		"strconv.FormatInt":    {useUmbrella: true, subOp: isa.SubOpStrconvFormatInt, returnKind: isa.RegisterString, argumentKinds: [2]isa.RegisterKind{isa.RegisterInt64, isa.RegisterInt64}, argumentCount: 2, opcode: 0},
 	}
 )
 
@@ -210,7 +210,7 @@ func (c *Compiler) emitIntrinsicCall(definition intrinsicDefinition, dest uint8,
 	if definition.useUmbrella {
 		program.Emit(c.Function, isa.OpDrillTier1, uint8(definition.subOp), dest, argumentRegisters[0])
 		if definition.argumentCount == 2 {
-			program.Emit(c.Function, isa.OpExt, argumentRegisters[1], 0, 0)
+			program.Emit(c.Function, isa.OpExtension, argumentRegisters[1], 0, 0)
 		}
 		return
 	}
@@ -247,7 +247,7 @@ func (c *Compiler) tryCompileReplaceAll(ctx context.Context, key string, express
 		return program.VarLocation{}, false, err
 	}
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterString)
-	program.Emit(c.Function, isa.OpStrReplaceAll, dest, sLocation.Register, oldLocation.Register)
-	program.Emit(c.Function, isa.OpExt, newLocation.Register, 0, 0)
+	program.Emit(c.Function, isa.OpStringsReplaceAll, dest, sLocation.Register, oldLocation.Register)
+	program.Emit(c.Function, isa.OpExtension, newLocation.Register, 0, 0)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterString}, true, nil
 }

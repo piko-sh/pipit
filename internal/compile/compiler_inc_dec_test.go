@@ -51,14 +51,14 @@ func TestSteppingALocalUsesTheSingleWordOpOfItsBank(t *testing.T) {
 		source string
 		want   isa.SubOpcodeTier2
 	}{
-		{name: "an integer incremented", source: "func f(n int) int { n++; return n }", want: isa.SubOpTier2IncInt},
-		{name: "an integer decremented", source: "func f(n int) int { n--; return n }", want: isa.SubOpTier2DecInt},
-		{name: "an unsigned value incremented", source: "func f(n uint64) uint64 { n++; return n }", want: isa.SubOpTier2IncUint},
-		{name: "an unsigned value decremented", source: "func f(n uint64) uint64 { n--; return n }", want: isa.SubOpTier2DecUint},
-		{name: "a value behind a pointer incremented", source: "func f(p *int) { *p++ }", want: isa.SubOpTier2IncInt},
-		{name: "a value behind a pointer decremented", source: "func f(p *int) { *p-- }", want: isa.SubOpTier2DecInt},
-		{name: "a package-level integer incremented", source: "func f() { steppedGlobal++ }", want: isa.SubOpTier2IncInt},
-		{name: "a package-level integer decremented", source: "func f() { steppedGlobal-- }", want: isa.SubOpTier2DecInt},
+		{name: "an integer incremented", source: "func f(n int) int { n++; return n }", want: isa.SubOpTier2IncrementInt64},
+		{name: "an integer decremented", source: "func f(n int) int { n--; return n }", want: isa.SubOpTier2DecrementInt64},
+		{name: "an unsigned value incremented", source: "func f(n uint64) uint64 { n++; return n }", want: isa.SubOpTier2IncrementUint64},
+		{name: "an unsigned value decremented", source: "func f(n uint64) uint64 { n--; return n }", want: isa.SubOpTier2DecrementUint64},
+		{name: "a value behind a pointer incremented", source: "func f(p *int) { *p++ }", want: isa.SubOpTier2IncrementInt64},
+		{name: "a value behind a pointer decremented", source: "func f(p *int) { *p-- }", want: isa.SubOpTier2DecrementInt64},
+		{name: "a package-level integer incremented", source: "func f() { steppedGlobal++ }", want: isa.SubOpTier2IncrementInt64},
+		{name: "a package-level integer decremented", source: "func f() { steppedGlobal-- }", want: isa.SubOpTier2DecrementInt64},
 	}
 
 	for _, tt := range tests {
@@ -82,10 +82,10 @@ func TestSteppingAFloatGoesThroughAdditionOfOne(t *testing.T) {
 		source string
 		want   isa.Opcode
 	}{
-		{name: "a local incremented", source: "func f(x float64) float64 { x++; return x }", want: isa.OpAddFloat},
-		{name: "a local decremented", source: "func f(x float64) float64 { x--; return x }", want: isa.OpSubFloat},
-		{name: "a value behind a pointer incremented", source: "func f(p *float64) { *p++ }", want: isa.OpAddFloat},
-		{name: "a package-level float decremented", source: "func f() { steppedGlobalFloat-- }", want: isa.OpSubFloat},
+		{name: "a local incremented", source: "func f(x float64) float64 { x++; return x }", want: isa.OpAddFloat64},
+		{name: "a local decremented", source: "func f(x float64) float64 { x--; return x }", want: isa.OpSubtractFloat64},
+		{name: "a value behind a pointer incremented", source: "func f(p *float64) { *p++ }", want: isa.OpAddFloat64},
+		{name: "a package-level float decremented", source: "func f() { steppedGlobalFloat-- }", want: isa.OpSubtractFloat64},
 	}
 
 	for _, tt := range tests {
@@ -97,7 +97,7 @@ func TestSteppingAFloatGoesThroughAdditionOfOne(t *testing.T) {
 
 			require.Truef(t, bodyContainsOpcode(compiled, tt.want),
 				"the float bank has no single-word step, so the constant one must be loaded and %s applied", tt.want)
-			require.True(t, bodyContainsOpcode(compiled, isa.OpLoadFloatConst),
+			require.True(t, bodyContainsOpcode(compiled, isa.OpLoadFloat64Constant),
 				"the one added or subtracted has to come from the float constant pool")
 		})
 	}
@@ -110,11 +110,11 @@ func TestSteppingACapturedVariableWritesBackThroughItsCell(t *testing.T) {
 
 	closure := findCompiledFunction(t, root, "<closure>")
 
-	require.True(t, bodyContainsTier2SubOp(closure, isa.SubOpTier2IncInt),
+	require.True(t, bodyContainsTier2SubOp(closure, isa.SubOpTier2IncrementInt64),
 		"the captured integer still steps with the single-word op once it is in a register")
-	require.True(t, bodyContainsOpcode(closure, isa.OpGetUpvalue),
+	require.True(t, bodyContainsOpcode(closure, isa.OpGetCapturedVariable),
 		"the current value has to be read out of the shared cell first")
-	require.True(t, bodyContainsOpcode(closure, isa.OpSetUpvalue),
+	require.True(t, bodyContainsOpcode(closure, isa.OpSetCapturedVariable),
 		"the stepped value has to be written back, or the closure would step a copy")
 }
 
@@ -126,11 +126,11 @@ func TestSteppingAStructFieldFusesIntoASingleWord(t *testing.T) {
 		source string
 		want   isa.SubOpcode
 	}{
-		{name: "an integer field incremented", source: "func f(s *stepped) { s.N++ }", want: isa.SubOpIncStructFieldInt},
-		{name: "an integer field decremented", source: "func f(s *stepped) { s.N-- }", want: isa.SubOpDecStructFieldInt},
-		{name: "an unsigned field incremented", source: "func f(s *stepped) { s.U++ }", want: isa.SubOpIncStructFieldUint},
-		{name: "an unsigned field decremented", source: "func f(s *stepped) { s.U-- }", want: isa.SubOpDecStructFieldUint},
-		{name: "a promoted integer field incremented", source: "func f(w *steppedWrapper) { w.N++ }", want: isa.SubOpIncStructFieldInt},
+		{name: "an integer field incremented", source: "func f(s *stepped) { s.N++ }", want: isa.SubOpIncrementStructFieldInt64},
+		{name: "an integer field decremented", source: "func f(s *stepped) { s.N-- }", want: isa.SubOpDecrementStructFieldInt64},
+		{name: "an unsigned field incremented", source: "func f(s *stepped) { s.U++ }", want: isa.SubOpIncrementStructFieldUint64},
+		{name: "an unsigned field decremented", source: "func f(s *stepped) { s.U-- }", want: isa.SubOpDecrementStructFieldUint64},
+		{name: "a promoted integer field incremented", source: "func f(w *steppedWrapper) { w.N++ }", want: isa.SubOpIncrementStructFieldInt64},
 	}
 
 	for _, tt := range tests {
@@ -142,7 +142,7 @@ func TestSteppingAStructFieldFusesIntoASingleWord(t *testing.T) {
 
 			require.Truef(t, bodyContainsTier1SubOp(compiled, tt.want),
 				"a full-width scalar field at a tier-0 layout steps in place, so %v must replace the read-step-write trio", tt.want)
-			require.False(t, bodyContainsOpcode(compiled, isa.OpGetFieldInt),
+			require.False(t, bodyContainsOpcode(compiled, isa.OpGetFieldInt64),
 				"the fused step reads nothing into a register, so no field read may be emitted alongside it")
 		})
 	}
@@ -159,17 +159,17 @@ func TestSteppingAFieldTheFusedWordCannotTakeFallsBackToReadAndWrite(t *testing.
 		{
 			name:    "a narrow integer field has to be truncated after the step",
 			source:  "func f(s *stepped) { s.Narrow++ }",
-			wantOps: []isa.Opcode{isa.OpGetFieldInt, isa.OpSetFieldInt},
+			wantOps: []isa.Opcode{isa.OpGetFieldInt64, isa.OpSetFieldInt64},
 		},
 		{
 			name:    "a floating-point field is not a step the fused word handles",
 			source:  "func f(s *stepped) { s.F++ }",
-			wantOps: []isa.Opcode{isa.OpGetField, isa.OpUnpackInterface, isa.OpAddFloat, isa.OpPackInterface, isa.OpSetField},
+			wantOps: []isa.Opcode{isa.OpGetField, isa.OpUnboxFromInterface, isa.OpAddFloat64, isa.OpBoxAsInterface, isa.OpSetField},
 		},
 		{
 			name:    "a promoted floating-point field is reached through its embedded pointer",
 			source:  "func f(w *steppedWrapper) { w.F++ }",
-			wantOps: []isa.Opcode{isa.OpDeref, isa.OpUnpackInterface, isa.OpAddFloat, isa.OpPackInterface, isa.OpSetField},
+			wantOps: []isa.Opcode{isa.OpDereference, isa.OpUnboxFromInterface, isa.OpAddFloat64, isa.OpBoxAsInterface, isa.OpSetField},
 		},
 	}
 
@@ -184,7 +184,7 @@ func TestSteppingAFieldTheFusedWordCannotTakeFallsBackToReadAndWrite(t *testing.
 				require.Truef(t, bodyContainsOpcode(compiled, op),
 					"the fallback reads the field, steps it and writes it back, so %s belongs in the body", op)
 			}
-			require.False(t, bodyContainsTier1SubOp(compiled, isa.SubOpIncStructFieldInt),
+			require.False(t, bodyContainsTier1SubOp(compiled, isa.SubOpIncrementStructFieldInt64),
 				"the fused word must not be emitted for a field it cannot step correctly")
 		})
 	}
@@ -198,14 +198,14 @@ func TestSteppingAnElementReusesTheCompoundAssignmentPath(t *testing.T) {
 		source string
 		want   isa.Opcode
 	}{
-		{name: "a slice element incremented", source: "func f(s []int, i int) { s[i]++ }", want: isa.OpAddInt},
-		{name: "a slice element decremented", source: "func f(s []int, i int) { s[i]-- }", want: isa.OpSubInt},
-		{name: "a floating-point slice element incremented", source: "func f(s []float64, i int) { s[i]++ }", want: isa.OpAddFloat},
-		{name: "an unsigned slice element incremented", source: "func f(s []uint64, i int) { s[i]++ }", want: isa.OpAddUint},
-		{name: "an array element incremented", source: "func f(a *[4]int, i int) { a[i]++ }", want: isa.OpAddInt},
-		{name: "a map entry incremented", source: "func f(m map[int]int, k int) { m[k]++ }", want: isa.OpMapAddIntInt},
-		{name: "a map entry decremented", source: "func f(m map[int]int, k int) { m[k]-- }", want: isa.OpSubInt},
-		{name: "an entry of a string-keyed map incremented", source: "func f(m map[string]int, k string) { m[k]++ }", want: isa.OpMapAddStringInt},
+		{name: "a slice element incremented", source: "func f(s []int, i int) { s[i]++ }", want: isa.OpAddInt64},
+		{name: "a slice element decremented", source: "func f(s []int, i int) { s[i]-- }", want: isa.OpSubtractInt64},
+		{name: "a floating-point slice element incremented", source: "func f(s []float64, i int) { s[i]++ }", want: isa.OpAddFloat64},
+		{name: "an unsigned slice element incremented", source: "func f(s []uint64, i int) { s[i]++ }", want: isa.OpAddUint64},
+		{name: "an array element incremented", source: "func f(a *[4]int, i int) { a[i]++ }", want: isa.OpAddInt64},
+		{name: "a map entry incremented", source: "func f(m map[int]int, k int) { m[k]++ }", want: isa.OpAddToMapInt64Int64},
+		{name: "a map entry decremented", source: "func f(m map[int]int, k int) { m[k]-- }", want: isa.OpSubtractInt64},
+		{name: "an entry of a string-keyed map incremented", source: "func f(m map[string]int, k string) { m[k]++ }", want: isa.OpAddToMapStringInt64},
 	}
 
 	for _, tt := range tests {

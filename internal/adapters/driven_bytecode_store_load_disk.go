@@ -22,6 +22,7 @@ package adapters
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 
@@ -44,35 +45,53 @@ import (
 // Returns error when the store is nil, the key is empty, the cache is missing, the schema
 // version has changed, or reconstruction fails.
 func (bytecodeStore *bytecodeStore) LoadCompiledFileSet(ctx context.Context, key string, registry *symtab.SymbolRegistry) (*program.CompiledFileSet, error) {
+	fileSet, _, err := bytecodeStore.LoadCompiledFileSetWithDigest(ctx, key, registry)
+	return fileSet, err
+}
+
+// LoadCompiledFileSetWithDigest is LoadCompiledFileSet that also reports the SHA-256 of
+// the stored bytes, so a service loading the same bytecode again can share the package
+// variable slots of the earlier load.
+//
+// Takes key (string) which identifies the cached bytecode to load.
+// Takes registry (*symtab.SymbolRegistry) which provides symbol and type lookups for
+// runtime reconstruction.
+//
+// Returns *program.CompiledFileSet which is the reconstructed compiled file set.
+// Returns [sha256.Size]byte which is the digest of the stored bytes.
+// Returns error when the store is nil, the key is empty, the cache is missing, the schema
+// version has changed, or reconstruction fails.
+func (bytecodeStore *bytecodeStore) LoadCompiledFileSetWithDigest(ctx context.Context, key string, registry *symtab.SymbolRegistry) (*program.CompiledFileSet, [sha256.Size]byte, error) {
+	var digest [sha256.Size]byte
 	if bytecodeStore.store == nil || key == "" {
-		return nil, errors.New("bytecode store requires a store and key")
+		return nil, digest, errors.New("bytecode store requires a store and key")
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("bytecode load cancelled before read: %w", err)
+		return nil, digest, fmt.Errorf("bytecode load cancelled before read: %w", err)
 	}
 
 	fileName := fmt.Sprintf("bytecode-%s.bin", key)
 	data, err := rootfs.ReadFileBounded(bytecodeStore.store, fileName, fbs.PackedSize(schema.MaximumBytecodePayloadBytes))
 	if err != nil {
-		return nil, fmt.Errorf("bytecode cache miss or read error for key %s: %w", key, err)
+		return nil, digest, fmt.Errorf("bytecode cache miss or read error for key %s: %w", key, err)
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("bytecode load cancelled after read: %w", err)
+		return nil, digest, fmt.Errorf("bytecode load cancelled after read: %w", err)
 	}
 
 	payload, err := schema.Unpack(data)
 	if err != nil {
 		removeError := bytecodeStore.store.Remove(fileName)
 		if errors.Is(err, fbs.ErrSchemaVersionMismatch) {
-			return nil, errors.Join(fmt.Errorf("bytecode schema version mismatch for key %s, invalidated", key), removeError)
+			return nil, digest, errors.Join(fmt.Errorf("bytecode schema version mismatch for key %s, invalidated", key), removeError)
 		}
-		return nil, errors.Join(fmt.Errorf("failed to unpack versioned bytecode for key %s: %w", key, err), removeError)
+		return nil, digest, errors.Join(fmt.Errorf("failed to unpack versioned bytecode for key %s: %w", key, err), removeError)
 	}
 
 	fileSet, err := decodeCompiledFileSet(ctx, payload, registry)
 	if err != nil {
 		removeError := bytecodeStore.store.Remove(fileName)
-		return nil, errors.Join(fmt.Errorf("failed to reconstruct bytecode for key %s: %w", key, err), removeError)
+		return nil, digest, errors.Join(fmt.Errorf("failed to reconstruct bytecode for key %s: %w", key, err), removeError)
 	}
-	return fileSet, nil
+	return fileSet, sha256.Sum256(data), nil
 }

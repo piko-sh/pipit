@@ -19,6 +19,7 @@
 package typemap
 
 import (
+	"go/token"
 	"go/types"
 
 	"pipit.sh/pipit/internal/isa"
@@ -90,15 +91,15 @@ func KindForCallSlot(t types.Type) isa.RegisterKind {
 
 	switch elementBasic.Kind() {
 	case types.Int, types.Int64:
-		return isa.RegisterSliceInt
+		return isa.RegisterSliceInt64
 	case types.Float64:
-		return isa.RegisterSliceFloat
+		return isa.RegisterSliceFloat64
 	case types.String:
 		return isa.RegisterSliceString
 	case types.Bool:
 		return isa.RegisterSliceBool
 	case types.Uint, types.Uint64:
-		return isa.RegisterSliceUint
+		return isa.RegisterSliceUint64
 	case types.Uint8:
 		return isa.RegisterSliceByte
 	default:
@@ -163,16 +164,16 @@ func KindForTypedSlice(t types.Type) isa.RegisterKind {
 		return isa.RegisterGeneral
 	}
 	switch KindForType(slice.Elem()) {
-	case isa.RegisterInt:
-		return isa.RegisterSliceInt
-	case isa.RegisterFloat:
-		return isa.RegisterSliceFloat
+	case isa.RegisterInt64:
+		return isa.RegisterSliceInt64
+	case isa.RegisterFloat64:
+		return isa.RegisterSliceFloat64
 	case isa.RegisterString:
 		return isa.RegisterSliceString
 	case isa.RegisterBool:
 		return isa.RegisterSliceBool
-	case isa.RegisterUint:
-		return isa.RegisterSliceUint
+	case isa.RegisterUint64:
+		return isa.RegisterSliceUint64
 	default:
 	}
 	return isa.RegisterGeneral
@@ -180,10 +181,6 @@ func KindForTypedSlice(t types.Type) isa.RegisterKind {
 
 // NarrowIntegerBitWidth returns the bit width of a narrow integer type, or 0 for
 // full-width and non-integer types.
-//
-// Recognises int8/int16/int32 and uint8/uint16/uint32. The Compiler uses this to Emit
-// isa.OpTruncateNarrow after arithmetic on narrow integer kinds so the register value
-// matches Go's modular wrap semantics.
 //
 // Takes t (types.Type) which is the Go type to inspect.
 //
@@ -208,6 +205,58 @@ func NarrowIntegerBitWidth(t types.Type) uint8 {
 	}
 }
 
+// BinaryResultFitsNarrowType reports whether an operation on operands of an integer type
+// always gives a value of that type as a register holds it, so that it needs no
+// truncation to the type's width.
+//
+// A register holds an unsigned narrow value with its upper bits clear and a signed one
+// with its sign carried through them. The bitwise operations, the remainder and the right
+// shift keep operands of that form in that form. So does unsigned division. Signed
+// division does not. The least value divided by minus one is one more than the greatest.
+//
+// Takes operation (token.Token) which is the binary operator.
+// Takes resultType (types.Type) which is the type of both operands, or of the shifted
+// operand.
+//
+// Returns bool which is true when the result cannot be out of range.
+func BinaryResultFitsNarrowType(operation token.Token, resultType types.Type) bool {
+	if resultType == nil {
+		return false
+	}
+	basic, ok := resultType.Underlying().(*types.Basic)
+	if !ok || basic.Info()&types.IsInteger == 0 {
+		return false
+	}
+	switch operation {
+	case token.AND, token.OR, token.XOR, token.AND_NOT, token.REM, token.SHR:
+		return true
+	case token.QUO:
+		return basic.Info()&types.IsUnsigned != 0
+	default:
+		return false
+	}
+}
+
+// ConversionNeedsTruncation reports whether converting an integer between two types held
+// in the same register bank can give a value the destination type does not hold.
+//
+// Both types are signed or both are unsigned, since they share a bank. A value of the
+// source type is already held in the destination's form when the destination is at least
+// as wide.
+//
+// Takes source (types.Type) which is the operand's type.
+// Takes destination (types.Type) which is the type converted to.
+//
+// Returns bool which is true when the destination is narrower than the source.
+func ConversionNeedsTruncation(source, destination types.Type) bool {
+	destinationWidth := NarrowIntegerBitWidth(destination)
+	if destinationWidth == 0 {
+		return false
+	}
+	sourceWidth := NarrowIntegerBitWidth(source)
+	return sourceWidth == 0 || sourceWidth > destinationWidth
+}
+
 // KindForBasic maps a types.BasicKind to a isa.RegisterKind.
 //
 // Takes k (types.BasicKind) which is the basic type kind to map.
@@ -220,20 +269,20 @@ func KindForBasic(k types.BasicKind) isa.RegisterKind {
 
 	case types.Int, types.Int8, types.Int16, types.Int32, types.Int64,
 		types.UntypedInt, types.UntypedRune:
-		return isa.RegisterInt
+		return isa.RegisterInt64
 
 	case types.Uint, types.Uint8, types.Uint16, types.Uint32, types.Uint64,
 		types.Uintptr:
-		return isa.RegisterUint
+		return isa.RegisterUint64
 
 	case types.Float32, types.Float64, types.UntypedFloat:
-		return isa.RegisterFloat
+		return isa.RegisterFloat64
 
 	case types.String, types.UntypedString:
 		return isa.RegisterString
 
 	case types.Complex64, types.Complex128, types.UntypedComplex:
-		return isa.RegisterComplex
+		return isa.RegisterComplex128
 
 	default:
 		return isa.RegisterGeneral

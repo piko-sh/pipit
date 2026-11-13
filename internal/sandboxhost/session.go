@@ -88,12 +88,12 @@ func NewIsolatedSession(ctx context.Context, config IsolatedConfig) (*IsolatedSe
 		return nil, err
 	}
 	if err != nil {
-		return nil, cleanupOrFail(err, process.Close)
+		return nil, cleanupOrFail(ctx, err, process.Close)
 	}
-	client, err := sandboxworker.OpenSession(process,
+	client, err := sandboxworker.OpenSession(ctx, process,
 		sandboxworker.Configuration{Profile: sandboxworker.SessionProfile, Imports: config.Imports})
 	if err != nil {
-		return nil, cleanupOrFail(err, process.Close)
+		return nil, cleanupOrFail(ctx, err, process.Close)
 	}
 	return &IsolatedSession{process: process, client: client, active: atomic.Bool{}}, nil
 }
@@ -117,12 +117,12 @@ func (session *IsolatedSession) Submit(ctx context.Context, source string) (resu
 	}
 	defer session.active.Store(false)
 	closed := make(chan error, 1)
-	stopCancellation := context.AfterFunc(ctx, func() { closed <- session.Close() })
+	stopCancellation := context.AfterFunc(ctx, func() { closed <- session.Close(ctx) })
 	defer func() {
 		if !stopCancellation() {
 			err = errors.Join(err, ctx.Err(), <-closed)
 		} else if ctx.Err() != nil {
-			err = errors.Join(err, ctx.Err(), session.Close())
+			err = errors.Join(err, ctx.Err(), session.Close(ctx))
 		}
 		if err != nil {
 			result = RestrictedResult{Value: nil, Output: "", CostUsed: 0, OutputTruncated: false}
@@ -131,7 +131,7 @@ func (session *IsolatedSession) Submit(ctx context.Context, source string) (resu
 	if err := ctx.Err(); err != nil {
 		return RestrictedResult{}, err
 	}
-	response, err := session.client.Submit(source)
+	response, err := session.client.Submit(ctx, source)
 	if err != nil {
 		if errors.Is(err, sandboxworker.ErrSessionEvaluation) {
 			return RestrictedResult{}, &fault.EvaluationError{Tier: "isolated-session", Message: err.Error()}
@@ -146,14 +146,14 @@ func (session *IsolatedSession) Submit(ctx context.Context, source string) (resu
 // be retried.
 //
 // Returns error for execution failure or incomplete native cleanup.
-func (session *IsolatedSession) Close() error {
+func (session *IsolatedSession) Close(ctx context.Context) error {
 	if session == nil || session.process == nil {
 		return nil
 	}
 	if session.client == nil {
-		return session.process.Close()
+		return session.process.Close(ctx)
 	}
-	return session.client.Close()
+	return session.client.Close(ctx)
 }
 
 // Done signals worker exit and the first cleanup attempt, including idle expiry. Call

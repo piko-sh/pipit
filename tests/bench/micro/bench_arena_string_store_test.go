@@ -21,7 +21,6 @@
 package bench
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -32,12 +31,12 @@ import (
 func benchmarkEntrypoint(b *testing.B, source string) {
 	b.Helper()
 	service := app.NewService()
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	cfs, err := service.CompileFileSet(b.Context(), map[string]string{"main.go": source})
 	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		_, err = service.ExecuteEntrypoint(context.Background(), cfs, "run")
+		_, err = service.ExecuteEntrypoint(b.Context(), cfs, "run")
 		if err != nil {
 			require.NoError(b, err)
 		}

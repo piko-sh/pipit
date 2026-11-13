@@ -19,7 +19,6 @@
 package engine
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -38,7 +37,7 @@ func TestPopFrameReleasesTheSharedCellMap(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			vm := NewVM(context.Background(), NewGlobalStore(), symtab.NewSymbolRegistry(nil))
+			vm := NewVM(t.Context(), NewGlobalStore(), symtab.NewSymbolRegistry(nil))
 			var counts [isa.NumRegisterKinds]uint32
 			for kind := range counts {
 				counts[kind] = 1
@@ -51,7 +50,7 @@ func TestPopFrameReleasesTheSharedCellMap(t *testing.T) {
 			var cells *sharedCellMap
 			if tt.withCells {
 				cells = acquireSharedCellMap()
-				cells.set(isa.JoinWide(uint8(isa.RegisterInt), 0), &program.UpvalueCell{})
+				cells.set(isa.JoinWide(uint8(isa.RegisterInt64), 0), &program.UpvalueCell{})
 				vm.CallStack[1].sharedCells = cells
 			}
 

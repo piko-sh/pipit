@@ -384,7 +384,6 @@ import (
 	"fmt"
 	"log"
 	"reflect"
-	"runtime"
 
 	"pipit.sh/pipit"
 )
@@ -405,11 +404,10 @@ func greet(name string) string    { return "Hello, " + name }
 func farewell(name string) string { return "Goodbye, " + name }
 
 func main() {
-	allowed := reflect.ValueOf(greet)
-	hook := selectedFunction{name: runtime.FuncForPC(allowed.Pointer()).Name()}
+	hook := selectedFunction{name: "example.com/host.Greet"}
 	interp := pipit.NewInterpreterWithSymbols(pipit.SymbolExports{
 		"example.com/host": {
-			"Greet":    allowed,
+			"Greet":    reflect.ValueOf(greet),
 			"Farewell": reflect.ValueOf(farewell),
 		},
 	}, pipit.WithCapabilityHook(hook))
@@ -425,8 +423,10 @@ host.Farewell("Pipit")`)
 }
 ```
 
-The hook receives the native function's name, which can differ from its script
-import name. The example gets that name from the registered Go function.
+The hook receives the import path and name the native function was registered under,
+here `example.com/host.Greet`, even when the registered value is a wrapper or a closure.
+A function the host did not register, such as one a native call returns, is named as the
+Go runtime names it.
 `errors.Is` checks whether the second call failed with `ErrCapabilityDenied`.
 
 `DenyCapabilityHook` denies the typed file, network, process, and environment
@@ -435,10 +435,15 @@ overrides that method to select one function. `PermissiveCapabilityHook` allows
 all checks by default. Embed it only when you want to deny specific operations.
 
 Use `WithCapabilityHook` for ordinary embedding, or set `RestrictedConfig.Hook`
-for restricted execution. Typed checks such as `CheckFileOpen` can inspect a path
-or arguments, but only cover operations the interpreter recognises. Review the
-functions you register: work inside a native function does not become a separate
-script call. Hooks do not provide process isolation.
+for restricted execution. File reads, directory listings and metadata inspection
+use `CheckFileOpen` with `os.O_RDONLY`. Writes, creation and metadata changes use
+`CheckFileWrite`. Calls with two paths, such as `os.Rename` and `os.Symlink`, check
+both paths. These checks also apply through function values and calls started
+with `go`.
+
+Hooks cover operations the interpreter recognises. Work inside a native function
+does not become a separate script call, so review the functions you register.
+Hooks do not provide process isolation.
 
 ## Attach a debugger
 

@@ -132,7 +132,7 @@ func TestGuardPointerBankWriterRejectsFramedHandlers(t *testing.T) {
 
 	require.PanicsWithValue(t, "guardPointerBankWriter: framed has a frame, so it cannot tail-jump to pathBFallback",
 		func() { guardPointerBankWriter(framed) })
-	require.NotPanics(t, func() { guardPointerBankWriter(handlerLoadStringConst()) }, "an already guarded frame-free handler")
+	require.NotPanics(t, func() { guardPointerBankWriter(handlerLoadStringConstant()) }, "an already guarded frame-free handler")
 }
 
 func TestWriteBarrierAnalyserFlagsAStrippedGuard(t *testing.T) {

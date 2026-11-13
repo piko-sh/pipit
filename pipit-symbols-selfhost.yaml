@@ -30,6 +30,13 @@ output: sdk/selfhost
 # reference link by that path.
 link_import_path: pipit.sh/pipit/internal/link
 
+# The safe build lays some of these types out differently (stablepool.Link is an empty
+# struct there), so its go/types export data is generated separately and selected by the
+# tag; symtab.RegisterTypesPackage rejects export data that disagrees with the native
+# layout.
+types_export_variants:
+  - safe
+
 packages:
   - pipit.sh/pipit/internal/compile/appendlower
   - pipit.sh/pipit/internal/compile/astpattern
@@ -55,7 +62,7 @@ packages:
   - pipit.sh/pipit/internal/mem
   - pipit.sh/pipit/internal/policy
   - piko.sh/safeconv
-  - pipit.sh/pipit/internal/stablepool
+  - piko.sh/stablepool
   - pipit.sh/pipit/internal/symtab
   - pipit.sh/pipit/internal/symtab/descriptor
   - pipit.sh/pipit/internal/symtab/typemodel

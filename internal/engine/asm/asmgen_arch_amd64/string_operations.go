@@ -39,14 +39,14 @@ var (
 	_ asmgen.StringOperationsPort = (*amd64StringOps)(nil)
 )
 
-// EmitLenString emits the body for handlerLenString.
+// EmitLengthString emits the body for handlerLengthString.
 //
 // Sets ints[A] = len(strings[B]) by loading the string header length field (offset +8
 // from the 16-byte header) and storing it into the integer bank. The caller appends
 // DISPATCH_NEXT.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-func (*amd64StringOps) EmitLenString(e *asmgen.Emitter) {
+func (*amd64StringOps) EmitLengthString(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationMove64Bits, "DX, AX")
 	inst(e, asmamd64.OperationShiftRight64Bits, "$8, AX")
 	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "AL, AX")
@@ -59,17 +59,17 @@ func (*amd64StringOps) EmitLenString(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationMove64Bits, "CX, (R8)(AX*8)")
 }
 
-// EmitStringIndex emits the body for handlerStringIndex, performing uints[A] =
+// EmitGetStringByte emits the body for handlerGetStringByte, performing uints[A] =
 // uint64(strings[B][ints[C]]) with bounds checking and a tier-2 fallback exit.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-func (*amd64StringOps) EmitStringIndex(e *asmgen.Emitter) {
-	emitStringIndexExtractAndLoad(e)
-	emitStringIndexBoundsCheckAndStore(e, "si_fallback", "CTX_UINTS_BASE(R15)")
+func (*amd64StringOps) EmitGetStringByte(e *asmgen.Emitter) {
+	emitGetStringByteExtractAndLoad(e)
+	emitGetStringByteBoundsCheckAndStore(e, "si_fallback", "CTX_UINTS_BASE(R15)")
 }
 
-// EmitEqualString emits the body for handlerEqString, performing ints[A] = (strings[B] ==
-// strings[C]) ? 1 : 0.
+// EmitEqualString emits the body for handlerEqualString, performing ints[A] = (strings[B]
+// == strings[C]) ? 1 : 0.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 func (*amd64StringOps) EmitEqualString(e *asmgen.Emitter) {
@@ -79,8 +79,8 @@ func (*amd64StringOps) EmitEqualString(e *asmgen.Emitter) {
 	emitStringCompareResultLabels(e, "eqs_eq", "eqs_ne", "eqs_done", true)
 }
 
-// EmitNotEqualString emits the body for handlerNeString, performing ints[A] = (strings[B]
-// != strings[C]) ? 1 : 0 with inverted result polarity.
+// EmitNotEqualString emits the body for handlerNotEqualString, performing ints[A] =
+// (strings[B] != strings[C]) ? 1 : 0 with inverted result polarity.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 func (*amd64StringOps) EmitNotEqualString(e *asmgen.Emitter) {
@@ -103,32 +103,30 @@ func (*amd64StringOps) EmitSliceString(e *asmgen.Emitter) {
 	emitSliceStringBoundsFail(e)
 }
 
-// EmitStringIndexToInt emits the body for handlerStringIndexToInt, performing ints[A] =
-// int64(strings[B][ints[C]]) with bounds checking and a tier-2 fallback exit.
+// EmitGetStringByteAsInt64 emits the body for handlerGetStringByteAsInt64, performing
+// ints[A] = int64(strings[B][ints[C]]) with bounds checking and a tier-2 fallback exit.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-func (*amd64StringOps) EmitStringIndexToInt(e *asmgen.Emitter) {
-	emitStringIndexExtractAndLoad(e)
-	emitStringIndexToIntBoundsCheckAndStore(e)
+func (*amd64StringOps) EmitGetStringByteAsInt64(e *asmgen.Emitter) {
+	emitGetStringByteExtractAndLoad(e)
+	emitGetStringByteAsInt64BoundsCheckAndStore(e)
 }
 
-// EmitLenStringLtJumpFalse emits the body for handlerLenStringLtJumpFalse, which jumps by
-// a signed 16-bit offset when ints[A] >= len(strings[B]).
+// EmitLessThanLengthStringThenJumpIfFalse emits the body for
+// handlerLessThanLengthStringThenJumpIfFalse, which jumps by a signed 16-bit offset when
+// ints[A] >= len(strings[B]).
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-func (*amd64StringOps) EmitLenStringLtJumpFalse(e *asmgen.Emitter) {
-	emitLenStringLtLoadAndCompare(e)
-	emitLenStringLtJumpOffsetAndDispatch(e)
+func (*amd64StringOps) EmitLessThanLengthStringThenJumpIfFalse(e *asmgen.Emitter) {
+	emitLessThanLengthStringLoadAndCompare(e)
+	emitLessThanLengthStringJumpOffsetAndDispatch(e)
 }
 
-// emitStringIndexExtractAndLoad emits the operand extraction and string header loading
-// sequence shared by EmitStringIndex and EmitStringIndexToInt.
-//
-// After this sequence: AX = operand A index, DI = string data pointer, SI = string
-// length, CX = index value from ints[C].
+// emitGetStringByteExtractAndLoad emits the operand extraction and string header loading
+// sequence shared by EmitGetStringByte and EmitGetStringByteAsInt64.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-func emitStringIndexExtractAndLoad(e *asmgen.Emitter) {
+func emitGetStringByteExtractAndLoad(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationMove64Bits, "DX, AX")
 	inst(e, asmamd64.OperationShiftRight64Bits, "$8, AX")
 	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "AL, AX")
@@ -144,13 +142,13 @@ func emitStringIndexExtractAndLoad(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationMove64Bits, "(R8)(CX*8), CX")
 }
 
-// emitStringIndexBoundsCheckAndStore emits the bounds check, byte load, store,
+// emitGetStringByteBoundsCheckAndStore emits the bounds check, byte load, store,
 // DISPATCH_NEXT, and fallback exit for string indexing operations.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 // Takes fallbackLabel (string) which is the unique label for the fallback branch target.
 // Takes destBase (string) which is the context field macro for the destination bank.
-func emitStringIndexBoundsCheckAndStore(e *asmgen.Emitter, fallbackLabel string, destBase string) {
+func emitGetStringByteBoundsCheckAndStore(e *asmgen.Emitter, fallbackLabel string, destBase string) {
 	inst(e, asmamd64.OperationTest64Bits, "CX, CX")
 	inst(e, asmamd64.OperationJumpIfSign, fallbackLabel)
 	inst(e, asmamd64.OperationCompare64Bits, "CX, SI")
@@ -325,6 +323,10 @@ func emitSliceStringComputeHighBound(e *asmgen.Emitter) {
 // emitSliceStringValidateAndStore validates 0 <= low <= high <= len, stores the new
 // string header on success, and jumps to sl_bounds_fail on violation.
 //
+// An empty result keeps the source's data pointer, as Go's own slicing does, since
+// base+low is one past the end of the source when low == len, and the collector rejects
+// such a pointer.
+//
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 func emitSliceStringValidateAndStore(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationTest64Bits, "SI, SI")
@@ -333,8 +335,10 @@ func emitSliceStringValidateAndStore(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationJumpIfLessSigned, labelSliceBoundsFail)
 	inst(e, asmamd64.OperationCompare64Bits, "CX, BX")
 	inst(e, asmamd64.OperationJumpIfGreaterSigned, labelSliceBoundsFail)
-	inst(e, asmamd64.OperationAdd64Bits, "SI, DI")
 	inst(e, asmamd64.OperationSubtract64Bits, "SI, CX")
+	inst(e, asmamd64.OperationTest64Bits, "CX, CX")
+	inst(e, operationConditionalMove64BitsIfEqual, "CX, SI")
+	inst(e, asmamd64.OperationAdd64Bits, "SI, DI")
 	inst(e, asmamd64.OperationMove64Bits, "CTX_STRINGS_BASE(R15), SI")
 	inst(e, asmamd64.OperationShiftLeft64Bits, "$4, AX")
 	inst(e, asmamd64.OperationMove64Bits, "DI, (SI)(AX*1)")
@@ -356,11 +360,11 @@ func emitSliceStringBoundsFail(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationReturn, "")
 }
 
-// emitStringIndexToIntBoundsCheckAndStore emits the bounds check, byte load, store to the
-// integer bank via the pinned R8 register, DISPATCH_NEXT, and the fallback exit.
+// emitGetStringByteAsInt64BoundsCheckAndStore emits the bounds check, byte load, store to
+// the integer bank via the pinned R8 register, DISPATCH_NEXT, and the fallback exit.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-func emitStringIndexToIntBoundsCheckAndStore(e *asmgen.Emitter) {
+func emitGetStringByteAsInt64BoundsCheckAndStore(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationTest64Bits, "CX, CX")
 	inst(e, asmamd64.OperationJumpIfSign, "sit_fallback")
 	inst(e, asmamd64.OperationCompare64Bits, "CX, SI")
@@ -377,11 +381,11 @@ func emitStringIndexToIntBoundsCheckAndStore(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationReturn, "")
 }
 
-// emitLenStringLtLoadAndCompare emits operand extraction, string length loading, and the
-// int-vs-length comparison for EmitLenStringLtJumpFalse.
+// emitLessThanLengthStringLoadAndCompare emits operand extraction, string length loading,
+// and the int-vs-length comparison for EmitLessThanLengthStringThenJumpIfFalse.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-func emitLenStringLtLoadAndCompare(e *asmgen.Emitter) {
+func emitLessThanLengthStringLoadAndCompare(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationMove64Bits, "DX, AX")
 	inst(e, asmamd64.OperationShiftRight64Bits, "$16, AX")
 	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "AL, AX")
@@ -396,11 +400,11 @@ func emitLenStringLtLoadAndCompare(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationJumpIfLessSigned, "lsj_taken")
 }
 
-// emitLenStringLtJumpOffsetAndDispatch emits the branch-not-taken offset load and the
-// branch-taken pc advance, both ending in DISPATCH_NEXT.
+// emitLessThanLengthStringJumpOffsetAndDispatch emits the branch-not-taken offset load
+// and the branch-taken pc advance, both ending in DISPATCH_NEXT.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-func emitLenStringLtJumpOffsetAndDispatch(e *asmgen.Emitter) {
+func emitLessThanLengthStringJumpOffsetAndDispatch(e *asmgen.Emitter) {
 	e.Blank()
 	inst(e, asmamd64.OperationMove32Bits, "(R12)(R14*4), DX")
 	inst(e, asmamd64.OperationIncrement64Bits, "R14")

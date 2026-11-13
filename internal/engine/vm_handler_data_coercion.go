@@ -159,21 +159,15 @@ func integerSourceAsInt64(source reflect.Value, sourceKind reflect.Kind) int64 {
 // Takes targetType (reflect.Type) which is the desired target type.
 //
 // Returns reflect.Value matching targetType after coercion.
-//
-// Skips reflect.Value.Convert when the value is already assignable to the target. The
-// common case is a concrete T being stored into an interface{} field or element;
-// reflect.Value.Set performs the T to interface boxing internally without the separate
-// Convert allocation. In LRU this drops the Convert path on hot field stores into the
-// Node{value any} field.
 func coerceValue(vm *VM, value reflect.Value, targetType reflect.Type) reflect.Value {
-	if narrowed, ok := conformSliceWidth(value, targetType); ok {
-		return narrowed
-	}
 	if !value.IsValid() {
 		return reflect.Zero(targetType)
 	}
 	if value.Type() == targetType {
 		return value
+	}
+	if narrowed, ok := conformSliceWidth(value, targetType); ok {
+		return narrowed
 	}
 	if value.Type().AssignableTo(targetType) {
 		return value
@@ -274,12 +268,6 @@ func coerceConvertibleSliceElements(value reflect.Value, targetType reflect.Type
 	}
 	return out, true
 }
-
-// isArrayElementCoercion / coerceArrayElements / isMapElementCoercion / coerceMapElements
-// parallel the slice variants. They cover the case where a struct's field type was
-// cycle-broken from [N]*RecursiveType / map[K]*RecursiveType to [N]any / map[K]any (see
-// convertFieldBreakingCycles): a write of the original typed container literal can't
-// assign to the cycle-broken `any`-element container without per-element materialisation.
 
 // isArrayElementCoercion reports whether from and to are both arrays of the same length,
 // with from's element type assignable to to's element type.

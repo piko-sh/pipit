@@ -23,7 +23,34 @@ import (
 	"io"
 
 	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/sdk/module"
+)
+
+// BorrowClass is what a native function does with the arguments it is handed, as a host
+// declares it with Interpreter.DeclareNativeBorrowClass.
+type BorrowClass = engine.BorrowClass
+
+const (
+	// BorrowUnknown declares nothing.
+	//
+	// An arena argument revokes.
+	BorrowUnknown = engine.BorrowUnknown
+
+	// BorrowBorrows declares that the native keeps no reference to an argument once the call
+	// returns.
+	BorrowBorrows = engine.BorrowBorrows
+
+	// BorrowResultAliases declares that the native may return a result aliasing an argument,
+	// but keeps no other reference.
+	BorrowResultAliases = engine.BorrowResultAliases
+
+	// BorrowRetains declares that the native may keep a reference to an argument.
+	BorrowRetains = engine.BorrowRetains
+
+	// BorrowReadsOnly declares that the native borrows, returns no alias of an argument and
+	// never writes through one, so a []byte(s) argument may be the string's own bytes.
+	BorrowReadsOnly = engine.BorrowReadsOnly
 )
 
 // Interpreter is the vetted public interpreter surface: a thin wrapper over the internal
@@ -35,6 +62,20 @@ type Interpreter struct {
 	// service is the internal interpreter that backs all public operations.
 	service *app.Service
 }
+
+// Session is the vetted public session surface. It does not expose Service or Restore.
+type Session struct {
+	// session is the internal session that backs all public operations.
+	session *app.Session
+}
+
+var (
+	// ErrBorrowDeclarationsFrozen is returned by a declaration after the first evaluation.
+	ErrBorrowDeclarationsFrozen = engine.ErrBorrowDeclarationsFrozen
+
+	// ErrBorrowDeclarationRefused is returned by a declaration its checks refuse.
+	ErrBorrowDeclarationRefused = engine.ErrBorrowDeclarationRefused
+)
 
 // Compile compiles one expression or statement block.
 //
@@ -124,6 +165,17 @@ func (i *Interpreter) ExecuteInits(ctx context.Context, cfs *CompiledFileSet) er
 	return i.service.ExecuteInits(ctx, cfs)
 }
 
+// DeclareTopLevelCalls declares that the host calls function values received from the
+// program only at top level.
+//
+// Such calls must never occur inside a native function called by an interpreted program.
+// Their arguments must not reach values belonging to a running program.
+//
+// Takes cfs (*CompiledFileSet) which is the compiled program.
+func (i *Interpreter) DeclareTopLevelCalls(cfs *CompiledFileSet) {
+	i.service.DeclareTopLevelCalls(cfs)
+}
+
 // SaveCompiled persists a compiled file set under key.
 //
 // Takes key (string) which identifies the stored entry.
@@ -143,6 +195,22 @@ func (i *Interpreter) LoadCompiled(ctx context.Context, key string) (*CompiledFi
 	return i.service.LoadCompiled(ctx, key)
 }
 
+// UnloadCompiled releases the package variables of a file set LoadCompiled returned.
+//
+// The variables' storage returns to the interpreter once no run of the program is in
+// progress and no other load of the same bytecode still uses it, and is cleared before
+// another program reuses it. A later run of the file set returns ErrProgramUnloaded.
+// Function values the program handed the host must not be called after it is unloaded.
+// Unloading a file set twice does nothing.
+//
+// Takes cfs (*CompiledFileSet) which is a file set this interpreter loaded.
+//
+// Returns error which wraps ErrProgramNotLoaded when cfs was not loaded by this
+// interpreter.
+func (i *Interpreter) UnloadCompiled(cfs *CompiledFileSet) error {
+	return i.service.UnloadCompiled(cfs)
+}
+
 // HasRegisteredPackage reports whether importPath is registered.
 //
 // Takes importPath (string) which is the package import path to check.
@@ -158,16 +226,17 @@ func (i *Interpreter) HasRegisteredPackage(importPath string) bool {
 // Takes modulePath (string) which is the root module import path.
 // Takes packages (map[string]map[string]string) mapping package paths to their named
 // source files.
-// Takes bytecodePacker (func) which serialises the compiled output, or reports why it
-// cannot.
+// Takes bytecodePacker (func(context.Context, *CompiledFileSet) ([]byte, error)) which
+// serialises the compiled output, or reports why it cannot.
 //
-// Returns *module.Bundle and any compilation or packaging error.
+// Returns *module.Bundle which is the packaged module.
+// Returns error which reports a compilation or packaging failure.
 func (i *Interpreter) PackageModule(
 	ctx context.Context,
 	moduleDescriptor module.Descriptor,
 	modulePath string,
 	packages map[string]map[string]string,
-	bytecodePacker func(*CompiledFileSet) ([]byte, error),
+	bytecodePacker func(context.Context, *CompiledFileSet) ([]byte, error),
 ) (*module.Bundle, error) {
 	return i.service.PackageModule(ctx, moduleDescriptor, modulePath, packages, bytecodePacker)
 }
@@ -185,7 +254,7 @@ func (i *Interpreter) LoadModule(
 	bundle *module.Bundle,
 	reference module.Ref,
 	provider module.Provider,
-	bytecodeUnpacker func([]byte, *SymbolRegistry) (*CompiledFileSet, error),
+	bytecodeUnpacker func(context.Context, []byte, *SymbolRegistry) (*CompiledFileSet, error),
 ) (*module.Loaded, error) {
 	return i.service.LoadModule(ctx, bundle, reference, provider, bytecodeUnpacker)
 }
@@ -200,6 +269,15 @@ func (i *Interpreter) SetStderr(writer io.Writer) {
 // Reset clears accumulated per-evaluation state.
 func (i *Interpreter) Reset() {
 	i.service.Reset()
+}
+
+// Close stops the interpreter's background bookkeeping, the watches that let unchanged
+// package variables skip their initialisers, and drops the state kept per compiled file
+// set. Call it when the interpreter is no longer needed; a clone has its own.
+//
+// Returns error which is always nil.
+func (i *Interpreter) Close() error {
+	return i.service.Close()
 }
 
 // Clone derives an independent interpreter sharing immutable configuration.
@@ -237,6 +315,14 @@ func (i *Interpreter) LeakedGoroutines() int64 {
 	return i.service.LeakedGoroutines()
 }
 
+// AbandonedLocks reports locks a stopped evaluation left held. Once it is non-zero every
+// later evaluation fails at once with ErrLockAbandoned.
+//
+// Returns int64 counting the abandoned locks.
+func (i *Interpreter) AbandonedLocks() int64 {
+	return i.service.AbandonedLocks()
+}
+
 // FastPathStats returns the interpreter's fast-path counters.
 //
 // Returns FastPathStats with the accumulated counters.
@@ -251,12 +337,6 @@ func (i *Interpreter) FastPathStats() FastPathStats {
 // Returns *Session backed by the interpreter's service.
 func (i *Interpreter) NewSession(opts ...SessionOption) *Session {
 	return wrapSession(i.service.NewSession(opts...))
-}
-
-// Session is the vetted public session surface. It does not expose Service or Restore.
-type Session struct {
-	// session is the internal session that backs all public operations.
-	session *app.Session
 }
 
 // SetStderr routes the session's interpreted stderr to writer.
@@ -316,4 +396,16 @@ func wrapSession(session *app.Session) *Session {
 		return nil
 	}
 	return &Session{session: session}
+}
+
+// DeclareNativeBorrowClass declares the borrow class of a native function the host
+// registers.
+//
+// Takes function (any) which is the native function.
+// Takes class (BorrowClass) which is the declared class.
+//
+// Returns error which wraps ErrBorrowDeclarationsFrozen or ErrBorrowDeclarationRefused
+// when the declaration is not recorded.
+func (i *Interpreter) DeclareNativeBorrowClass(function any, class BorrowClass) error {
+	return i.service.DeclareNativeBorrowClass(function, class)
 }

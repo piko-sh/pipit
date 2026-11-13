@@ -29,34 +29,34 @@ import (
 
 func TestCompositeZeroReuseRefusesWithoutEscapeVerdict(t *testing.T) {
 	t.Parallel()
-	body := []isa.Instruction{mk(isa.OpLoadGeneralConst, 0, 0, 0)}
+	body := []isa.Instruction{mk(isa.OpLoadGeneralConstant, 0, 0, 0)}
 	compiledFunction := &program.CompiledFunction{
 		Body:             body,
 		GeneralConstants: []reflect.Value{reflect.New(reflect.TypeFor[[4]int]()).Elem()},
 		AliasInfo:        &program.PointerAliasInfo{},
 	}
 	PromoteCompositeZeroReuse(compiledFunction)
-	require.Equal(t, isa.OpLoadGeneralConst, compiledFunction.Body[0].Op,
+	require.Equal(t, isa.OpLoadGeneralConstant, compiledFunction.Body[0].Op,
 		"no ArenaSafeAllocPCs entry means the escape pass did not prove the storage frame-local, "+
 			"so the load must keep its fresh-storage form")
 }
 
 func TestCompositeZeroReuseRefusesWithoutAliasInfo(t *testing.T) {
 	t.Parallel()
-	body := []isa.Instruction{mk(isa.OpLoadGeneralConst, 0, 0, 0)}
+	body := []isa.Instruction{mk(isa.OpLoadGeneralConstant, 0, 0, 0)}
 	compiledFunction := &program.CompiledFunction{
 		Body:              body,
 		GeneralConstants:  []reflect.Value{reflect.New(reflect.TypeFor[[4]int]()).Elem()},
 		ArenaSafeAllocPCs: map[int]bool{0: true},
 	}
 	PromoteCompositeZeroReuse(compiledFunction)
-	require.Equal(t, isa.OpLoadGeneralConst, compiledFunction.Body[0].Op,
+	require.Equal(t, isa.OpLoadGeneralConstant, compiledFunction.Body[0].Op,
 		"a nil AliasInfo proves nothing, so no site may be promoted")
 }
 
 func TestCompositeZeroReuseRefusesNonCompositeConstants(t *testing.T) {
 	t.Parallel()
-	body := []isa.Instruction{mk(isa.OpLoadGeneralConst, 0, 0, 0)}
+	body := []isa.Instruction{mk(isa.OpLoadGeneralConstant, 0, 0, 0)}
 	compiledFunction := &program.CompiledFunction{
 		Body:              body,
 		GeneralConstants:  []reflect.Value{reflect.ValueOf(42)},
@@ -64,7 +64,7 @@ func TestCompositeZeroReuseRefusesNonCompositeConstants(t *testing.T) {
 		AliasInfo:         &program.PointerAliasInfo{},
 	}
 	PromoteCompositeZeroReuse(compiledFunction)
-	require.Equal(t, isa.OpLoadGeneralConst, compiledFunction.Body[0].Op,
+	require.Equal(t, isa.OpLoadGeneralConstant, compiledFunction.Body[0].Op,
 		"only struct and array zeroes pay the per-execution copy the reuse form avoids")
 }
 
@@ -72,7 +72,7 @@ func TestCompositeZeroReuseRefusesNonZeroComposite(t *testing.T) {
 	t.Parallel()
 	populated := reflect.New(reflect.TypeFor[[4]int]()).Elem()
 	populated.Index(0).SetInt(7)
-	body := []isa.Instruction{mk(isa.OpLoadGeneralConst, 0, 0, 0)}
+	body := []isa.Instruction{mk(isa.OpLoadGeneralConstant, 0, 0, 0)}
 	compiledFunction := &program.CompiledFunction{
 		Body:              body,
 		GeneralConstants:  []reflect.Value{populated},
@@ -80,6 +80,6 @@ func TestCompositeZeroReuseRefusesNonZeroComposite(t *testing.T) {
 		AliasInfo:         &program.PointerAliasInfo{},
 	}
 	PromoteCompositeZeroReuse(compiledFunction)
-	require.Equal(t, isa.OpLoadGeneralConst, compiledFunction.Body[0].Op,
+	require.Equal(t, isa.OpLoadGeneralConstant, compiledFunction.Body[0].Op,
 		"reuse zeroes the storage, so it must never stand in for a populated constant")
 }

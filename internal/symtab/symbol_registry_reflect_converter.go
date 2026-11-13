@@ -43,6 +43,10 @@ type reflectTypeConverter struct {
 	// packages during synthesis so that cross-package type identity is preserved.
 	registry *SymbolRegistry
 
+	// importForeign synthesises a foreign package under the context of the synthesis that
+	// made the converter, which a method set converted later still reaches through it.
+	importForeign func(importPath string) (*types.Package, error)
+
 	// localTypes holds reflect.Types being defined as named types in the current package
 	// (from (*T)(nil) exports). These must not be resolved as foreign types even when
 	// reflect.PkgPath() differs from the synthesised package path (which happens for
@@ -880,7 +884,7 @@ func (c *reflectTypeConverter) resolveForeignNamedType(reflectType reflect.Type)
 		return nil
 	}
 
-	foreignPackage, err := c.registry.Import(foreignPackagePath)
+	foreignPackage, err := c.importForeign(foreignPackagePath)
 	if err != nil {
 		return nil
 	}

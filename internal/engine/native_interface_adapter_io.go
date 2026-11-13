@@ -78,6 +78,48 @@ type pipitAdapterCore struct {
 	methodIndex uint16
 }
 
+// pipitCloserAdapter wraps a pipit value to satisfy io.Closer for a source-level `Close()
+// error` method.
+type pipitCloserAdapter struct {
+	pipitAdapterCore
+}
+
+// pipitReadCloserAdapter combines the reader and closer adapters to satisfy
+// io.ReadCloser.
+type pipitReadCloserAdapter struct {
+	*pipitReaderAdapter
+
+	*pipitCloserAdapter
+}
+
+// pipitWriteCloserAdapter combines the writer and closer adapters to satisfy
+// io.WriteCloser.
+type pipitWriteCloserAdapter struct {
+	*pipitWriterAdapter
+
+	*pipitCloserAdapter
+}
+
+// pipitReadWriterAdapter combines the reader and writer adapters to satisfy
+// io.ReadWriter.
+type pipitReadWriterAdapter struct {
+	*pipitReaderAdapter
+
+	*pipitWriterAdapter
+}
+
+// pipitReaderFromAdapter wraps a pipit value to satisfy io.ReaderFrom for a source-level
+// `ReadFrom(io.Reader) (int64, error)` method.
+type pipitReaderFromAdapter struct {
+	pipitAdapterCore
+}
+
+// pipitWriterToAdapter wraps a pipit value to satisfy io.WriterTo for a source-level
+// `WriteTo(io.Writer) (int64, error)` method.
+type pipitWriterToAdapter struct {
+	pipitAdapterCore
+}
+
 // invoke dispatches the wrapped value's method through boundMethodVM.
 //
 // Takes label (string) which names the adapter in the panic-to-error message.
@@ -115,12 +157,6 @@ func (c *pipitAdapterCore) invoke(label string, arguments []reflect.Value) (resu
 // Returns reflect.Value which is the wrapped value.
 func (c *pipitAdapterCore) adapterUnderlying() reflect.Value { return c.underlying }
 
-// pipitCloserAdapter wraps a pipit value to satisfy io.Closer for a source-level `Close()
-// error` method.
-type pipitCloserAdapter struct {
-	pipitAdapterCore
-}
-
 // Close invokes the wrapped pipit value's Close method.
 //
 // Returns the error returned by the pipit-side method.
@@ -132,27 +168,11 @@ func (a *pipitCloserAdapter) Close() error {
 	return resultError(a.vm, results, 0)
 }
 
-// pipitReadCloserAdapter combines the reader and closer adapters to satisfy
-// io.ReadCloser.
-type pipitReadCloserAdapter struct {
-	*pipitReaderAdapter
-
-	*pipitCloserAdapter
-}
-
 // adapterUnderlying returns the script value the adapter wraps; both halves wrap the same
 // value.
 //
 // Returns reflect.Value which is the wrapped value.
 func (a *pipitReadCloserAdapter) adapterUnderlying() reflect.Value { return a.underlying }
-
-// pipitWriteCloserAdapter combines the writer and closer adapters to satisfy
-// io.WriteCloser.
-type pipitWriteCloserAdapter struct {
-	*pipitWriterAdapter
-
-	*pipitCloserAdapter
-}
 
 // adapterUnderlying returns the script value the adapter wraps; both halves wrap the same
 // value.
@@ -160,26 +180,12 @@ type pipitWriteCloserAdapter struct {
 // Returns reflect.Value which is the wrapped value.
 func (a *pipitWriteCloserAdapter) adapterUnderlying() reflect.Value { return a.underlying }
 
-// pipitReadWriterAdapter combines the reader and writer adapters to satisfy
-// io.ReadWriter.
-type pipitReadWriterAdapter struct {
-	*pipitReaderAdapter
-
-	*pipitWriterAdapter
-}
-
 // adapterUnderlying returns the script value the adapter wraps; both halves wrap the same
 // value.
 //
 // Returns reflect.Value which is the wrapped value.
 func (a *pipitReadWriterAdapter) adapterUnderlying() reflect.Value {
 	return a.pipitReaderAdapter.underlying
-}
-
-// pipitReaderFromAdapter wraps a pipit value to satisfy io.ReaderFrom for a source-level
-// `ReadFrom(io.Reader) (int64, error)` method.
-type pipitReaderFromAdapter struct {
-	pipitAdapterCore
 }
 
 // ReadFrom invokes the wrapped pipit value's ReadFrom method with the native reader.
@@ -193,12 +199,6 @@ func (a *pipitReaderFromAdapter) ReadFrom(r io.Reader) (int64, error) {
 		return 0, err
 	}
 	return max(int64Result(results), 0), resultError(a.vm, results, 1)
-}
-
-// pipitWriterToAdapter wraps a pipit value to satisfy io.WriterTo for a source-level
-// `WriteTo(io.Writer) (int64, error)` method.
-type pipitWriterToAdapter struct {
-	pipitAdapterCore
 }
 
 // WriteTo invokes the wrapped pipit value's WriteTo method with the native writer.
@@ -231,7 +231,8 @@ func lookupAdapterCore(vm *VM, argument reflect.Value, typeName, methodName stri
 	if !methodReceiverSatisfiesValueIn(methodRoot, vm, methodIndex, argument) {
 		return pipitAdapterCore{}, false
 	}
-	return pipitAdapterCore{vm: vm, methodRoot: methodRoot, underlying: argument, methodIndex: methodIndex}, true
+	vm.exportGuestCode()
+	return pipitAdapterCore{vm: vm, methodRoot: methodRoot, underlying: adapterHeldValue(vm, argument), methodIndex: methodIndex}, true
 }
 
 // int64Result reads the first result as an int64 count, or zero when absent.

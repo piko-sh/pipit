@@ -43,45 +43,45 @@ const (
 // for this group.
 func tier1ComplexHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		handlerSubOpRealComplex(),
-		handlerSubOpImagComplex(),
-		handlerSubOpMoveComplex(),
-		handlerSubOpNegComplex(),
+		handlerRealPartComplex128(),
+		handlerImaginaryPartComplex128(),
+		handlerMoveComplex128(),
+		handlerNegateComplex128(),
 	}
 }
 
-// handlerSubOpRealComplex builds the SubOpRealComplex handler, setting floats[B] =
-// real(complex[C]).
+// handlerRealPartComplex128 builds the SubOpRealPartComplex128 handler, setting floats[B]
+// = real(complex[C]).
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpRealComplex() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerRealPartComplex128() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return complexHalfHandler(
-		"handlerSubOpRealComplex",
-		"handlerSubOpRealComplex sets floats[B] = real(complex[C]).",
+		"handlerRealPartComplex128",
+		"handlerRealPartComplex128 sets floats[B] = real(complex[C]).",
 		complexHalfOffsetReal,
 	)
 }
 
-// handlerSubOpImagComplex builds the SubOpImagComplex handler, setting floats[B] =
-// imag(complex[C]).
+// handlerImaginaryPartComplex128 builds the SubOpImaginaryPartComplex128 handler, setting
+// floats[B] = imag(complex[C]).
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpImagComplex() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerImaginaryPartComplex128() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return complexHalfHandler(
-		"handlerSubOpImagComplex",
-		"handlerSubOpImagComplex sets floats[B] = imag(complex[C]).",
+		"handlerImaginaryPartComplex128",
+		"handlerImaginaryPartComplex128 sets floats[B] = imag(complex[C]).",
 		complexHalfOffsetImag,
 	)
 }
 
-// handlerSubOpMoveComplex builds the SubOpMoveComplex handler, setting complex[B] =
+// handlerMoveComplex128 builds the SubOpMoveComplex128 handler, setting complex[B] =
 // complex[C] (16-byte copy).
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMoveComplex() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerMoveComplex128() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSubOpMoveComplex",
-		Comment:   "handlerSubOpMoveComplex sets complex[B] = complex[C] (16-byte copy).",
+		Name:      "handlerMoveComplex128",
+		Comment:   "handlerMoveComplex128 sets complex[B] = complex[C] (16-byte copy).",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
@@ -90,14 +90,14 @@ func handlerSubOpMoveComplex() asmgen.HandlerDefinition[BytecodeArchitecturePort
 	}
 }
 
-// handlerSubOpNegComplex builds the SubOpNegComplex handler, setting complex[B] =
+// handlerNegateComplex128 builds the SubOpNegateComplex128 handler, setting complex[B] =
 // -complex[C] via IEEE 754 sign-bit XOR on each float64 half.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpNegComplex() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerNegateComplex128() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSubOpNegComplex",
-		Comment:   "handlerSubOpNegComplex sets complex[B] = -complex[C] via sign-bit XOR.",
+		Name:      "handlerNegateComplex128",
+		Comment:   "handlerNegateComplex128 sets complex[B] = -complex[C] via sign-bit XOR.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {

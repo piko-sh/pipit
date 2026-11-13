@@ -352,11 +352,20 @@ linters:
       - node_modules
       - examples
       - tests/bench/cross_language/benchmarks
+      - internal/isa/licence_decisions_generated\.go
 
     rules:
       - path: ^(internal/sandboxhost/filesystem(_recovery)?|isolated)\.go$
         linters: [ gocritic ]
         text: "hugeParam: config is heavy"
+
+      - path: ^internal/logging/deferred\.go$
+        linters: [ gocritic ]
+        text: "hugeParam: record is heavy"
+
+      - path: ^internal/stdlink/stdlink\.go$
+        linters: [ gosec ]
+        text: "G404"
 
       - path: ^internal/compile/(reflect_type_for|compiler_linked_calls)\.go$
         linters: [ modernize ]
@@ -386,9 +395,6 @@ linters:
         linters: [ revive ]
         text: "line-length-limit|file-length-limit|function-length|argument-limit|function-result-limit|cyclomatic|cognitive-complexity|max-public-structs|max-control-nesting|empty-lines|superfluous-else|early-return|indent-error-flow|unnecessary-stmt|var-declaration|comment-spacings|use-any|increment-decrement|bare-return|bool-literal-in-expr|empty-block|var-naming|receiver-naming|error-naming|exported|package-comments|package-directory-mismatch|time-naming|unhandled-error|error-strings|blank-imports|dot-imports|unused-parameter|unused-receiver|confusing-results|unexported-return|modifies-parameter|confusing-naming|modifies-value-receiver|add-constant|use-slices-sort|epoch-naming|use-errors-new|use-fmt-print|unnecessary-format|unnecessary-if|if-return|useless-break|redundant-import-alias|redundant-build-tag|redundant-test-main-exit|inefficient-map-lookup|time-date|range|optimize-operands-order|context-as-argument"
 
-      # decorder mislabels its desired order ("const,var,var,func") and raises this even
-      # on a var block that directly follows the imports, as in bytecode.go, so the
-      # message carries no signal. The const-first rule it sits beside is enforced.
       - linters: [ decorder ]
         text: "var must not be placed after var"
 
@@ -403,9 +409,17 @@ linters:
         linters: [ govet ]
         text: "fieldalignment: RuntimeClosure"
 
+      - path: internal/symtab/typemodel/named_composite_forge_unsafe\.go$
+        linters: [ govet ]
+        text: "fieldalignment"
+
       - path: internal/engine/
         linters: [ govet ]
         text: "unsafeptr"
+
+      - path: ^internal/engine/(register_arena_audit|register_arena_audit_range|vm_shell_audit)\.go$
+        linters: [ revive ]
+        text: "call-to-gc"
 
       - path: internal/engine/dispatch_context\.go$
         linters: [ unused ]

@@ -1,5 +1,3 @@
-//go:build bench
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +16,11 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build bench
+
 package bench
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -37,16 +36,16 @@ func fib(n int) int {
 }
 func EntrypointRun() int { return fib(20) }`
 	service := app.NewService(app.WithMaxCallDepth(200000))
-	compiled, err := service.CompileFileSet(context.Background(),
+	compiled, err := service.CompileFileSet(b.Context(),
 		map[string]string{"main.go": source})
 	require.NoError(b, err, "compile")
-	_, err = service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
+	_, err = service.ExecuteEntrypoint(b.Context(), compiled, "EntrypointRun")
 	require.NoError(b, err, "warmup")
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		_, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
+		_, err := service.ExecuteEntrypoint(b.Context(), compiled, "EntrypointRun")
 		if err != nil {
 			require.NoError(b, err, "exec")
 		}

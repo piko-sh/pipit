@@ -203,8 +203,9 @@ func remapPCKeyedMetadata(compiledFunction *program.CompiledFunction, mapper pcM
 	compiledFunction.PeepholeProvenance = remapProvenance(compiledFunction.PeepholeProvenance, mapper)
 	compiledFunction.ArenaSafeAllocPCs = remapPCKeyed(compiledFunction.ArenaSafeAllocPCs, mapper)
 	compiledFunction.FieldStoreArenaSafePCs = remapPCKeyed(compiledFunction.FieldStoreArenaSafePCs, mapper)
+	compiledFunction.LocalContainerAllocPCs, compiledFunction.LocalContainerStorePCs = nil, nil
 	compiledFunction.InPlaceHeaderReusePCs = remapPCKeyed(compiledFunction.InPlaceHeaderReusePCs, mapper)
-	compiledFunction.GetMethodReceiverTypeNames = remapPCKeyed(compiledFunction.GetMethodReceiverTypeNames, mapper)
+	compiledFunction.BindMethodByNameReceiverTypeNames = remapPCKeyed(compiledFunction.BindMethodByNameReceiverTypeNames, mapper)
 }
 
 // remapPCKeyed rebuilds a PC-keyed map through mapper, dropping entries whose word no

@@ -68,11 +68,11 @@ func (field snapshotField) sameField(other snapshotField) bool {
 
 // snapshotRegion contains uses reached before the copied register is replaced.
 type snapshotRegion struct {
-	// members records PCs reached before the copied register is replaced.
-	members map[int]bool
-
 	// fields groups supported reads by field layout.
 	fields []snapshotField
+
+	// members records PCs reached before the copied register is replaced.
+	members reachedWords
 }
 
 // scalarizeSnapshotsPass replaces private aggregate copies with field captures.
@@ -126,10 +126,10 @@ func (scalarizeSnapshotsPass) Run(ctx context.Context, state *PassContext, cf *p
 // or another aggregate copy.
 func snapshotFieldAt(cf *program.CompiledFunction, pc int, receiver uint8) (snapshotField, bool) {
 	inst := cf.Body[pc]
-	field := snapshotField{uses: nil, width: 1, read: inst, extension: isa.Instruction{}, kind: isa.RegisterInt}
+	field := snapshotField{uses: nil, width: 1, read: inst, extension: isa.Instruction{}, kind: isa.RegisterInt64}
 	layout := int(inst.C)
 	if isa.InstrIsTier1SubOp(inst, isa.SubOpGetStructFieldSliceByte) {
-		if inst.C != receiver || pc+1 >= len(cf.Body) || cf.Body[pc+1].Op != isa.OpExt {
+		if inst.C != receiver || pc+1 >= len(cf.Body) || cf.Body[pc+1].Op != isa.OpExtension {
 			return field, false
 		}
 		field.extension = cf.Body[pc+1]
@@ -156,16 +156,16 @@ func snapshotFieldAt(cf *program.CompiledFunction, pc int, receiver uint8) (snap
 // Returns the destination bank and whether op is a supported field read.
 func scalarFieldReadKind(op isa.Opcode) (isa.RegisterKind, bool) {
 	switch op {
-	case isa.OpGetStructFieldIntT0, isa.OpGetStructFieldSliceLen:
-		return isa.RegisterInt, true
-	case isa.OpGetStructFieldUint:
-		return isa.RegisterUint, true
-	case isa.OpGetStructFieldFloat:
-		return isa.RegisterFloat, true
+	case isa.OpGetStructFieldInt64, isa.OpLengthStructField:
+		return isa.RegisterInt64, true
+	case isa.OpGetStructFieldUint64:
+		return isa.RegisterUint64, true
+	case isa.OpGetStructFieldFloat64:
+		return isa.RegisterFloat64, true
 	case isa.OpGetStructFieldBool:
 		return isa.RegisterBool, true
 	default:
-		return isa.RegisterInt, false
+		return isa.RegisterInt64, false
 	}
 }
 
@@ -180,7 +180,7 @@ func scalarFieldReadKind(op isa.Opcode) (isa.RegisterKind, bool) {
 // Returns bool which is false for escaping, opaque, ambiguous, or excessively large
 // regions.
 func findSnapshotFields(cf *program.CompiledFunction, copyPC int, analysis *functionAnalysis) (snapshotRegion, bool) {
-	region := snapshotRegion{members: make(map[int]bool), fields: nil}
+	region := snapshotRegion{members: reachedWords{set: nil, count: 0}, fields: nil}
 	receiver := cf.Body[copyPC].A
 	if analysis.HasTypeSwitch() || resultSlotReadByRecover(cf, isa.RegisterGeneral, receiver) {
 		return region, false
@@ -239,8 +239,8 @@ func (w *snapshotWalk) run() bool {
 // Returns false when the path uses the copy in an unsupported way.
 func (w *snapshotWalk) follow(pc int) bool {
 	owner := -1
-	for pc < len(w.cf.Body) && !w.region.members[pc] {
-		if pc < 0 || len(w.region.members) >= snapshotScanLimit || IsCallInstruction(w.cf.Body[pc]) {
+	for pc < len(w.cf.Body) && !w.region.members.has(pc) {
+		if pc < 0 || w.region.members.count >= snapshotScanLimit || IsCallInstruction(w.cf.Body[pc]) {
 			return false
 		}
 		if field, ok := snapshotFieldAt(w.cf, pc, w.receiver); ok {
@@ -265,8 +265,9 @@ func (w *snapshotWalk) follow(pc int) bool {
 // Takes pc (int) which is the word's program counter.
 // Takes owner (*int) which tracks the instruction owning later extension words.
 //
-// Returns the next PC, whether the path ended, and false when the word refutes the
-// rewrite.
+// Returns next (int) which is the next PC.
+// Returns done (bool) which is true when the path ended.
+// Returns ok (bool) which is false when the word refutes the rewrite.
 func (w *snapshotWalk) step(pc int, owner *int) (next int, done, ok bool) {
 	inst := w.cf.Body[pc]
 	verdict, next := w.liveness.step(pc, owner)
@@ -275,10 +276,10 @@ func (w *snapshotWalk) step(pc int, owner *int) (next int, done, ok bool) {
 		return 0, true, false
 	case verdict == walkDead:
 		return 0, true, true
-	case !instructionShapeAllowsCseScan(inst) && inst.Op != isa.OpExt:
+	case !instructionShapeAllowsCseScan(inst) && inst.Op != isa.OpExtension:
 		return 0, true, false
 	}
-	w.region.members[pc] = true
+	w.region.members.add(pc)
 	if verdict == walkBranch {
 		return 0, true, w.branch(pc, inst)
 	}
@@ -302,7 +303,7 @@ func (w *snapshotWalk) branch(pc int, inst isa.Instruction) bool {
 		w.pending = append(w.pending, pc+footprint)
 	}
 	for ext := pc + 1; ext < pc+footprint; ext++ {
-		w.region.members[ext] = true
+		w.region.members.add(ext)
 	}
 	return true
 }
@@ -324,7 +325,7 @@ func (w *snapshotWalk) recordField(pc int, field snapshotField) bool {
 	}
 	w.region.fields[index].uses = append(w.region.fields[index].uses, pc)
 	for offset := range field.width {
-		w.region.members[pc+offset] = true
+		w.region.members.add(pc + offset)
 	}
 	return true
 }
@@ -342,7 +343,7 @@ func snapshotUsesHaveSingleDefinition(region snapshotRegion, copyPC int, analysi
 	for _, field := range region.fields {
 		uses = append(uses, field.uses...)
 	}
-	return usesReachedOnlyFrom(analysis, region.members, uses, copyPC, copyPC+1)
+	return usesReachedOnlyFrom(analysis, &region.members, uses, nil, copyPC, copyPC+1)
 }
 
 // snapshotCapture holds the words that replace one aggregate copy.
@@ -459,9 +460,9 @@ func (field snapshotField) replaceUse(replacements map[int]isa.Instruction, old 
 	switch {
 	case field.width == wideFieldReadWords:
 		replacements[use] = isa.NewTier1Instruction(isa.SubOpMoveSliceByte, inst.B, reg)
-		replacements[use+1] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
-	case inst.Op == isa.OpGetStructFieldSliceLen:
-		replacements[use] = isa.NewTier1Instruction(isa.SubOpMoveInt, inst.A, reg)
+		replacements[use+1] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
+	case inst.Op == isa.OpLengthStructField:
+		replacements[use] = isa.NewTier1Instruction(isa.SubOpMoveInt64, inst.A, reg)
 	default:
 		replacements[use] = emitMoveForTier0ReadOp(inst.Op, inst.A, reg)
 	}

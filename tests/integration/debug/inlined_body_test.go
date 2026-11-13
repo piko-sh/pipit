@@ -21,7 +21,6 @@
 package debug_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -63,7 +62,7 @@ func run() int {
 	dbg.SetBreakpoint("main.go", 9)
 
 	execution := debugtest.Run(t, dbg, func() (any, error) {
-		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+		return svc.ExecuteEntrypoint(t.Context(), cfs, "run")
 	})
 
 	snap := debugtest.WaitPause(t, dbg)

@@ -19,15 +19,41 @@
 package engine
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"os"
+	"os/exec"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/isa"
 )
+
+const childProcessTestEnvironment = "PIPIT_ENGINE_CHILD_PROCESS_TEST"
+
+const childProcessTestTimeout = 2 * time.Minute
+
+func inChildProcessTest(t *testing.T) bool {
+	t.Helper()
+	return os.Getenv(childProcessTestEnvironment) == t.Name()
+}
+
+func runChildProcessTest(t *testing.T) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeoutCause(t.Context(), childProcessTestTimeout, errors.New("child test binary ran too long"))
+	defer cancel()
+	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^"+regexp.QuoteMeta(t.Name())+"$", "-test.v", "-test.count=1")
+	command.Env = append(os.Environ(), childProcessTestEnvironment+"="+t.Name())
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, "the child test binary failed:\n%s", output)
+	return string(output)
+}
 
 func TestReconstructVerbRebuildsTheFormatSpecifier(t *testing.T) {
 	t.Parallel()
@@ -262,6 +288,13 @@ func TestEmbeddedFieldNameHelpersRoundTripThePrefix(t *testing.T) {
 type identityTrailing struct {
 	A           int
 	_pipitID_at struct{}
+}
+
+type fmtCycleNode struct {
+	Next          *fmtCycleNode
+	Items         []*fmtCycleNode
+	Any           any
+	_pipitID_node struct{}
 }
 
 type identityLeading struct {

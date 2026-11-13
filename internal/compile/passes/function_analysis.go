@@ -19,6 +19,8 @@
 package passes
 
 import (
+	"slices"
+
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
@@ -62,6 +64,12 @@ type functionAnalysis struct {
 
 	// typeSwitchScanned is true when hasTypeSwitch is current.
 	typeSwitchScanned bool
+
+	// createsSharedCells caches whether the body holds an isa.OpMakeClosure.
+	createsSharedCells bool
+
+	// sharedCellsScanned is true when createsSharedCells is current.
+	sharedCellsScanned bool
 }
 
 // newFunctionAnalysis builds the shared analysis for compiledFunction's current body.
@@ -123,6 +131,18 @@ func (analysis *functionAnalysis) HasTypeSwitch() bool {
 	return analysis.hasTypeSwitch
 }
 
+// MayCreateSharedCells reports whether the body makes a closure, whose captured variables
+// live in cells a rewrite of registers must not lose track of.
+//
+// Returns true when some instruction is an isa.OpMakeClosure.
+func (analysis *functionAnalysis) MayCreateSharedCells() bool {
+	if !analysis.sharedCellsScanned {
+		analysis.createsSharedCells = program.MayCreateSharedCells(analysis.compiledFunction)
+		analysis.sharedCellsScanned = true
+	}
+	return analysis.createsSharedCells
+}
+
 // invalidate drops all cached analysis so later passes rebuild against the current body.
 // A nil receiver is a no-op.
 func (analysis *functionAnalysis) invalidate() {
@@ -158,10 +178,11 @@ func (analysis *functionAnalysis) rebuild() {
 	analysis.loopsComputed = false
 	analysis.hasTypeSwitch = false
 	analysis.typeSwitchScanned = false
+	analysis.createsSharedCells = false
+	analysis.sharedCellsScanned = false
 }
 
-// functionAnalysisFor() returns the empty analysis value for compiledFunction. Every
-// derived fact is computed on first use.
+// functionAnalysisFor() returns the empty analysis value for compiledFunction.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function the analysis
 // will describe.
@@ -181,6 +202,8 @@ func functionAnalysisFor(compiledFunction *program.CompiledFunction) functionAna
 		loopsComputed:      false,
 		hasTypeSwitch:      false,
 		typeSwitchScanned:  false,
+		createsSharedCells: false,
+		sharedCellsScanned: false,
 	}
 }
 
@@ -272,8 +295,8 @@ func naturalLoopMembers(analysis *functionAnalysis, loop loopRange) []int {
 	seen := make([]bool, len(body))
 	seen[loop.header] = true
 	var pending []int
-	for pc := range body {
-		if target, jump := program.JumpTargetAt(body, pc); jump && target == loop.header && pc >= loop.header {
+	for _, pc := range analysis.predecessors[loop.header] {
+		if pc >= loop.header {
 			pending = append(pending, pc)
 		}
 	}
@@ -344,6 +367,17 @@ func (facts *loopFacts) loopMembers() []int {
 		facts.membersDone = true
 	}
 	return facts.members
+}
+
+// isMember reports whether pc belongs to the natural loop, which is to say the latch can
+// be reached from it.
+//
+// Takes pc (int) which is the candidate word.
+//
+// Returns true when pc is a loop member.
+func (facts *loopFacts) isMember(pc int) bool {
+	_, found := slices.BinarySearch(facts.loopMembers(), pc)
+	return found
 }
 
 // dominators returns the function's dominator relation.

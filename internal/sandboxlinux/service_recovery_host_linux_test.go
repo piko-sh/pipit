@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxlinux
 
@@ -106,7 +106,7 @@ func TestServiceRecoveryIdentityDecoding(t *testing.T) {
 			t.Fatal("invalid identity accepted:", string(data), err)
 		}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if err := verifyServiceRecoveryHost(ctx, nil, [sha256.Size]byte{}, [sha256.Size]byte{}); !errors.Is(err, context.Canceled) {
 		t.Fatal("cancelled verification continued:", err)
@@ -114,7 +114,7 @@ func TestServiceRecoveryIdentityDecoding(t *testing.T) {
 	if err := verifyServiceRecoveryHost(nil, nil, [sha256.Size]byte{}, [sha256.Size]byte{}); !errors.Is(err, ErrInvalidLimits) {
 		t.Fatal("missing context accepted:", err)
 	}
-	if err := verifyServiceRecoveryHost(context.Background(), encoded, sha256.Sum256(encoded), [sha256.Size]byte{1}); err == nil {
+	if err := verifyServiceRecoveryHost(t.Context(), encoded, sha256.Sum256(encoded), [sha256.Size]byte{1}); err == nil {
 		t.Fatal("raw service identity accepted in place of approved checkpoint")
 	}
 }

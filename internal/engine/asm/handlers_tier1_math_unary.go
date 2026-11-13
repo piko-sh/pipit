@@ -29,17 +29,17 @@ import (
 // for this group.
 func tier1MathUnaryHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		tier1FloatUnaryHandler("handlerSubOpMathSqrt", "SQRT",
-			"handlerSubOpMathSqrt sets floats[B] = math.Sqrt(floats[C])."),
-		tier1FloatUnaryHandler("handlerSubOpMathAbs", "ABS",
-			"handlerSubOpMathAbs sets floats[B] = math.Abs(floats[C])."),
-		tier1FloatUnaryHandler("handlerSubOpMathFloor", "FLOOR",
-			"handlerSubOpMathFloor sets floats[B] = math.Floor(floats[C])."),
-		tier1FloatUnaryHandler("handlerSubOpMathCeil", "CEIL",
-			"handlerSubOpMathCeil sets floats[B] = math.Ceil(floats[C])."),
-		tier1FloatUnaryHandler("handlerSubOpMathTrunc", "TRUNC",
-			"handlerSubOpMathTrunc sets floats[B] = math.Trunc(floats[C])."),
-		tier1FloatUnaryHandler("handlerSubOpMathRound", "ROUND",
-			"handlerSubOpMathRound sets floats[B] = math.Round(floats[C])."),
+		tier1FloatUnaryHandler("handlerMathSqrt", "SQRT",
+			"handlerMathSqrt sets floats[B] = math.Sqrt(floats[C])."),
+		tier1FloatUnaryHandler("handlerMathAbs", "ABS",
+			"handlerMathAbs sets floats[B] = math.Abs(floats[C])."),
+		tier1FloatUnaryHandler("handlerMathFloor", "FLOOR",
+			"handlerMathFloor sets floats[B] = math.Floor(floats[C])."),
+		tier1FloatUnaryHandler("handlerMathCeil", "CEIL",
+			"handlerMathCeil sets floats[B] = math.Ceil(floats[C])."),
+		tier1FloatUnaryHandler("handlerMathTrunc", "TRUNC",
+			"handlerMathTrunc sets floats[B] = math.Trunc(floats[C])."),
+		tier1FloatUnaryHandler("handlerMathRound", "ROUND",
+			"handlerMathRound sets floats[B] = math.Round(floats[C])."),
 	}
 }

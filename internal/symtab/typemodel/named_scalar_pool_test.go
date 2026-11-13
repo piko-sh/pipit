@@ -19,13 +19,17 @@
 package typemodel
 
 import (
+	"bytes"
 	"fmt"
 	"go/token"
 	"go/types"
+	"log/slog"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/logging"
 )
 
 func newNamedBasicType(name string, kind types.BasicKind) *types.Named {
@@ -57,8 +61,8 @@ func TestNamedScalarPoolUnifiesAliasBasicSpellings(t *testing.T) {
 			t.Parallel()
 			registry := newNamedScalarPoolRegistry()
 
-			fromSource := registry.typeFor(newNamedAliasBasicType(t, "Operator", tt.alias), maxNamedScalarPoolKeys, false)
-			fromDescriptor := registry.typeFor(newNamedBasicType("Operator", tt.kind), maxNamedScalarPoolKeys, true)
+			fromSource := registry.typeFor(t.Context(), newNamedAliasBasicType(t, "Operator", tt.alias), maxNamedScalarPoolKeys, false)
+			fromDescriptor := registry.typeFor(t.Context(), newNamedBasicType("Operator", tt.kind), maxNamedScalarPoolKeys, true)
 
 			require.NotNil(t, fromSource)
 			require.Equal(t, fromSource, fromDescriptor,
@@ -74,13 +78,13 @@ func TestNamedScalarPoolPrefersTypeCheckedPackageName(t *testing.T) {
 
 	synthesised := types.NewPackage("github.com/hashicorp/go-version", "go-version")
 	synthesisedName := types.NewTypeName(token.NoPos, synthesised, "operator", nil)
-	poolType := registry.typeFor(types.NewNamed(synthesisedName, types.Typ[types.Int32], nil), maxNamedScalarPoolKeys, true)
+	poolType := registry.typeFor(t.Context(), types.NewNamed(synthesisedName, types.Typ[types.Int32], nil), maxNamedScalarPoolKeys, true)
 	require.NotNil(t, poolType)
 	require.Equal(t, "go-version", registry.info[poolType].PkgName)
 
 	checked := types.NewPackage("github.com/hashicorp/go-version", "version")
 	checkedName := types.NewTypeName(token.NoPos, checked, "operator", nil)
-	require.Equal(t, poolType, registry.typeFor(types.NewNamed(checkedName, types.Typ[types.Int32], nil), maxNamedScalarPoolKeys, false))
+	require.Equal(t, poolType, registry.typeFor(t.Context(), types.NewNamed(checkedName, types.Typ[types.Int32], nil), maxNamedScalarPoolKeys, false))
 	require.Equal(t, "version", registry.info[poolType].PkgName, "the type-checked package name must win")
 	require.Equal(t, "version.operator", registry.info[poolType].QualifiedName)
 }
@@ -90,18 +94,18 @@ func TestNamedScalarPoolKeyCapBoundsRetention(t *testing.T) {
 	registry := newNamedScalarPoolRegistry()
 	const keyCap = 2
 
-	first := registry.typeFor(newNamedBasicType("First", types.Int), keyCap, false)
-	second := registry.typeFor(newNamedBasicType("Second", types.Int), keyCap, false)
+	first := registry.typeFor(t.Context(), newNamedBasicType("First", types.Int), keyCap, false)
+	second := registry.typeFor(t.Context(), newNamedBasicType("Second", types.Int), keyCap, false)
 	require.NotNil(t, first)
 	require.NotNil(t, second)
 	require.NotEqual(t, first, second, "distinct named types must get distinct pool types")
 	require.Len(t, registry.byKey, keyCap)
 
-	third := registry.typeFor(newNamedBasicType("Third", types.Int), keyCap, false)
+	third := registry.typeFor(t.Context(), newNamedBasicType("Third", types.Int), keyCap, false)
 	require.Nil(t, third, "a distinct type past the cap must collapse rather than be stored")
 	require.Len(t, registry.byKey, keyCap, "the cap must bound the map")
 
-	require.Equal(t, first, registry.typeFor(newNamedBasicType("First", types.Int), keyCap, false),
+	require.Equal(t, first, registry.typeFor(t.Context(), newNamedBasicType("First", types.Int), keyCap, false),
 		"an already-assigned type must still resolve past the cap")
 	require.Len(t, registry.byKey, keyCap)
 }
@@ -109,18 +113,18 @@ func TestNamedScalarPoolKeyCapBoundsRetention(t *testing.T) {
 func TestNamedScalarPoolExhaustionCountsAndCollapses(t *testing.T) {
 	registry := newNamedScalarPoolRegistry()
 	for index := range namedScalarPoolGeneratedColumns {
-		require.NotNil(t, registry.typeFor(newNamedBasicType(fmt.Sprintf("Word%d", index), types.String), maxNamedScalarPoolKeys, false))
+		require.NotNil(t, registry.typeFor(t.Context(), newNamedBasicType(fmt.Sprintf("Word%d", index), types.String), maxNamedScalarPoolKeys, false))
 	}
 
 	before := NamedScalarPoolExhaustions()
-	require.Nil(t, registry.typeFor(newNamedBasicType("Overflow", types.String), maxNamedScalarPoolKeys, false))
+	require.Nil(t, registry.typeFor(t.Context(), newNamedBasicType("Overflow", types.String), maxNamedScalarPoolKeys, false))
 	require.Equal(t, before+1, NamedScalarPoolExhaustions())
 	require.True(t, namedScalarPoolExhaustionWarned.Load())
 
-	require.Nil(t, registry.typeFor(newNamedBasicType("Overflow", types.String), maxNamedScalarPoolKeys, false))
+	require.Nil(t, registry.typeFor(t.Context(), newNamedBasicType("Overflow", types.String), maxNamedScalarPoolKeys, false))
 	require.Equal(t, before+1, NamedScalarPoolExhaustions(), "a recorded collapse must not count again")
 
-	require.NotNil(t, registry.typeFor(newNamedBasicType("Count", types.Int), maxNamedScalarPoolKeys, false),
+	require.NotNil(t, registry.typeFor(t.Context(), newNamedBasicType("Count", types.Int), maxNamedScalarPoolKeys, false),
 		"other kinds keep their own columns")
 	require.Equal(t, before+1, NamedScalarPoolExhaustions())
 }
@@ -145,14 +149,31 @@ func TestNamedScalarPoolHasGeneratedColumnCount(t *testing.T) {
 func TestNamedScalarPoolTypeForResultReportsExhaustion(t *testing.T) {
 	registry := newNamedScalarPoolRegistry()
 	for index := range namedScalarPoolGeneratedColumns {
-		require.NotNil(t, registry.typeFor(newNamedBasicType(fmt.Sprintf("Level%d", index), types.Int), maxNamedScalarPoolKeys, false))
+		require.NotNil(t, registry.typeFor(t.Context(), newNamedBasicType(fmt.Sprintf("Level%d", index), types.Int), maxNamedScalarPoolKeys, false))
 	}
-	poolType, exhausted := registry.typeForResult(newNamedBasicType("Overflow", types.Int), maxNamedScalarPoolKeys)
+	poolType, exhausted := registry.typeForResult(t.Context(), newNamedBasicType("Overflow", types.Int), maxNamedScalarPoolKeys)
 	require.Nil(t, poolType)
 	require.True(t, exhausted, "a poolable kind past the last column must report exhaustion")
 
 	structType := types.NewNamed(types.NewTypeName(token.NoPos, nil, "S", nil), types.NewStruct(nil, nil), nil)
-	poolType, exhausted = registry.typeForResult(structType, maxNamedScalarPoolKeys)
+	poolType, exhausted = registry.typeForResult(t.Context(), structType, maxNamedScalarPoolKeys)
 	require.Nil(t, poolType)
 	require.False(t, exhausted, "a non-basic type is not poolable and must not report exhaustion")
+}
+
+func TestNamedScalarPoolLogsToTheCallersLogger(t *testing.T) {
+	var logged bytes.Buffer
+	ctx := logging.WithLogger(t.Context(), slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug})))
+
+	warned := namedScalarPoolExhaustionWarned.Swap(false)
+	t.Cleanup(func() { namedScalarPoolExhaustionWarned.Store(warned) })
+	recordNamedScalarPoolExhaustion(ctx, "probe.Overflow", "string", namedScalarPoolGeneratedColumns)
+	require.Contains(t, logged.String(), "named-scalar pool exhausted")
+	require.Contains(t, logged.String(), "probe.Overflow")
+
+	tracing := traceNamedScalarPoolEnabled
+	traceNamedScalarPoolEnabled = true
+	t.Cleanup(func() { traceNamedScalarPoolEnabled = tracing })
+	traceNamedScalarPoolAssignment(ctx, "probe.Traced", 3, 1, false, "probe.Traced")
+	require.Contains(t, logged.String(), "named-scalar pool column assigned")
 }

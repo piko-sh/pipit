@@ -42,14 +42,14 @@ func TestKindForPromotedSlotPredicate(t *testing.T) {
 	t.Run("nil_ctx_falls_through_to_kindForCallSlot", func(t *testing.T) {
 		t.Parallel()
 		got, promoted := typemap.KindForPromotedSlot(sliceInt64, nil)
-		require.Equal(t, isa.RegisterSliceInt, got)
+		require.Equal(t, isa.RegisterSliceInt64, got)
 		require.True(t, promoted)
 	})
 
 	t.Run("nil_ctx_non_slice_type_falls_through", func(t *testing.T) {
 		t.Parallel()
 		got, promoted := typemap.KindForPromotedSlot(scalarInt, nil)
-		require.Equal(t, isa.RegisterInt, got)
+		require.Equal(t, isa.RegisterInt64, got)
 		require.False(t, promoted, "scalar types never promote to typed-slice banks")
 	})
 
@@ -57,7 +57,7 @@ func TestKindForPromotedSlotPredicate(t *testing.T) {
 		t.Parallel()
 		ctx := &typemap.KindPromotionContext{CalleeParamPromotions: nil}
 		got, promoted := typemap.KindForPromotedSlot(sliceInt64, ctx)
-		require.Equal(t, isa.RegisterSliceInt, got)
+		require.Equal(t, isa.RegisterSliceInt64, got)
 		require.True(t, promoted)
 	})
 
@@ -65,7 +65,7 @@ func TestKindForPromotedSlotPredicate(t *testing.T) {
 		t.Parallel()
 		ctx := &typemap.KindPromotionContext{CalleeParamPromotions: []bool{true}, CalleeParamIndex: 5}
 		got, promoted := typemap.KindForPromotedSlot(sliceInt64, ctx)
-		require.Equal(t, isa.RegisterSliceInt, got)
+		require.Equal(t, isa.RegisterSliceInt64, got)
 		require.True(t, promoted, "out-of-range index falls through to type-only verdict")
 	})
 
@@ -73,7 +73,7 @@ func TestKindForPromotedSlotPredicate(t *testing.T) {
 		t.Parallel()
 		ctx := &typemap.KindPromotionContext{CalleeParamPromotions: []bool{true}, CalleeParamIndex: -1}
 		got, promoted := typemap.KindForPromotedSlot(sliceInt64, ctx)
-		require.Equal(t, isa.RegisterSliceInt, got)
+		require.Equal(t, isa.RegisterSliceInt64, got)
 		require.True(t, promoted)
 	})
 
@@ -81,7 +81,7 @@ func TestKindForPromotedSlotPredicate(t *testing.T) {
 		t.Parallel()
 		ctx := &typemap.KindPromotionContext{CalleeParamPromotions: []bool{true}, CalleeParamIndex: 0}
 		got, promoted := typemap.KindForPromotedSlot(sliceInt64, ctx)
-		require.Equal(t, isa.RegisterSliceInt, got)
+		require.Equal(t, isa.RegisterSliceInt64, got)
 		require.True(t, promoted)
 	})
 
@@ -97,7 +97,7 @@ func TestKindForPromotedSlotPredicate(t *testing.T) {
 		t.Parallel()
 		ctx := &typemap.KindPromotionContext{CalleeParamPromotions: []bool{false}, CalleeParamIndex: 0}
 		got, promoted := typemap.KindForPromotedSlot(scalarInt, ctx)
-		require.Equal(t, isa.RegisterInt, got)
+		require.Equal(t, isa.RegisterInt64, got)
 		require.False(t, promoted)
 	})
 
@@ -119,7 +119,7 @@ func TestKindForPromotedSlotPredicate(t *testing.T) {
 			BindingName:  "xs",
 		}
 		got, promoted := typemap.KindForPromotedSlot(sliceInt64, ctx)
-		require.Equal(t, isa.RegisterSliceInt, got)
+		require.Equal(t, isa.RegisterSliceInt64, got)
 		require.True(t, promoted)
 	})
 
@@ -131,7 +131,7 @@ func TestKindForPromotedSlotPredicate(t *testing.T) {
 			BindingName:  "",
 		}
 		got, promoted := typemap.KindForPromotedSlot(sliceInt64, ctx)
-		require.Equal(t, isa.RegisterSliceInt, got)
+		require.Equal(t, isa.RegisterSliceInt64, got)
 		require.True(t, promoted)
 	})
 
@@ -146,7 +146,7 @@ func TestKindForPromotedSlotPredicate(t *testing.T) {
 			},
 		}
 		got, promoted := typemap.KindForPromotedSlot(sliceOfV, ctx)
-		require.Equal(t, isa.RegisterSliceInt, got)
+		require.Equal(t, isa.RegisterSliceInt64, got)
 		require.True(t, promoted)
 	})
 
@@ -205,7 +205,7 @@ func main() {
 	require.Len(t, survive.ParameterTypedSlicePromoted, 1)
 	require.True(t, survive.ParameterTypedSlicePromoted[0],
 		"surviveByIndex.xs should be parameterTypedSlicePromoted[0]=true (stayed on registerSliceInt)")
-	require.Equal(t, isa.RegisterSliceInt, survive.ParameterKinds[0],
+	require.Equal(t, isa.RegisterSliceInt64, survive.ParameterKinds[0],
 		"sanity: parameterKinds[0] should be registerSliceInt for the survived parameter")
 
 	spread := findCompiledFunctionByNameForPromotedTest(t, cfs, "demoteBySpread")
@@ -255,7 +255,7 @@ func main() {
 	require.GreaterOrEqual(t, len(gsumSpec.ParameterTypedSlicePromoted), 1)
 	require.True(t, gsumSpec.ParameterTypedSlicePromoted[0],
 		"specialised gsum.xs should stay typed-bank")
-	require.Equal(t, isa.RegisterSliceInt, gsumSpec.ParameterKinds[0])
+	require.Equal(t, isa.RegisterSliceInt64, gsumSpec.ParameterKinds[0])
 
 	spreadSpec := findCompiledFunctionBySpecPrefixForPromotedTest(t, cfs, "gAppendSpread")
 	require.NotNil(t, spreadSpec, "expected a specialisation of gAppendSpread")

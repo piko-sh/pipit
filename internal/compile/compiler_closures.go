@@ -26,6 +26,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"unsafe"
 
 	"pipit.sh/pipit/internal/compile/escape"
 	"pipit.sh/pipit/internal/compile/typemap"
@@ -47,14 +48,14 @@ var (
 	// scalarConversions is a table of specialised cross-bank conversion sub-opcodes looked
 	// up by (srcKind, destinationKind).
 	scalarConversions = map[scalarConversionKey]scalarConversionEntry{
-		{Source: isa.RegisterInt, destination: isa.RegisterFloat}:  {subOp: isa.SubOpIntToFloat, destinationKind: isa.RegisterFloat},
-		{Source: isa.RegisterFloat, destination: isa.RegisterInt}:  {subOp: isa.SubOpFloatToInt, destinationKind: isa.RegisterInt},
-		{Source: isa.RegisterInt, destination: isa.RegisterUint}:   {subOp: isa.SubOpIntToUint, destinationKind: isa.RegisterUint},
-		{Source: isa.RegisterUint, destination: isa.RegisterInt}:   {subOp: isa.SubOpUintToInt, destinationKind: isa.RegisterInt},
-		{Source: isa.RegisterUint, destination: isa.RegisterFloat}: {subOp: isa.SubOpUintToFloat, destinationKind: isa.RegisterFloat},
-		{Source: isa.RegisterFloat, destination: isa.RegisterUint}: {subOp: isa.SubOpFloatToUint, destinationKind: isa.RegisterUint},
-		{Source: isa.RegisterBool, destination: isa.RegisterInt}:   {subOp: isa.SubOpBoolToInt, destinationKind: isa.RegisterInt},
-		{Source: isa.RegisterInt, destination: isa.RegisterBool}:   {subOp: isa.SubOpIntToBool, destinationKind: isa.RegisterBool},
+		{Source: isa.RegisterInt64, destination: isa.RegisterFloat64}:  {subOp: isa.SubOpConvertInt64ToFloat64, destinationKind: isa.RegisterFloat64},
+		{Source: isa.RegisterFloat64, destination: isa.RegisterInt64}:  {subOp: isa.SubOpConvertFloat64ToInt64, destinationKind: isa.RegisterInt64},
+		{Source: isa.RegisterInt64, destination: isa.RegisterUint64}:   {subOp: isa.SubOpConvertInt64ToUint64, destinationKind: isa.RegisterUint64},
+		{Source: isa.RegisterUint64, destination: isa.RegisterInt64}:   {subOp: isa.SubOpConvertUint64ToInt64, destinationKind: isa.RegisterInt64},
+		{Source: isa.RegisterUint64, destination: isa.RegisterFloat64}: {subOp: isa.SubOpConvertUint64ToFloat64, destinationKind: isa.RegisterFloat64},
+		{Source: isa.RegisterFloat64, destination: isa.RegisterUint64}: {subOp: isa.SubOpConvertFloat64ToUint64, destinationKind: isa.RegisterUint64},
+		{Source: isa.RegisterBool, destination: isa.RegisterInt64}:     {subOp: isa.SubOpConvertBoolToInt64, destinationKind: isa.RegisterInt64},
+		{Source: isa.RegisterInt64, destination: isa.RegisterBool}:     {subOp: isa.SubOpConvertInt64ToBool, destinationKind: isa.RegisterBool},
 	}
 )
 
@@ -105,7 +106,9 @@ func (c *Compiler) compileFunctionLit(ctx context.Context, lit *ast.FuncLit) (pr
 //
 // Takes lit (*ast.FuncLit) which is the function literal AST node.
 //
-// Returns the function index, the sorted free variable names, and any compilation error.
+// Returns uint16 which is the function index.
+// Returns []string which lists the sorted free variable names.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileClosureBody(ctx context.Context, lit *ast.FuncLit) (uint16, []string, error) {
 	freeVars := c.findFreeVars(ctx, lit)
 
@@ -147,7 +150,7 @@ func (c *Compiler) compileClosureBody(ctx context.Context, lit *ast.FuncLit) (ui
 		return sub, err
 	}
 	finish := func(sub *Compiler) error {
-		return sub.finishBody(ctx, compiledFunction, lit.Body, finishFlags{tailCall: true, finaliseDefer: true, classifyEscapes: true})
+		return sub.finishBody(ctx, compiledFunction, lit.Body, finishFlags{tailCall: true, finaliseDefer: true, classifyEscapes: true, returnAtEnd: true})
 	}
 	unit := retryUnit{function: compiledFunction, node: lit, substitutions: c.typeSubstitutions}
 	if err := c.compileNestedBodyWithRetry(ctx, unit, attempt, finish); err != nil {
@@ -194,7 +197,7 @@ func (c *Compiler) populateClosureParameterAndResultKinds(ctx context.Context, c
 	}
 	for r := range signature.Results().Variables() {
 		compiledFunction.ResultKinds = append(compiledFunction.ResultKinds, c.kindForCallSlot(r.Type()))
-		compiledFunction.ResultReflectTypes = append(compiledFunction.ResultReflectTypes, c.exactReflectTypeForBoxing(r.Type()))
+		compiledFunction.ResultReflectTypes = append(compiledFunction.ResultReflectTypes, c.exactReflectTypeForBoxing(ctx, r.Type()))
 	}
 	compiledFunction.SignatureReflectType = c.signatureReflectType(ctx, signature)
 }
@@ -341,14 +344,13 @@ func (c *Compiler) captureLocalUpvalue(
 	c.Scopes.MarkCaptured(name)
 }
 
-// compileIIFE compiles an immediately invoked function expression. Emits
-// isa.SubOpCallIIFE followed by isa.SubOpTier3SyncIIFEUpvalues when the literal captures
-// any free variable; otherwise emits a plain isa.SubOpCall.
+// compileIIFE compiles an immediately invoked function expression.
 //
 // Takes lit (*ast.FuncLit) which is the function literal AST node.
 // Takes expression (*ast.CallExpr) which is the call expression containing the arguments.
 //
-// Returns the first result location and any compilation error.
+// Returns program.VarLocation which holds the first result.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileIIFE(ctx context.Context, lit *ast.FuncLit, expression *ast.CallExpr) (program.VarLocation, error) {
 	functionIndex, freeVars, err := c.compileClosureBody(ctx, lit)
 	if err != nil {
@@ -382,25 +384,14 @@ func (c *Compiler) compileIIFE(ctx context.Context, lit *ast.FuncLit, expression
 		resultLocation = returnLocations[0]
 	}
 
-	site := program.CallSite{
-		Arguments:     argumentLocations,
-		Returns:       returnLocations,
-		FunctionIndex: functionIndex,
-	}
-	if int(functionIndex) < len(c.RootFunction.Functions) {
-		site.CachedCallee = c.RootFunction.Functions[functionIndex]
-	}
-	if site.CachedCallee != nil {
-		site.ArgCopyProgram = program.BuildCallArgCopyProgram(site.Arguments, site.CachedCallee.ParameterKinds, site.CachedCallee.ParameterRegisters)
-	}
-	siteIndex, err := program.AddCallSite(c.Function, &site)
+	siteIndex, err := program.AddCallSite(c.Function, new(c.siteCalling(functionIndex, argumentLocations, returnLocations)))
 	if err != nil {
 		return program.VarLocation{}, err
 	}
 
 	if len(freeVars) > 0 {
 		program.EmitTier1Wide(c.Function, isa.SubOpCallIIFE, siteIndex)
-		program.EmitTier3(c.Function, isa.SubOpTier3SyncIIFEUpvalues)
+		program.EmitTier3(c.Function, isa.SubOpTier3SynchroniseIIFECapturedVariables)
 	} else {
 		c.emitCall(isa.SubOpCall, siteIndex)
 	}
@@ -557,8 +548,8 @@ func (c *Compiler) closureCallSignature(identifier *ast.Ident) (*types.Signature
 }
 
 // compileClosureCall compiles a call through a closure value held in a local variable.
-// Emits isa.SubOpCall followed by isa.SubOpTier2SyncClosureUpvalues so the callee's
-// writes through upvalue cells are mirrored back into the caller's snapshot.
+// Emits isa.SubOpCall followed by isa.SubOpTier2SynchroniseClosureCapturedVariables so
+// the callee's writes through upvalue cells are mirrored back into the caller's snapshot.
 //
 // Takes identifier (*ast.Ident) which is the identifier of the closure variable.
 // Takes expression (*ast.CallExpr) which is the call expression supplying the arguments.
@@ -610,24 +601,59 @@ func (c *Compiler) compileClosureCall(ctx context.Context, identifier *ast.Ident
 		return program.VarLocation{}, err
 	}
 	c.emitCall(isa.SubOpCall, siteIndex)
-	program.EmitTier2(c.Function, isa.SubOpTier2SyncClosureUpvalues, closureLocation.Register)
+	program.EmitTier2(c.Function, isa.SubOpTier2SynchroniseClosureCapturedVariables, closureLocation.Register)
 
 	return resultLocation, nil
 }
 
-// compileTypeConversion compiles a type conversion expression such as int(x), string(x),
-// or []byte(s). Dispatches through the scalarConversions table, the byte/string fast
-// path, the same-kind short circuit, or a generic reflect-based fallback.
+// noteUnsafeConversion records conversions to or from unsafe.Pointer in the type table.
+//
+// Takes source (types.Type) which is the operand's static type, or nil.
+// Takes destination (types.Type) which is the conversion target, or nil.
+func (c *Compiler) noteUnsafeConversion(source, destination types.Type) {
+	if source == nil || destination == nil || !isUnsafePointerConversion(source, destination) {
+		return
+	}
+	if _, err := program.AddTypeRef(c.Function, reflect.TypeFor[unsafe.Pointer]()); err != nil {
+		c.recordStickyError(err)
+	}
+}
+
+// noteUnsafePointerExpressions records in the type table of the function being compiled,
+// the package's root, that the package holds an expression of type unsafe.Pointer.
+//
+// A type parameter whose constraint admits unsafe.Pointer counts too.
+func (c *Compiler) noteUnsafePointerExpressions() {
+	if c.Info == nil {
+		return
+	}
+	for _, typed := range c.Info.Types {
+		if typed.Type != nil && admitsUnsafePointer(typed.Type) {
+			if _, err := program.AddTypeRef(c.Function, reflect.TypeFor[unsafe.Pointer]()); err != nil {
+				c.recordStickyError(err)
+			}
+			return
+		}
+	}
+}
+
+// compileTypeConversion compiles a type conversion expression.
 //
 // Takes expression (*ast.CallExpr) which is the conversion call.
 //
-// Returns the converted location and any compilation error.
+// Returns program.VarLocation which holds the converted value.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileTypeConversion(ctx context.Context, expression *ast.CallExpr) (program.VarLocation, error) {
 	if len(expression.Args) != 1 {
 		return program.VarLocation{}, fault.ErrCompileTypeConversionArgCount
 	}
 
-	dstType := c.Info.Types[expression].Type
+	if c.byteViews.conversions[expression] {
+		return c.compileByteViewConversion(ctx, expression)
+	}
+
+	dstType := c.substitutedType(c.Info.Types[expression].Type)
+	c.noteUnsafeConversion(c.Info.Types[expression.Args[0]].Type, dstType)
 	if location, handled, nilErr := c.compileTypedNilOrExpression(ctx, expression.Args[0], dstType); handled {
 		return location, nilErr
 	}
@@ -637,7 +663,7 @@ func (c *Compiler) compileTypeConversion(ctx context.Context, expression *ast.Ca
 		return program.VarLocation{}, err
 	}
 
-	srcType := c.Info.Types[expression.Args[0]].Type
+	srcType := c.substitutedType(c.Info.Types[expression.Args[0]].Type)
 	srcKind := c.kindFor(srcType)
 	destinationKind := c.kindFor(dstType)
 
@@ -679,7 +705,7 @@ func (c *Compiler) unpackConversionArgument(argumentLocation program.VarLocation
 		return argumentLocation
 	}
 	unpacked := c.Scopes.Alloc.AllocTemp(srcKind)
-	program.Emit(c.Function, isa.OpUnpackInterface, unpacked, argumentLocation.Register, uint8(srcKind))
+	program.Emit(c.Function, isa.OpUnboxFromInterface, unpacked, argumentLocation.Register, uint8(srcKind))
 	return program.VarLocation{Register: unpacked, Kind: srcKind}
 }
 
@@ -700,7 +726,7 @@ func (c *Compiler) compileScalarConversion(
 	_,
 	dstType types.Type,
 ) (program.VarLocation, bool, error) {
-	if srcKind == isa.RegisterFloat && (destinationKind == isa.RegisterInt || destinationKind == isa.RegisterUint) && typemap.NarrowIntegerBitWidth(dstType) != 0 {
+	if srcKind == isa.RegisterFloat64 && (destinationKind == isa.RegisterInt64 || destinationKind == isa.RegisterUint64) && typemap.NarrowIntegerBitWidth(dstType) != 0 {
 		result, err := c.compileReflectConversion(ctx, argumentLocation, dstType, destinationKind)
 		if err != nil {
 			return result, true, err
@@ -748,8 +774,8 @@ func (c *Compiler) compileInterfaceConversion(ctx context.Context, argumentLocat
 // Takes srcType (types.Type) which is the source Go type.
 // Takes dstType (types.Type) which is the destination Go type.
 //
-// Returns (location, true) when handled, or (_, false) when a reflect conversion is still
-// required.
+// Returns program.VarLocation which holds the converted value when handled.
+// Returns bool which is false when a reflect conversion is still required.
 func (c *Compiler) compileSameKindConversion(
 	ctx context.Context,
 	argumentLocation program.VarLocation,
@@ -761,7 +787,10 @@ func (c *Compiler) compileSameKindConversion(
 	if srcKind != destinationKind || needsReflectSameKind(srcKind, srcType, dstType) {
 		return program.VarLocation{}, false
 	}
-	if typemap.NarrowIntegerBitWidth(dstType) != 0 && typemap.NarrowIntegerBitWidth(srcType) != typemap.NarrowIntegerBitWidth(dstType) {
+	if argumentLocation.Kind == isa.RegisterGeneral && c.changesNamedCompositeType(srcType, dstType) {
+		return program.VarLocation{}, false
+	}
+	if typemap.ConversionNeedsTruncation(srcType, dstType) {
 		dest := c.Scopes.Alloc.Alloc(destinationKind)
 		result := program.VarLocation{Register: dest, Kind: destinationKind}
 		c.emitMove(ctx, result, argumentLocation)
@@ -769,8 +798,23 @@ func (c *Compiler) compileSameKindConversion(
 		return result, true
 	}
 
-	argumentLocation.SourceType = c.exactReflectTypeForBoxing(dstType)
+	argumentLocation.SourceType = c.exactReflectTypeForBoxing(ctx, dstType)
 	return argumentLocation, true
+}
+
+// changesNamedCompositeType reports whether a conversion moves a value into or out of a
+// named array, slice, map, channel or function type.
+//
+// Takes source (types.Type) which is the operand's static type.
+// Takes destination (types.Type) which is the conversion target.
+//
+// Returns bool which is true when the types differ and either is a named composite type.
+func (c *Compiler) changesNamedCompositeType(source, destination types.Type) bool {
+	source, destination = c.substitutedType(source), c.substitutedType(destination)
+	if types.Identical(source, destination) {
+		return false
+	}
+	return c.isNamedCompositeType(source) || c.isNamedCompositeType(destination)
 }
 
 // compileByteStringConversion handles string-to-[]byte, []byte-to-string, and
@@ -793,23 +837,23 @@ func (c *Compiler) compileByteStringConversion(
 ) (program.VarLocation, bool) {
 	if srcKind == isa.RegisterString && isSliceOfByte(dstType) {
 		dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpStringToBytes), dest, argumentLocation.Register)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertStringToBytes), dest, argumentLocation.Register)
 		return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, true
 	}
 
 	if destinationKind == isa.RegisterString && isSliceOfByte(srcType) {
 		dest := c.Scopes.Alloc.Alloc(isa.RegisterString)
 		if argumentLocation.Kind == isa.RegisterSliceByte {
-			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpSliceByteToString), dest, argumentLocation.Register)
+			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertSliceByteToString), dest, argumentLocation.Register)
 		} else {
-			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBytesToString), dest, argumentLocation.Register)
+			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertBytesToString), dest, argumentLocation.Register)
 		}
 		return program.VarLocation{Register: dest, Kind: isa.RegisterString}, true
 	}
 
-	if srcKind == isa.RegisterInt && destinationKind == isa.RegisterString {
+	if srcKind == isa.RegisterInt64 && destinationKind == isa.RegisterString {
 		dest := c.Scopes.Alloc.Alloc(isa.RegisterString)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpRuneToString), dest, argumentLocation.Register)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertRuneToString), dest, argumentLocation.Register)
 		return program.VarLocation{Register: dest, Kind: isa.RegisterString}, true
 	}
 
@@ -817,8 +861,8 @@ func (c *Compiler) compileByteStringConversion(
 }
 
 // compileReflectConversion emits a generic reflect-based type conversion via
-// isa.OpConvert. Unboxes the result back into a typed bank when destinationKind is not
-// isa.RegisterGeneral.
+// isa.OpConvertGeneral. Unboxes the result back into a typed bank when destinationKind is
+// not isa.RegisterGeneral.
 //
 // Takes argumentLocation (VarLocation) which is the compiled argument location.
 // Takes dstType (types.Type) which is the target Go type.
@@ -829,18 +873,39 @@ func (c *Compiler) compileReflectConversion(ctx context.Context, argumentLocatio
 	c.boxToGeneral(ctx, &argumentLocation)
 
 	reflectType := c.TypeToReflect(ctx, dstType)
+	c.nameInstantiatedType(dstType, reflectType)
 	typeIndex, err := program.AddTypeRef(c.Function, reflectType)
 	if err != nil {
 		return program.VarLocation{}, err
 	}
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpConvert, dest, argumentLocation.Register, 0)
+	program.Emit(c.Function, isa.OpConvertGeneral, dest, argumentLocation.Register, 0)
 	program.EmitExtension(c.Function, typeIndex, 0)
 
 	if destinationKind != isa.RegisterGeneral {
 		return c.emitUnboxFromGeneral(dest, destinationKind), nil
 	}
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, nil
+}
+
+// nameInstantiatedType records the runtime type of a conversion to an instantiation of a
+// generic named type with methods under the type's name, as registerMethodReceiver does
+// for the type's declared form.
+//
+// Takes dstType (types.Type) which is the conversion's destination type.
+// Takes reflectType (reflect.Type) which is its runtime type.
+func (c *Compiler) nameInstantiatedType(dstType types.Type, reflectType reflect.Type) {
+	named, ok := types.Unalias(c.substitutedType(dstType)).(*types.Named)
+	if !ok || reflectType == nil || named.TypeArgs() == nil || named.Origin().NumMethods() == 0 {
+		return
+	}
+	root := c.RootFunction
+	if root.TypeNames == nil {
+		root.TypeNames = make(map[reflect.Type]string)
+	}
+	if _, exists := root.TypeNames[reflectType]; !exists {
+		root.TypeNames[reflectType] = named.Obj().Name()
+	}
 }
 
 // closureRuntimeName returns the runtime name for the ordinal-th function literal,

@@ -64,21 +64,21 @@ const (
 var (
 	// typedMapGetOpcodes holds the typed map-get opcodes, used by selectTypedMapGetOpcode.
 	typedMapGetOpcodes = typedMapOpcodes{
-		intInt: isa.OpMapGetIntInt, intString: isa.OpMapGetIntString, intGeneral: isa.OpMapGetIntGeneral,
-		stringInt: isa.OpMapGetStringInt, stringString: isa.OpMapGetStringString, stringGeneral: isa.OpMapGetStringGeneral,
+		intInt: isa.OpGetMapInt64Int64, intString: isa.OpGetMapInt64String, intGeneral: isa.OpGetMapInt64General,
+		stringInt: isa.OpGetMapStringInt64, stringString: isa.OpGetMapStringString, stringGeneral: isa.OpGetMapStringGeneral,
 	}
 
-	// typedMapIndexOkOpcodes holds the typed `v, ok := m[k]` opcodes, used by
-	// selectTypedMapIndexOkOpcode.
-	typedMapIndexOkOpcodes = typedMapOpcodes{
-		intInt: isa.OpMapIndexOkIntInt, intString: isa.OpMapIndexOkIntString, intGeneral: isa.OpMapIndexOkIntGeneral,
-		stringInt: isa.OpMapIndexOkStringInt, stringString: isa.OpMapIndexOkStringString, stringGeneral: isa.OpMapIndexOkStringGeneral,
+	// typedGetMapOkOpcodes holds the typed `v, ok := m[k]` opcodes, used by
+	// selectTypedGetMapOkOpcode.
+	typedGetMapOkOpcodes = typedMapOpcodes{
+		intInt: isa.OpGetMapInt64Int64Ok, intString: isa.OpGetMapInt64StringOk, intGeneral: isa.OpGetMapInt64GeneralOk,
+		stringInt: isa.OpGetMapStringInt64Ok, stringString: isa.OpGetMapStringStringOk, stringGeneral: isa.OpGetMapStringGeneralOk,
 	}
 
-	// typedMapSetOpcodes holds the typed map-set opcodes, used by selectTypedMapSetOpcode.
-	typedMapSetOpcodes = typedMapOpcodes{
-		intInt: isa.OpMapSetIntInt, intString: isa.OpMapSetIntString, intGeneral: isa.OpMapSetIntGeneral,
-		stringInt: isa.OpMapSetStringInt, stringString: isa.OpMapSetStringString, stringGeneral: isa.OpMapSetStringGeneral,
+	// typedSetMapOpcodes holds the typed map-set opcodes, used by selectTypedSetMapOpcode.
+	typedSetMapOpcodes = typedMapOpcodes{
+		intInt: isa.OpSetMapInt64Int64, intString: isa.OpSetMapInt64String, intGeneral: isa.OpSetMapInt64General,
+		stringInt: isa.OpSetMapStringInt64, stringString: isa.OpSetMapStringString, stringGeneral: isa.OpSetMapStringGeneral,
 	}
 )
 
@@ -98,6 +98,28 @@ type fusedArrayFieldMetadata struct {
 
 	// elementKind is the reflect.Kind of the array element.
 	elementKind reflect.Kind
+}
+
+// typedMapOpcodes lists the typed opcodes of one map operation for each bank pair that
+// has one: int or string keys, with int, string or general elements.
+type typedMapOpcodes struct {
+	// intInt is the opcode for int-keyed maps with int elements.
+	intInt isa.Opcode
+
+	// intString is the opcode for int-keyed maps with string elements.
+	intString isa.Opcode
+
+	// intGeneral is the opcode for int-keyed maps with general elements.
+	intGeneral isa.Opcode
+
+	// stringInt is the opcode for string-keyed maps with int elements.
+	stringInt isa.Opcode
+
+	// stringString is the opcode for string-keyed maps with string elements.
+	stringString isa.Opcode
+
+	// stringGeneral is the opcode for string-keyed maps with general elements.
+	stringGeneral isa.Opcode
 }
 
 // compileIndexExpression compiles an index expression (a[i]).
@@ -143,18 +165,12 @@ func (c *Compiler) compileIndexExpression(ctx context.Context, expression *ast.I
 
 // tryFoldStringIndex pre-computes the byte at constant offset of a constant string at
 // compile time. Returns the folded location and true when both subject and index are
-// compile-time constants; the caller is expected to fall through to runtime emission
-// otherwise.
-//
-// The Go expression s[i] returns a byte (uint8); the helper emits a uint-const load
-// directly into the uint register bank. The peephole optimiser later rewrites this to
-// isa.SubOpLoadUintConstSmall when the value fits in 8 bits.
+// compile-time constants.
 //
 // Takes expression (*ast.IndexExpr) which is the source-level indexing expression.
 //
 // Returns the folded constant location.
-// Returns true when folding succeeded; false when the caller must fall through to runtime
-// emission.
+// Returns true when folding succeeded.
 func (c *Compiler) tryFoldStringIndex(ctx context.Context, expression *ast.IndexExpr) (program.VarLocation, bool) {
 	xTV, xOk := c.Info.Types[expression.X]
 	if !xOk || xTV.Value == nil || xTV.Value.Kind() != constant.String {
@@ -170,14 +186,14 @@ func (c *Compiler) tryFoldStringIndex(ctx context.Context, expression *ast.Index
 		return program.VarLocation{}, false
 	}
 	byteValue := uint64(s[index])
-	register := c.Scopes.Alloc.Alloc(isa.RegisterUint)
+	register := c.Scopes.Alloc.Alloc(isa.RegisterUint64)
 	uintConstIndex, err := program.AddUintConstant(c.Function, byteValue)
 	if err != nil {
 		return program.VarLocation{}, false
 	}
-	program.EmitWide(c.Function, isa.OpLoadUintConst, register, uintConstIndex)
+	program.EmitWide(c.Function, isa.OpLoadUint64Constant, register, uintConstIndex)
 	_ = ctx
-	return program.VarLocation{Register: register, Kind: isa.RegisterUint}, true
+	return program.VarLocation{Register: register, Kind: isa.RegisterUint64}, true
 }
 
 // compileMapIndex compiles a map index expression m[k].
@@ -200,7 +216,7 @@ func (c *Compiler) compileMapIndex(ctx context.Context, mapType *types.Map, coll
 
 	c.boxElementToGeneralTemp(ctx, &indexLocation)
 	destinationRegister := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpMapIndex, destinationRegister, collectionLocation.Register, indexLocation.Register)
+	program.Emit(c.Function, isa.OpGetMap, destinationRegister, collectionLocation.Register, indexLocation.Register)
 
 	if elementKind != isa.RegisterGeneral {
 		return c.emitUnboxFromGeneral(destinationRegister, elementKind), nil
@@ -216,7 +232,8 @@ func (c *Compiler) compileMapIndex(ctx context.Context, mapType *types.Map, coll
 // Takes elementKind (isa.RegisterKind) which is the expected register kind of the
 // element.
 //
-// Returns VarLocation holding the indexed element and any compilation error.
+// Returns program.VarLocation which holds the indexed element.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileSliceOrArrayIndex(
 	ctx context.Context,
 	collectionType types.Type,
@@ -225,27 +242,49 @@ func (c *Compiler) compileSliceOrArrayIndex(
 	elementKind isa.RegisterKind,
 ) (program.VarLocation, error) {
 	c.ensureIntRegister(ctx, &indexLocation)
-	if indexLocation.Kind != isa.RegisterInt {
+	if indexLocation.Kind != isa.RegisterInt64 {
 		return program.VarLocation{}, fault.ErrCompileSliceIndexMustBeInteger
 	}
 
-	if basic, ok := collectionType.(*types.Basic); ok && basic.Info()&types.IsString != 0 {
-		destinationRegister := c.Scopes.Alloc.Alloc(isa.RegisterUint)
-		program.Emit(c.Function, isa.OpStringIndex, destinationRegister, collectionLocation.Register, indexLocation.Register)
-		return program.VarLocation{Register: destinationRegister, Kind: isa.RegisterUint}, nil
+	if basic, ok := collectionType.(*types.Basic); (ok && basic.Info()&types.IsString != 0) || collectionLocation.Kind == isa.RegisterString {
+		destinationRegister := c.Scopes.Alloc.Alloc(isa.RegisterUint64)
+		program.Emit(c.Function, isa.OpGetStringByte, destinationRegister, collectionLocation.Register, indexLocation.Register)
+		return program.VarLocation{Register: destinationRegister, Kind: isa.RegisterUint64}, nil
 	}
 
+	collectionLocation = c.loopByteView(collectionType, collectionLocation)
 	if location, ok := c.tryTypedSliceGet(ctx, collectionType, collectionLocation, indexLocation); ok {
 		return location, nil
 	}
 
 	c.boxToGeneral(ctx, &collectionLocation)
 	destinationRegister := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpIndex, destinationRegister, collectionLocation.Register, indexLocation.Register)
+	program.Emit(c.Function, isa.OpGetElement, destinationRegister, collectionLocation.Register, indexLocation.Register)
 	if elementKind != isa.RegisterGeneral {
 		return c.emitUnboxFromGeneral(destinationRegister, elementKind), nil
 	}
 	return program.VarLocation{Register: destinationRegister, Kind: isa.RegisterGeneral}, nil
+}
+
+// loopByteView returns a []byte collection held in a general register as a register of
+// the byte-slice bank, when the access sits in a loop.
+//
+// Takes collectionType (types.Type) which is the collection's underlying static type.
+// Takes location (program.VarLocation) which holds the collection.
+//
+// Returns the view, or location unchanged when the collection is not a []byte in a
+// general register or the access is not in a loop.
+func (c *Compiler) loopByteView(collectionType types.Type, location program.VarLocation) program.VarLocation {
+	if location.Kind != isa.RegisterGeneral || c.loopDepth == 0 || !c.loopTestsAtBottom() {
+		return location
+	}
+	slice, ok := c.substitutedType(collectionType).Underlying().(*types.Slice)
+	if !ok || !types.Identical(c.substitutedType(slice.Elem()), types.Typ[types.Uint8]) {
+		return location
+	}
+	view := c.Scopes.Alloc.Alloc(isa.RegisterSliceByte)
+	program.EmitTier1(c.Function, isa.SubOpUnboxSliceByte, view, location.Register)
+	return program.VarLocation{Register: view, Kind: isa.RegisterSliceByte}
 }
 
 // staticTypeOf returns an expression's static type under active generic substitutions.
@@ -289,41 +328,46 @@ func (c *Compiler) tryTypedSliceGet(ctx context.Context, collectionType types.Ty
 
 // sliceElemRegisterKind returns the register kind for a slice element.
 //
-// Applies to slice or array element types when they map to a specialised register.
-// Specialised bodies route TypeParam elements like `V` to the concrete instantiation kind
-// via c.substitutedType before classifying the element; without this routing a generic
-// `[]V` body classifies its elements as isa.RegisterGeneral even when the specialisation
-// pins V to int/float/string/bool/uint, and the typed-slice fast-paths silently refuse,
-// falling back to a general-bank indexing path that reads from the wrong bank at runtime
-// (e.g. a `makeMap[K,V]` body returning zero values).
-//
 // Takes t (types.Type) which is the go/types type to inspect.
 //
 // Returns isa.RegisterKind which is the specialised bank or isa.RegisterGeneral.
 // Returns bool which is true when a specialised bank applies.
 func (c *Compiler) sliceElemRegisterKind(t types.Type) (isa.RegisterKind, bool) {
-	t = c.substitutedType(t)
-	var element types.Type
-	switch u := t.Underlying().(type) {
-	case *types.Slice:
-		element = u.Elem()
-	case *types.Array:
-		element = u.Elem()
-	case *types.Pointer:
-		if array, ok := u.Elem().Underlying().(*types.Array); ok {
-			element = array.Elem()
-			break
-		}
-		return isa.RegisterGeneral, false
-	default:
+	element, ok := c.indexedElementType(t)
+	if !ok {
 		return isa.RegisterGeneral, false
 	}
-	element = c.substitutedType(element)
 	k := typemap.KindForType(element)
-	if k == isa.RegisterInt || k == isa.RegisterFloat || k == isa.RegisterString || k == isa.RegisterBool || k == isa.RegisterUint {
+	if k == isa.RegisterInt64 || k == isa.RegisterFloat64 || k == isa.RegisterString || k == isa.RegisterBool || k == isa.RegisterUint64 {
 		return k, true
 	}
 	return isa.RegisterGeneral, false
+}
+
+// indexedElementType returns the element type of a slice, an array or a pointer to an
+// array, after type-parameter substitution.
+//
+// Takes t (types.Type) which is the indexed collection's type.
+//
+// Returns types.Type which is the element type.
+// Returns bool which is false when t is not such a collection.
+func (c *Compiler) indexedElementType(t types.Type) (types.Type, bool) {
+	var element types.Type
+	switch collection := c.substitutedType(t).Underlying().(type) {
+	case *types.Slice:
+		element = collection.Elem()
+	case *types.Array:
+		element = collection.Elem()
+	case *types.Pointer:
+		array, ok := collection.Elem().Underlying().(*types.Array)
+		if !ok {
+			return nil, false
+		}
+		element = array.Elem()
+	default:
+		return nil, false
+	}
+	return c.substitutedType(element), true
 }
 
 // tryCompileFusedArrayFieldIndex fuses `recv.field[index]` into the
@@ -376,7 +420,7 @@ func (c *Compiler) resolveFusedArrayFieldMetadata(ctx context.Context, selector 
 		return fusedArrayFieldMetadata{}, false
 	}
 	indexType, ok := c.Info.Types[expression.Index]
-	if !ok || indexType.Type == nil || c.kindFor(indexType.Type) != isa.RegisterInt {
+	if !ok || indexType.Type == nil || c.kindFor(indexType.Type) != isa.RegisterInt64 {
 		return fusedArrayFieldMetadata{}, false
 	}
 	return c.resolveFusedArrayLayoutMetadata(ctx, selection)
@@ -453,7 +497,7 @@ func (c *Compiler) compileFusedArrayFieldOperands(ctx context.Context, selector 
 		c.recordStickyError(err)
 		return program.VarLocation{}, program.VarLocation{}, false
 	}
-	if indexLocation.Kind != isa.RegisterInt {
+	if indexLocation.Kind != isa.RegisterInt64 {
 		return program.VarLocation{}, program.VarLocation{}, false
 	}
 	return receiverLocation, indexLocation, true
@@ -483,10 +527,10 @@ func (c *Compiler) emitFusedArrayFieldIndex(
 	var dest uint8
 	if isAssign {
 		c.boxElementToGeneralTemp(ctx, &valueLocation)
-		program.Emit(c.Function, isa.OpSetStructFieldIndexGeneral, receiverLocation.Register, valueLocation.Register, layoutOperand)
+		program.Emit(c.Function, isa.OpSetStructFieldElementGeneral, receiverLocation.Register, valueLocation.Register, layoutOperand)
 	} else {
 		dest = c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-		program.Emit(c.Function, isa.OpGetStructFieldIndexGeneral, dest, receiverLocation.Register, layoutOperand)
+		program.Emit(c.Function, isa.OpGetStructFieldElementGeneral, dest, receiverLocation.Register, layoutOperand)
 	}
 	program.EmitExtension(c.Function, safeconv.MustIntToUint16(meta.arrayLength), indexLocation.Register)
 	program.EmitExtension(c.Function, safeconv.MustIntToUint16(int(meta.elementSize)), safeconv.MustIntToUint8(int(meta.elementKind)))
@@ -496,21 +540,24 @@ func (c *Compiler) emitFusedArrayFieldIndex(
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, true
 }
 
-// tryCompileDerefSliceIndex fuses `(*p)[i]` reads and writes into the
-// opDerefSliceGet/SetInt opcodes when p is statically a pointer to an int-kinded slice
-// and the index is int-kinded (dijkstra-style heap helpers taking *[]int parameters).
+// tryCompileDerefSliceIndex fuses reads and writes through an eight-byte signed-integer
+// slice pointer.
+//
+// Those opcodes load and store eight bytes per element with no width check of their own,
+// so the element type must be eight bytes wide here. A narrower integer shares the int64
+// register kind but not the layout.
 //
 // The emitted opcode re-reads the slice header through the pointer on every access, so
 // append or reslice through the same pointer between accesses behaves identically to the
-// composed DEREF+INDEX pair it replaces. All static gates run before any code is emitted,
-// so a false return leaves the caller free to compile the generic path.
+// composed DEREFERENCE+GET_ELEMENT pair it replaces. All static gates run before any code
+// is emitted, so a false return leaves the caller free to compile the generic path.
 //
 // Takes expression (*ast.IndexExpr) whose X must be a star-dereference.
 // Takes isAssign (bool) which selects the SET form.
 // Takes valueLocation (VarLocation) which is the pre-compiled value for the SET form.
 //
-// Returns the element location and true when the fused opcode was emitted (zero value for
-// the SET form); (zero, false) when any gate fails.
+// Returns program.VarLocation which holds the read result, or zero for a store.
+// Returns bool which is true when the fused opcode was emitted.
 func (c *Compiler) tryCompileDerefSliceIndex(ctx context.Context, expression *ast.IndexExpr, isAssign bool, valueLocation program.VarLocation) (program.VarLocation, bool) {
 	star, ok := ast.Unparen(expression.X).(*ast.StarExpr)
 	if !ok {
@@ -525,14 +572,14 @@ func (c *Compiler) tryCompileDerefSliceIndex(ctx context.Context, expression *as
 		return program.VarLocation{}, false
 	}
 	slice, ok := pointer.Elem().Underlying().(*types.Slice)
-	if !ok || c.kindFor(slice.Elem()) != isa.RegisterInt {
+	if !ok || c.kindFor(slice.Elem()) != isa.RegisterInt64 || !isEightByteSignedInteger(slice.Elem()) {
 		return program.VarLocation{}, false
 	}
 	indexType, ok := c.Info.Types[expression.Index]
-	if !ok || indexType.Type == nil || c.kindFor(indexType.Type) != isa.RegisterInt {
+	if !ok || indexType.Type == nil || c.kindFor(indexType.Type) != isa.RegisterInt64 {
 		return program.VarLocation{}, false
 	}
-	if isAssign && valueLocation.Kind != isa.RegisterInt {
+	if isAssign && valueLocation.Kind != isa.RegisterInt64 {
 		return program.VarLocation{}, false
 	}
 
@@ -549,41 +596,19 @@ func (c *Compiler) tryCompileDerefSliceIndex(ctx context.Context, expression *as
 		c.recordStickyError(err)
 		return program.VarLocation{}, false
 	}
-	if indexLocation.Kind != isa.RegisterInt {
+	if indexLocation.Kind != isa.RegisterInt64 {
 		return program.VarLocation{}, false
 	}
 
 	if isAssign {
 		c.setDebugPosition(ctx, expression.Lbrack)
-		program.Emit(c.Function, isa.OpDerefSliceSetInt, pointerLocation.Register, indexLocation.Register, valueLocation.Register)
+		program.Emit(c.Function, isa.OpSetElementInt64ViaPointer, pointerLocation.Register, indexLocation.Register, valueLocation.Register)
 		return program.VarLocation{}, true
 	}
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
+	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
 	c.setDebugPosition(ctx, expression.Lbrack)
-	program.Emit(c.Function, isa.OpDerefSliceGetInt, dest, pointerLocation.Register, indexLocation.Register)
-	return program.VarLocation{Register: dest, Kind: isa.RegisterInt}, true
-}
-
-// typedMapOpcodes lists the typed opcodes of one map operation for each bank pair that
-// has one: int or string keys, with int, string or general elements.
-type typedMapOpcodes struct {
-	// intInt is the opcode for int-keyed maps with int elements.
-	intInt isa.Opcode
-
-	// intString is the opcode for int-keyed maps with string elements.
-	intString isa.Opcode
-
-	// intGeneral is the opcode for int-keyed maps with general elements.
-	intGeneral isa.Opcode
-
-	// stringInt is the opcode for string-keyed maps with int elements.
-	stringInt isa.Opcode
-
-	// stringString is the opcode for string-keyed maps with string elements.
-	stringString isa.Opcode
-
-	// stringGeneral is the opcode for string-keyed maps with general elements.
-	stringGeneral isa.Opcode
+	program.Emit(c.Function, isa.OpGetElementInt64ViaPointer, dest, pointerLocation.Register, indexLocation.Register)
+	return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}, true
 }
 
 // lookup returns the opcode for a (keyKind, elementKind) pair.
@@ -595,7 +620,7 @@ type typedMapOpcodes struct {
 func (t *typedMapOpcodes) lookup(keyKind, elementKind isa.RegisterKind) (isa.Opcode, bool) {
 	var intOp, stringOp, generalOp isa.Opcode
 	switch keyKind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		intOp, stringOp, generalOp = t.intInt, t.intString, t.intGeneral
 	case isa.RegisterString:
 		intOp, stringOp, generalOp = t.stringInt, t.stringString, t.stringGeneral
@@ -603,7 +628,7 @@ func (t *typedMapOpcodes) lookup(keyKind, elementKind isa.RegisterKind) (isa.Opc
 		return 0, false
 	}
 	switch elementKind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return intOp, true
 	case isa.RegisterString:
 		return stringOp, true
@@ -612,6 +637,16 @@ func (t *typedMapOpcodes) lookup(keyKind, elementKind isa.RegisterKind) (isa.Opc
 	default:
 		return 0, false
 	}
+}
+
+// isEightByteSignedInteger reports whether a type is laid out as one signed 64-bit word.
+//
+// Takes elementType (types.Type) which is the type to classify.
+//
+// Returns bool which is true for int, int64 and types defined on them.
+func isEightByteSignedInteger(elementType types.Type) bool {
+	basic, ok := elementType.Underlying().(*types.Basic)
+	return ok && (basic.Kind() == types.Int || basic.Kind() == types.Int64)
 }
 
 // selectTypedMapGetOpcode picks the typed map-get opcode for a (key, element, index) kind
@@ -629,7 +664,7 @@ func selectTypedMapGetOpcode(keyKind, elementKind, indexKind isa.RegisterKind) (
 	return typedMapGetOpcodes.lookup(keyKind, elementKind)
 }
 
-// selectTypedMapIndexOkOpcode returns the typed map-index-with-ok opcode for `v, ok :=
+// selectTypedGetMapOkOpcode returns the typed map-index-with-ok opcode for `v, ok :=
 // m[k]` when both key and value kinds match a supported (keyKind, valueKind) pair AND the
 // compiled key expression has the same kind as the map's declared key.
 //
@@ -638,14 +673,14 @@ func selectTypedMapGetOpcode(keyKind, elementKind, indexKind isa.RegisterKind) (
 // Takes indexKind (isa.RegisterKind) which is the kind of the compiled key expression.
 //
 // Returns the typed opcode and a bool indicating whether a typed opcode applies.
-func selectTypedMapIndexOkOpcode(keyKind, valueKind, indexKind isa.RegisterKind) (isa.Opcode, bool) {
+func selectTypedGetMapOkOpcode(keyKind, valueKind, indexKind isa.RegisterKind) (isa.Opcode, bool) {
 	if indexKind != keyKind {
 		return 0, false
 	}
-	return typedMapIndexOkOpcodes.lookup(keyKind, valueKind)
+	return typedGetMapOkOpcodes.lookup(keyKind, valueKind)
 }
 
-// selectTypedMapSetOpcode returns the typed map-set opcode for the given (keyKind,
+// selectTypedSetMapOpcode returns the typed map-set opcode for the given (keyKind,
 // valueKind, observedIndexKind, observedValueKind) tuple, mirroring
 // selectTypedMapGetOpcode for assignments.
 //
@@ -656,11 +691,11 @@ func selectTypedMapIndexOkOpcode(keyKind, valueKind, indexKind isa.RegisterKind)
 // expression.
 //
 // Returns the typed opcode and a bool indicating whether a typed opcode applies.
-func selectTypedMapSetOpcode(keyKind, valueKind, indexKind, valueObservedKind isa.RegisterKind) (isa.Opcode, bool) {
+func selectTypedSetMapOpcode(keyKind, valueKind, indexKind, valueObservedKind isa.RegisterKind) (isa.Opcode, bool) {
 	if indexKind != keyKind || valueObservedKind != valueKind {
 		return 0, false
 	}
-	return typedMapSetOpcodes.lookup(keyKind, valueKind)
+	return typedSetMapOpcodes.lookup(keyKind, valueKind)
 }
 
 // typeIsStructOrArray reports whether t's underlying type is a struct or array, the

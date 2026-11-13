@@ -38,11 +38,12 @@ func hoistLoopInvariantGlobalLoads(ctx context.Context, compiledFunction *progra
 	if analysis == nil {
 		analysis = newFunctionAnalysis(compiledFunction)
 	}
+	var visits loopVisits
 	for range maxLicmHoistsPerFunction {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("hoistLoopInvariantGlobalLoads cancelled: %w", err)
 		}
-		if !tryOneGlobalLoadHoist(compiledFunction, analysis) {
+		if !tryOneGlobalLoadHoist(compiledFunction, analysis, &visits) {
 			return nil
 		}
 	}
@@ -55,22 +56,25 @@ func hoistLoopInvariantGlobalLoads(ctx context.Context, compiledFunction *progra
 // metadata.
 // Takes analysis (*functionAnalysis) which caches control-flow facts and is invalidated
 // by a rewrite.
+// Takes visits (*loopVisits) which holds the loops already searched to the end.
 //
 // Returns true when a load was moved.
-func tryOneGlobalLoadHoist(compiledFunction *program.CompiledFunction, analysis *functionAnalysis) bool {
+func tryOneGlobalLoadHoist(compiledFunction *program.CompiledFunction, analysis *functionAnalysis, visits *loopVisits) bool {
 	body := compiledFunction.Body
 	for _, loop := range mergeLoopsSharingHeader(loopsFor(analysis, body)) {
-		if !loopHeaderReachableByFallThrough(body, loop) {
+		if visits.finished(loop) || !loopOpenToHoisting(body, loop) {
 			continue
 		}
 		facts := newLoopFacts(analysis, loop)
 		if pc, width, ok := findHoistableGlobalLoad(compiledFunction, facts); ok {
 			applyLoopHoistWords(compiledFunction, analysis, loop.header, pc, width)
+			visits.lifted(loop.header, pc, width)
 			return true
 		}
 		if facts.renamed {
 			return true
 		}
+		visits.finish(loop)
 	}
 	return false
 }
@@ -104,8 +108,8 @@ func findHoistableGlobalLoad(compiledFunction *program.CompiledFunction, facts *
 	return 0, 0, false
 }
 
-// globalLoadHoistable reports whether the global load at pc is invariant, safe to run on
-// loop entry, and runs on every traversal.
+// globalLoadHoistable reports whether the global load at pc is invariant and safe to run
+// on loop entry.
 //
 // Takes compiledFunction (*program.CompiledFunction) which holds the loop.
 // Takes facts (*loopFacts) which supplies the loop's dominators.
@@ -117,21 +121,16 @@ func findHoistableGlobalLoad(compiledFunction *program.CompiledFunction, facts *
 //
 // Returns true when the load can move to the pre-header.
 func globalLoadHoistable(compiledFunction *program.CompiledFunction, facts *loopFacts, members []int, pc int, kind isa.RegisterKind, reg uint8, width int) bool {
-	loop := facts.loop
-	if !globalBindingStableInLoop(compiledFunction, members, pc, kind, width) {
+	if !facts.isMember(pc) || !globalBindingStableInLoop(compiledFunction, members, pc, kind, width) {
 		return false
 	}
 	if loopWritesRegisterElsewhere(compiledFunction, members, pc, kind, reg) {
-		if width == 1 && facts.dominatesLatch(pc) && renameDefinition(compiledFunction, facts.analysis, pc, 1, kind, reg) {
+		if width == 1 && renameDefinition(compiledFunction, facts.analysis, pc, 1, kind, reg) {
 			facts.renamed = true
 		}
 		return false
 	}
-	if registerReadInRange(compiledFunction, loop.header, pc, kind, reg) || !constantHoistSafeAcrossLoopEntry(compiledFunction, loop, pc, kind, reg) {
-		return false
-	}
-	dominators := facts.dominators()
-	return dominators != nil && dominators.Dominates(loop.header, pc) && dominators.Dominates(pc, loop.latch)
+	return definitionHoistsUnobserved(compiledFunction, facts, pc, kind, reg)
 }
 
 // globalLoadDestination decodes a global-load instruction.
@@ -148,7 +147,7 @@ func globalLoadDestination(body []isa.Instruction, pc int) (isa.RegisterKind, ui
 	if inst.Op == isa.OpGetGlobal {
 		return isa.RegisterKind(inst.C), inst.A, 1, true
 	}
-	if isa.InstrIsTier1SubOp(inst, isa.SubOpGetGlobalWide) && pc+1 < len(body) && body[pc+1].Op == isa.OpExt {
+	if isa.InstrIsTier1SubOp(inst, isa.SubOpGetGlobalWide) && pc+1 < len(body) && body[pc+1].Op == isa.OpExtension {
 		return isa.RegisterKind(inst.C), inst.B, 2, true
 	}
 	return 0, 0, 0, false
@@ -191,5 +190,5 @@ func globalBindingStableInLoop(compiledFunction *program.CompiledFunction, membe
 //
 // Returns true when the store cannot change the global.
 func elementStorePreservesBinding(inst isa.Instruction, kind isa.RegisterKind) bool {
-	return kind == isa.RegisterGeneral && (isa.InstrIsTier1SubOp(inst, isa.SubOpSliceSetByteDirect) || inst.Op == isa.OpSliceSetUint)
+	return kind == isa.RegisterGeneral && (isa.InstrIsTier1SubOp(inst, isa.SubOpSetSliceByteElement) || inst.Op == isa.OpSetElementUint64)
 }

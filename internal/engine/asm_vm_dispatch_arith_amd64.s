@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerLoadUintConst loads uintConstants[B|(C<<8)] into uints[A].
-TEXT ·handlerLoadUintConst(SB), NOSPLIT|NOFRAME, $0
+// handlerLoadUint64Constant loads uintConstants[B|(C<<8)] into uints[A].
+TEXT ·handlerLoadUint64Constant(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -39,8 +39,8 @@ TEXT ·handlerLoadUintConst(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CX, (SI)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpLoadUintConstSmall sets uints[B] = uint64(C).
-TEXT ·handlerSubOpLoadUintConstSmall(SB), NOSPLIT|NOFRAME, $0
+// handlerLoadUint64Immediate sets uints[B] = uint64(C).
+TEXT ·handlerLoadUint64Immediate(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -50,8 +50,8 @@ TEXT ·handlerSubOpLoadUintConstSmall(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    BX, (SI)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpAddUintConst sets uints[B] = uints[C] + uintConstants[ext wide index].
-TEXT ·handlerSubOpAddUintConst(SB), NOSPLIT|NOFRAME, $0
+// handlerAddUint64Constant sets uints[B] = uints[C] + uintConstants[ext wide index].
+TEXT ·handlerAddUint64Constant(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -69,8 +69,8 @@ TEXT ·handlerSubOpAddUintConst(SB), NOSPLIT|NOFRAME, $0
 	INCQ    R14
 	DISPATCH_NEXT()
 
-// handlerSubOpSubUintConst sets uints[B] = uints[C] - uintConstants[ext wide index].
-TEXT ·handlerSubOpSubUintConst(SB), NOSPLIT|NOFRAME, $0
+// handlerSubtractUint64Constant sets uints[B] = uints[C] - uintConstants[ext wide index].
+TEXT ·handlerSubtractUint64Constant(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -88,8 +88,8 @@ TEXT ·handlerSubOpSubUintConst(SB), NOSPLIT|NOFRAME, $0
 	INCQ    R14
 	DISPATCH_NEXT()
 
-// handlerSubOpBitAndUintConst sets uints[B] = uints[C] & uintConstants[ext wide index].
-TEXT ·handlerSubOpBitAndUintConst(SB), NOSPLIT|NOFRAME, $0
+// handlerBitAndUint64Constant sets uints[B] = uints[C] & uintConstants[ext wide index].
+TEXT ·handlerBitAndUint64Constant(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -107,8 +107,8 @@ TEXT ·handlerSubOpBitAndUintConst(SB), NOSPLIT|NOFRAME, $0
 	INCQ    R14
 	DISPATCH_NEXT()
 
-// handlerDivUint sets uints[A] = uints[B] / uints[C].
-TEXT ·handlerDivUint(SB), NOSPLIT|NOFRAME, $0
+// handlerDivideUint64 sets uints[A] = uints[B] / uints[C].
+TEXT ·handlerDivideUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -130,8 +130,8 @@ TEXT ·handlerDivUint(SB), NOSPLIT|NOFRAME, $0
 dbz:
 	DIV_BY_ZERO_EXIT()
 
-// handlerRemUint sets uints[A] = uints[B] % uints[C].
-TEXT ·handlerRemUint(SB), NOSPLIT|NOFRAME, $0
+// handlerRemainderUint64 sets uints[A] = uints[B] % uints[C].
+TEXT ·handlerRemainderUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -153,8 +153,8 @@ TEXT ·handlerRemUint(SB), NOSPLIT|NOFRAME, $0
 dbz:
 	DIV_BY_ZERO_EXIT()
 
-// handlerLoadIntConst loads intConstants[B|(C<<8)] into ints[A].
-TEXT ·handlerLoadIntConst(SB), NOSPLIT|NOFRAME, $0
+// handlerLoadInt64Constant loads intConstants[B|(C<<8)] into ints[A].
+TEXT ·handlerLoadInt64Constant(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -165,8 +165,8 @@ TEXT ·handlerLoadIntConst(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerLoadFloatConst loads floatConstants[B|(C<<8)] into floats[A].
-TEXT ·handlerLoadFloatConst(SB), NOSPLIT|NOFRAME, $0
+// handlerLoadFloat64Constant loads floatConstants[B|(C<<8)] into floats[A].
+TEXT ·handlerLoadFloat64Constant(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -178,8 +178,8 @@ TEXT ·handlerLoadFloatConst(SB), NOSPLIT|NOFRAME, $0
 	MOVSD   X0, (R9)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerLoadStringConst loads stringConstants[B|(C<<8)] into strings[A].
-TEXT ·handlerLoadStringConst(SB), NOSPLIT|NOFRAME, $0
+// handlerLoadStringConstant loads stringConstants[B|(C<<8)] into strings[A].
+TEXT ·handlerLoadStringConstant(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, AX
@@ -200,8 +200,8 @@ TEXT ·handlerLoadStringConst(SB), NOSPLIT|NOFRAME, $0
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerLoadBoolConst loads boolConstants[C] into bools[B].
-TEXT ·handlerLoadBoolConst(SB), NOSPLIT|NOFRAME, $0
+// handlerLoadBoolConstant loads boolConstants[C] into bools[B].
+TEXT ·handlerLoadBoolConstant(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -213,8 +213,8 @@ TEXT ·handlerLoadBoolConst(SB), NOSPLIT|NOFRAME, $0
 	MOVB    CL, (DI)(AX*1)
 	DISPATCH_NEXT()
 
-// handlerLoadBool sets ints[B] = C (0 or 1) in tier-1 form (subOpLoadBool).
-TEXT ·handlerLoadBool(SB), NOSPLIT|NOFRAME, $0
+// handlerLoadBoolImmediateAsInt64 sets ints[B] = C (0 or 1) in tier-1 form (subOpLoadBoolImmediateAsInt64).
+TEXT ·handlerLoadBoolImmediateAsInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -223,8 +223,8 @@ TEXT ·handlerLoadBool(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    BX, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerLoadIntConstSmall sets ints[B] = int64(C) in tier-1 form (subOpLoadIntConstSmall).
-TEXT ·handlerLoadIntConstSmall(SB), NOSPLIT|NOFRAME, $0
+// handlerLoadInt64Immediate sets ints[B] = int64(C) in tier-1 form (subOpLoadInt64Immediate).
+TEXT ·handlerLoadInt64Immediate(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -233,8 +233,8 @@ TEXT ·handlerLoadIntConstSmall(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    BX, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerAddInt sets ints[A] = ints[B] + ints[C].
-TEXT ·handlerAddInt(SB), NOSPLIT|NOFRAME, $0
+// handlerAddInt64 sets ints[A] = ints[B] + ints[C].
+TEXT ·handlerAddInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -248,8 +248,8 @@ TEXT ·handlerAddInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubInt sets ints[A] = ints[B] - ints[C].
-TEXT ·handlerSubInt(SB), NOSPLIT|NOFRAME, $0
+// handlerSubtractInt64 sets ints[A] = ints[B] - ints[C].
+TEXT ·handlerSubtractInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -263,8 +263,8 @@ TEXT ·handlerSubInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerMulInt sets ints[A] = ints[B] * ints[C].
-TEXT ·handlerMulInt(SB), NOSPLIT|NOFRAME, $0
+// handlerMultiplyInt64 sets ints[A] = ints[B] * ints[C].
+TEXT ·handlerMultiplyInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -278,8 +278,8 @@ TEXT ·handlerMulInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerDivInt sets ints[A] = ints[B] / ints[C].
-TEXT ·handlerDivInt(SB), NOSPLIT|NOFRAME, $0
+// handlerDivideInt64 sets ints[A] = ints[B] / ints[C].
+TEXT ·handlerDivideInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -310,8 +310,8 @@ div_overflow_done:
 dbz:
 	DIV_BY_ZERO_EXIT()
 
-// handlerRemInt sets ints[A] = ints[B] % ints[C].
-TEXT ·handlerRemInt(SB), NOSPLIT|NOFRAME, $0
+// handlerRemainderInt64 sets ints[A] = ints[B] % ints[C].
+TEXT ·handlerRemainderInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -341,8 +341,8 @@ div_overflow_done:
 dbz:
 	DIV_BY_ZERO_EXIT()
 
-// handlerBitAnd sets ints[A] = ints[B] & ints[C].
-TEXT ·handlerBitAnd(SB), NOSPLIT|NOFRAME, $0
+// handlerBitAndInt64 sets ints[A] = ints[B] & ints[C].
+TEXT ·handlerBitAndInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -356,8 +356,8 @@ TEXT ·handlerBitAnd(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerBitOr sets ints[A] = ints[B] | ints[C].
-TEXT ·handlerBitOr(SB), NOSPLIT|NOFRAME, $0
+// handlerBitOrInt64 sets ints[A] = ints[B] | ints[C].
+TEXT ·handlerBitOrInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -371,8 +371,8 @@ TEXT ·handlerBitOr(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerBitXor sets ints[A] = ints[B] ^ ints[C].
-TEXT ·handlerBitXor(SB), NOSPLIT|NOFRAME, $0
+// handlerBitXorInt64 sets ints[A] = ints[B] ^ ints[C].
+TEXT ·handlerBitXorInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -386,8 +386,8 @@ TEXT ·handlerBitXor(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerBitAndNot sets ints[A] = ints[B] &^ ints[C].
-TEXT ·handlerBitAndNot(SB), NOSPLIT|NOFRAME, $0
+// handlerBitAndNotInt64 sets ints[A] = ints[B] &^ ints[C].
+TEXT ·handlerBitAndNotInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -402,8 +402,8 @@ TEXT ·handlerBitAndNot(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerShiftLeft sets ints[A] = ints[B] << uint(ints[C]).
-TEXT ·handlerShiftLeft(SB), NOSPLIT|NOFRAME, $0
+// handlerShiftLeftInt64 sets ints[A] = ints[B] << uint(ints[C]).
+TEXT ·handlerShiftLeftInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -421,8 +421,8 @@ TEXT ·handlerShiftLeft(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerShiftRight sets ints[A] = ints[B] >> uint(ints[C]).
-TEXT ·handlerShiftRight(SB), NOSPLIT|NOFRAME, $0
+// handlerShiftRightInt64 sets ints[A] = ints[B] >> uint(ints[C]).
+TEXT ·handlerShiftRightInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -441,8 +441,8 @@ TEXT ·handlerShiftRight(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerAddFloat sets floats[A] = floats[B] + floats[C].
-TEXT ·handlerAddFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerAddFloat64 sets floats[A] = floats[B] + floats[C].
+TEXT ·handlerAddFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -456,8 +456,8 @@ TEXT ·handlerAddFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVSD   X0, (R9)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubFloat sets floats[A] = floats[B] - floats[C].
-TEXT ·handlerSubFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerSubtractFloat64 sets floats[A] = floats[B] - floats[C].
+TEXT ·handlerSubtractFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -471,8 +471,8 @@ TEXT ·handlerSubFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVSD   X0, (R9)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerMulFloat sets floats[A] = floats[B] * floats[C].
-TEXT ·handlerMulFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerMultiplyFloat64 sets floats[A] = floats[B] * floats[C].
+TEXT ·handlerMultiplyFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -486,8 +486,8 @@ TEXT ·handlerMulFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVSD   X0, (R9)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerDivFloat sets floats[A] = floats[B] / floats[C].
-TEXT ·handlerDivFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerDivideFloat64 sets floats[A] = floats[B] / floats[C].
+TEXT ·handlerDivideFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -501,8 +501,8 @@ TEXT ·handlerDivFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVSD   X0, (R9)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerAddUint sets uints[A] = uints[B] + uints[C].
-TEXT ·handlerAddUint(SB), NOSPLIT|NOFRAME, $0
+// handlerAddUint64 sets uints[A] = uints[B] + uints[C].
+TEXT ·handlerAddUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -517,8 +517,8 @@ TEXT ·handlerAddUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (DI)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubUint sets uints[A] = uints[B] - uints[C].
-TEXT ·handlerSubUint(SB), NOSPLIT|NOFRAME, $0
+// handlerSubtractUint64 sets uints[A] = uints[B] - uints[C].
+TEXT ·handlerSubtractUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -533,8 +533,8 @@ TEXT ·handlerSubUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (DI)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerMulUint sets uints[A] = uints[B] * uints[C].
-TEXT ·handlerMulUint(SB), NOSPLIT|NOFRAME, $0
+// handlerMultiplyUint64 sets uints[A] = uints[B] * uints[C].
+TEXT ·handlerMultiplyUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -549,8 +549,8 @@ TEXT ·handlerMulUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (DI)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerBitAndUint sets uints[A] = uints[B] & uints[C].
-TEXT ·handlerBitAndUint(SB), NOSPLIT|NOFRAME, $0
+// handlerBitAndUint64 sets uints[A] = uints[B] & uints[C].
+TEXT ·handlerBitAndUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -565,8 +565,8 @@ TEXT ·handlerBitAndUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (DI)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerBitOrUint sets uints[A] = uints[B] | uints[C].
-TEXT ·handlerBitOrUint(SB), NOSPLIT|NOFRAME, $0
+// handlerBitOrUint64 sets uints[A] = uints[B] | uints[C].
+TEXT ·handlerBitOrUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -581,8 +581,8 @@ TEXT ·handlerBitOrUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (DI)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerBitXorUint sets uints[A] = uints[B] ^ uints[C].
-TEXT ·handlerBitXorUint(SB), NOSPLIT|NOFRAME, $0
+// handlerBitXorUint64 sets uints[A] = uints[B] ^ uints[C].
+TEXT ·handlerBitXorUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -597,8 +597,8 @@ TEXT ·handlerBitXorUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (DI)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerBitAndNotUint sets uints[A] = uints[B] &^ uints[C].
-TEXT ·handlerBitAndNotUint(SB), NOSPLIT|NOFRAME, $0
+// handlerBitAndNotUint64 sets uints[A] = uints[B] &^ uints[C].
+TEXT ·handlerBitAndNotUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -614,8 +614,8 @@ TEXT ·handlerBitAndNotUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (DI)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerShiftLeftUint sets uints[A] = uints[B] << uint(ints[C]).
-TEXT ·handlerShiftLeftUint(SB), NOSPLIT|NOFRAME, $0
+// handlerShiftLeftUint64 sets uints[A] = uints[B] << uint(ints[C]).
+TEXT ·handlerShiftLeftUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -634,8 +634,8 @@ TEXT ·handlerShiftLeftUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (DI)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerShiftRightUint sets uints[A] = uints[B] >> uint(ints[C]).
-TEXT ·handlerShiftRightUint(SB), NOSPLIT|NOFRAME, $0
+// handlerShiftRightUint64 sets uints[A] = uints[B] >> uint(ints[C]).
+TEXT ·handlerShiftRightUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX

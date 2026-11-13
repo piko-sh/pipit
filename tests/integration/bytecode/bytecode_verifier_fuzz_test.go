@@ -33,10 +33,10 @@ import (
 func FuzzVerifier(f *testing.F) {
 	f.Add([]byte{})
 	f.Add([]byte{0, 0, 0, 0})
-	f.Add([]byte{byte(isa.OpAddInt), 1, 1, 2})
+	f.Add([]byte{byte(isa.OpAddInt64), 1, 1, 2})
 	f.Add([]byte{
-		byte(isa.OpLoadIntConst), 0, 0, 0,
-		byte(isa.OpAddInt), 1, 0, 0,
+		byte(isa.OpLoadInt64Constant), 0, 0, 0,
+		byte(isa.OpAddInt64), 1, 0, 0,
 		byte(isa.OpDrillTier1), byte(isa.SubOpDrillTier2), byte(isa.SubOpTier2Return), 1,
 	})
 	f.Add(make([]byte, 64))

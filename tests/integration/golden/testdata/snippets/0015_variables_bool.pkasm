@@ -4,48 +4,40 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=4 bool=3
-;   dispatch:  asm=21 shim=0 exit=0 go=12
+;   registers: int64=4 bool=3
+;   dispatch:  asm=20 shim=0 exit=0 go=0
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=0  [1]=1  [2]=2  [3]=4  [4]=8  [5]=16
 ;   bools:   [0]=true  [1]=false
 
-0000 A 1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
-0001 A 1:LOAD_BOOL_CONST          138   1   1    ; bools[1] = false
-0002 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0003 G 1:BOOL_TO_INT               53   1   0
-0004 G 1:NOT                       52   1   1
-0005 G 1:INT_TO_BOOL               54   2   1
-0006 G 1:BOOL_TO_INT               53   1   2
-0007 A 0:JUMP_IF_FALSE              1   2   0    ; if ints[1] == 0 goto +2
-0008 A 0:ADD_INT_CONST              2   0   1    ; const = 1
-0009 A 1:MOVE_INT                  35   0   2
-0010 G 1:BOOL_TO_INT               53   2   0
-0011 A 0:JUMP_IF_FALSE              2   1   0    ; if ints[2] == 0 goto +1
-0012 G 1:BOOL_TO_INT               53   2   1
-0013 A 0:JUMP_IF_FALSE              2   2   0    ; if ints[2] == 0 goto +2
-0014 A 0:ADD_INT_CONST              2   0   2    ; const = 2
-0015 A 1:MOVE_INT                  35   0   2
-0016 G 1:BOOL_TO_INT               53   2   0
-0017 A 0:JUMP_IF_TRUE               2   1   0    ; if ints[2] != 0 goto +1
-0018 G 1:BOOL_TO_INT               53   2   1
-0019 A 0:JUMP_IF_FALSE              2   2   0    ; if ints[2] == 0 goto +2
-0020 A 0:ADD_INT_CONST              2   0   3    ; const = 4
-0021 A 1:MOVE_INT                  35   0   2
-0022 G 1:BOOL_TO_INT               53   2   0
-0023 G 1:BOOL_TO_INT               53   3   1
-0024 A 1:NE_INT_JUMP_FALSE        121   2   3
-0025   0:EXT                        2   0   0
-0026 A 0:ADD_INT_CONST              2   0   4    ; const = 8
-0027 A 1:MOVE_INT                  35   0   2
-0028 G 1:BOOL_TO_INT               53   2   0
-0029 G 1:BOOL_TO_INT               53   3   0
-0030 A 1:EQ_INT_JUMP_FALSE        120   2   3
-0031   0:EXT                        2   0   0
-0032 A 0:ADD_INT_CONST              2   0   5    ; const = 16
-0033 A 1:MOVE_INT                  35   0   2
-0034 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = true
+0001 A 1:LOAD_BOOL_CONSTANT                                 138   1   1    ; bools[1] = false
+0002 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0003 A 2:JUMP_IF_TRUE_BOOL                                    0  21   0
+0004   0:EXTENSION                                            1   0   0
+0005 A 0:ADD_INT64_CONSTANT                                   0   0   1    ; const = 1
+0006 A 2:JUMP_IF_FALSE_BOOL                                   0  20   0
+0007   0:EXTENSION                                            3   0   0
+0008 A 2:JUMP_IF_FALSE_BOOL                                   0  20   1
+0009   0:EXTENSION                                            1   0   0
+0010 A 0:ADD_INT64_CONSTANT                                   0   0   2    ; const = 2
+0011 A 2:JUMP_IF_TRUE_BOOL                                    0  21   0
+0012   0:EXTENSION                                            2   0   0
+0013 A 2:JUMP_IF_FALSE_BOOL                                   0  20   1
+0014   0:EXTENSION                                            1   0   0
+0015 A 0:ADD_INT64_CONSTANT                                   0   0   3    ; const = 4
+0016 A 1:CONVERT_BOOL_TO_INT64                               53   2   0
+0017 A 1:CONVERT_BOOL_TO_INT64                               53   3   1
+0018 A 1:NOT_EQUAL_INT64_THEN_JUMP_IF_FALSE                 121   2   3
+0019   0:EXTENSION                                            1   0   0
+0020 A 0:ADD_INT64_CONSTANT                                   0   0   4    ; const = 8
+0021 A 1:CONVERT_BOOL_TO_INT64                               53   2   0
+0022 A 1:CONVERT_BOOL_TO_INT64                               53   3   0
+0023 A 1:EQUAL_INT64_THEN_JUMP_IF_FALSE                     120   2   3
+0024   0:EXTENSION                                            1   0   0
+0025 A 0:ADD_INT64_CONSTANT                                   0   0   5    ; const = 16
+0026 A 2:RETURN                                               0  10   1    ; 1 values

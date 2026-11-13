@@ -242,7 +242,7 @@ func TestFieldIntHandlersSkipTheGeneralBank(t *testing.T) {
 		vm, frame, registers := newStandardVM(t)
 		registers.General[1] = reflect.ValueOf(recordHolder{Count: 9})
 
-		got := handleGetFieldInt(vm, frame, registers, op(0, 1, 0))
+		got := handleGetFieldInt64(vm, frame, registers, op(0, 1, 0))
 		require.Equal(t, opContinue, got)
 		require.Equal(t, int64(9), registers.Ints[0])
 	})
@@ -266,7 +266,7 @@ func TestFieldIntHandlersSkipTheGeneralBank(t *testing.T) {
 				vm, frame, registers := newStandardVM(t)
 				registers.General[1] = reflect.ValueOf(recordHolder{Flag: tt.flag})
 
-				got := handleGetFieldInt(vm, frame, registers, op(0, 1, 2))
+				got := handleGetFieldInt64(vm, frame, registers, op(0, 1, 2))
 				require.Equal(t, opContinue, got)
 				require.Equal(t, tt.want, registers.Ints[0])
 			})
@@ -279,7 +279,7 @@ func TestFieldIntHandlersSkipTheGeneralBank(t *testing.T) {
 		vm, frame, registers := newStandardVM(t)
 		registers.General[1] = reflect.ValueOf(&recordHolder{Count: 3})
 
-		got := handleGetFieldInt(vm, frame, registers, op(0, 1, 0))
+		got := handleGetFieldInt64(vm, frame, registers, op(0, 1, 0))
 		require.Equal(t, opContinue, got)
 		require.Equal(t, int64(3), registers.Ints[0])
 	})
@@ -289,7 +289,7 @@ func TestFieldIntHandlersSkipTheGeneralBank(t *testing.T) {
 
 		vm, frame, registers := newStandardVM(t)
 
-		got := handleGetFieldInt(vm, frame, registers, op(0, 1, 0))
+		got := handleGetFieldInt64(vm, frame, registers, op(0, 1, 0))
 		requireRuntimePanic(t, vm, got, "nil pointer dereference")
 	})
 
@@ -299,7 +299,7 @@ func TestFieldIntHandlersSkipTheGeneralBank(t *testing.T) {
 		vm, frame, registers := newStandardVM(t)
 		registers.General[1] = reflect.ValueOf((*recordHolder)(nil))
 
-		require.Panics(t, func() { handleGetFieldInt(vm, frame, registers, op(0, 1, 0)) })
+		require.Panics(t, func() { handleGetFieldInt64(vm, frame, registers, op(0, 1, 0)) })
 	})
 
 	t.Run("an int field takes a write straight from the int bank", func(t *testing.T) {
@@ -310,7 +310,7 @@ func TestFieldIntHandlersSkipTheGeneralBank(t *testing.T) {
 		registers.General[0] = reflect.ValueOf(holder)
 		registers.Ints[2] = 11
 
-		got := handleSetFieldInt(vm, frame, registers, op(0, 0, 2))
+		got := handleSetFieldInt64(vm, frame, registers, op(0, 0, 2))
 		require.Equal(t, opContinue, got)
 		require.Equal(t, int64(11), holder.Count)
 	})
@@ -323,7 +323,7 @@ func TestFieldIntHandlersSkipTheGeneralBank(t *testing.T) {
 		registers.General[0] = reflect.ValueOf(holder)
 		registers.Ints[2] = 5
 
-		got := handleSetFieldInt(vm, frame, registers, op(0, 2, 2))
+		got := handleSetFieldInt64(vm, frame, registers, op(0, 2, 2))
 		require.Equal(t, opContinue, got)
 		require.True(t, holder.Flag)
 	})
@@ -333,7 +333,7 @@ func TestFieldIntHandlersSkipTheGeneralBank(t *testing.T) {
 
 		vm, frame, registers := newStandardVM(t)
 
-		got := handleSetFieldInt(vm, frame, registers, op(0, 0, 2))
+		got := handleSetFieldInt64(vm, frame, registers, op(0, 0, 2))
 		requireRuntimePanic(t, vm, got, "nil pointer dereference")
 	})
 
@@ -343,11 +343,11 @@ func TestFieldIntHandlersSkipTheGeneralBank(t *testing.T) {
 		vm, frame, registers := newStandardVM(t)
 		registers.General[0] = reflect.ValueOf(&recordHolder{})
 
-		require.Panics(t, func() { handleSetFieldInt(vm, frame, registers, op(0, 40, 2)) })
+		require.Panics(t, func() { handleSetFieldInt64(vm, frame, registers, op(0, 40, 2)) })
 	})
 }
 
-func TestDerefSliceIntHandlersReadAndWriteThroughThePointer(t *testing.T) {
+func TestElementInt64ViaPointerHandlersReadAndWriteThroughThePointer(t *testing.T) {
 	t.Parallel()
 
 	t.Run("an in-range read takes the element", func(t *testing.T) {
@@ -358,7 +358,7 @@ func TestDerefSliceIntHandlersReadAndWriteThroughThePointer(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(&backing)
 		registers.Ints[2] = 1
 
-		got := handleDerefSliceGetInt(vm, frame, registers, op(0, 1, 2))
+		got := handleGetElementInt64ViaPointer(vm, frame, registers, op(0, 1, 2))
 		require.Equal(t, opContinue, got)
 		require.Equal(t, int64(5), registers.Ints[0])
 	})
@@ -372,7 +372,7 @@ func TestDerefSliceIntHandlersReadAndWriteThroughThePointer(t *testing.T) {
 		registers.Ints[1] = 2
 		registers.Ints[2] = 99
 
-		got := handleDerefSliceSetInt(vm, frame, registers, op(0, 1, 2))
+		got := handleSetElementInt64ViaPointer(vm, frame, registers, op(0, 1, 2))
 		require.Equal(t, opContinue, got)
 		require.Equal(t, []int64{4, 5, 99}, backing)
 	})
@@ -385,7 +385,7 @@ func TestDerefSliceIntHandlersReadAndWriteThroughThePointer(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(&backing)
 		registers.Ints[2] = 3
 
-		got := handleDerefSliceGetInt(vm, frame, registers, op(0, 1, 2))
+		got := handleGetElementInt64ViaPointer(vm, frame, registers, op(0, 1, 2))
 		requireRuntimePanic(t, vm, got, "index out of range [3] with length 1")
 	})
 
@@ -397,7 +397,7 @@ func TestDerefSliceIntHandlersReadAndWriteThroughThePointer(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(&backing)
 		registers.Ints[2] = -1
 
-		got := handleDerefSliceGetInt(vm, frame, registers, op(0, 1, 2))
+		got := handleGetElementInt64ViaPointer(vm, frame, registers, op(0, 1, 2))
 		requireRuntimePanic(t, vm, got, "index out of range [-1]")
 	})
 
@@ -409,7 +409,7 @@ func TestDerefSliceIntHandlersReadAndWriteThroughThePointer(t *testing.T) {
 		registers.General[0] = reflect.ValueOf(&backing)
 		registers.Ints[1] = 9
 
-		got := handleDerefSliceSetInt(vm, frame, registers, op(0, 1, 2))
+		got := handleSetElementInt64ViaPointer(vm, frame, registers, op(0, 1, 2))
 		requireRuntimePanic(t, vm, got, "index out of range [9] with length 1")
 	})
 
@@ -418,7 +418,7 @@ func TestDerefSliceIntHandlersReadAndWriteThroughThePointer(t *testing.T) {
 
 		vm, frame, registers := newStandardVM(t)
 
-		got := handleDerefSliceGetInt(vm, frame, registers, op(0, 1, 2))
+		got := handleGetElementInt64ViaPointer(vm, frame, registers, op(0, 1, 2))
 		requireRuntimePanic(t, vm, got, "nil pointer dereference")
 	})
 }

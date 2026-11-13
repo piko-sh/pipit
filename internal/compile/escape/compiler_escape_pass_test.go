@@ -27,16 +27,16 @@ import (
 )
 
 var explicitlyClassifiedOpcodes = map[isa.Opcode]string{
-	isa.OpAllocIndirect: "B is the source general register",
-	isa.OpAddr:          "B is the source general register",
-	isa.OpGetField:      "reads through the receiver to a new value that does not alias it",
-	isa.OpDeref:         "reads through the receiver to a new value that does not alias it",
-	isa.OpMoveGeneral:   "the walk propagates taint rather than classifying an escape",
-	isa.OpSetField:      "C is the stored value",
-	isa.OpMakeClosure:   "makeClosureCaptures inspects the nested function's upvalues",
-	isa.OpDrillTier1:    "tier1OrDrilledEscapes routes the call, builtin and select sub-ops to readers of the call site and extension words, and drills the rest",
-	isa.OpGo:            "spawnedArgumentsEscape reads the argument extension words",
-	isa.OpDefer:         "spawnedArgumentsEscape reads the argument extension words; the deferred call runs after the frame's body completes",
+	isa.OpAllocateIndirect: "B is the source general register",
+	isa.OpAddress:          "B is the source general register",
+	isa.OpGetField:         "reads through the receiver to a new value that does not alias it",
+	isa.OpDereference:      "reads through the receiver to a new value that does not alias it",
+	isa.OpMoveGeneral:      "the walk propagates taint rather than classifying an escape",
+	isa.OpSetField:         "C is the stored value",
+	isa.OpMakeClosure:      "makeClosureCaptures inspects the nested function's upvalues",
+	isa.OpDrillTier1:       "tier1OrDrilledEscapes routes the call, builtin and select sub-ops to readers of the call site and extension words, and drills the rest",
+	isa.OpGo:               "spawnedArgumentsEscape reads the argument extension words",
+	isa.OpDefer:            "spawnedArgumentsEscape reads the argument extension words; the deferred call runs after the frame's body completes",
 }
 
 func TestEveryOpcodeIsClassified(t *testing.T) {
@@ -121,7 +121,7 @@ func TestClassificationEntriesAreReachable(t *testing.T) {
 	}
 }
 
-func TestRangeInitPropagatesTaintToIterator(t *testing.T) {
+func TestRangeInitialisePropagatesTaintToIterator(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -129,10 +129,10 @@ func TestRangeInitPropagatesTaintToIterator(t *testing.T) {
 		iteratorSlot   = 1
 	)
 
-	publishIterator := isa.NewTier1Instruction(isa.SubOpWriteSharedCell, iteratorSlot, 3)
+	publishIterator := isa.NewTier1Instruction(isa.SubOpSetSharedCell, iteratorSlot, 3)
 
 	withRangeInit := &program.CompiledFunction{Body: []isa.Instruction{
-		isa.NewTier1Instruction(isa.SubOpRangeInit, iteratorSlot, collectionSlot),
+		isa.NewTier1Instruction(isa.SubOpRangeInitialise, iteratorSlot, collectionSlot),
 		publishIterator,
 	}}
 	require.True(t, analyseGeneralRegisterEscape(withRangeInit, collectionSlot, 0),

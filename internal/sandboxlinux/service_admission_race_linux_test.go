@@ -53,7 +53,7 @@ func TestNativeServiceAdmissionCompetingHosts(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	const contenders = 6
 	hosts := make([]*serviceAdmissionContender, 0, contenders)
@@ -102,7 +102,7 @@ func TestNativeServiceAdmissionCompetingHosts(t *testing.T) {
 			}
 		}
 	}
-	if owner, err := newServiceGroup(parent, Limits{}, testTenant); owner != nil || !errors.Is(err, ErrServiceBusy) {
+	if owner, err := newServiceGroup(t.Context(), parent, Limits{}, testTenant); owner != nil || !errors.Is(err, ErrServiceBusy) {
 		t.Fatalf("host death released unconfirmed reservation: %v", err)
 	}
 }
@@ -115,7 +115,7 @@ func TestNativeServiceAdmissionRaceChild(t *testing.T) {
 	if _, err := io.ReadFull(os.Stdin, signal[:]); err != nil {
 		t.Fatal(err)
 	}
-	group, err := newServiceGroup(os.Getenv("PIPIT_TEST_CGROUP_PARENT"), Limits{}, testTenant)
+	group, err := newServiceGroup(t.Context(), os.Getenv("PIPIT_TEST_CGROUP_PARENT"), Limits{}, testTenant)
 	if errors.Is(err, ErrServiceBusy) {
 		fmt.Println("busy")
 		return
@@ -125,7 +125,7 @@ func TestNativeServiceAdmissionRaceChild(t *testing.T) {
 	}
 	fmt.Println("held")
 	_, _ = io.ReadFull(os.Stdin, signal[:])
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	if err := group.closeGroup(ctx); err != nil {
 		t.Fatal(err)

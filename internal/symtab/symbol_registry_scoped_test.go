@@ -98,7 +98,7 @@ func TestScopedSpecificSymbols(t *testing.T) {
 func TestScopedShareTypeCaches(t *testing.T) {
 	t.Parallel()
 	parent := helperRegistry()
-	parent.SynthesiseAll()
+	parent.SynthesiseAll(t.Context())
 	scoped := parent.Scoped([]string{"strings/*"})
 	require.NotNil(t, scoped.reflectToTypes, "scoped registry must share reflectToTypes")
 	require.NotNil(t, scoped.synthesised, "scoped registry must share synthesised cache")

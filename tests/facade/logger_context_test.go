@@ -43,7 +43,7 @@ func (probe *loggerProbe) CheckFunctionCall(ctx context.Context, _, _ string, _ 
 	probe.mu.Lock()
 	defer probe.mu.Unlock()
 	if probe.seen == nil {
-		probe.seen = logging.LoggerFrom(ctx)
+		_, probe.seen = logging.From(ctx)
 	}
 	return nil
 }

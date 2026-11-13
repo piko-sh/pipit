@@ -94,7 +94,8 @@ func (owner *linuxIsolatedRecovery) Close() error {
 //
 // Returns error when a step fails; the claim stays open for a retry or Close.
 func (owner *linuxIsolatedRecovery) recoverRecord(ctx context.Context, entry *linuxRecoveryClaim) error {
-	logging.LoggerFrom(ctx).Info("isolated.recovery.claim", "record", entry.record.directory)
+	ctx, logger := logging.From(ctx)
+	logger.Info("isolated.recovery.claim", "record", entry.record.directory)
 	if err := entry.claim.Quiesce(ctx, owner.parent); err != nil {
 		return isolatedLaunchError(err)
 	}
@@ -110,7 +111,7 @@ func (owner *linuxIsolatedRecovery) recoverRecord(ctx context.Context, entry *li
 	if err := entry.claim.Close(); err != nil {
 		return isolatedLaunchError(err)
 	}
-	logging.LoggerFrom(ctx).Info("isolated.recovery.released", "record", entry.record.directory)
+	logger.Info("isolated.recovery.released", "record", entry.record.directory)
 	return entry.record.remove()
 }
 

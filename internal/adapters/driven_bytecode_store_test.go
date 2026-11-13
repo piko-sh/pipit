@@ -21,18 +21,22 @@
 package adapters
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
+	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/codec"
 	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/rootfs"
 	"pipit.sh/pipit/internal/schema"
+	"pipit.sh/pipit/internal/schema/schemagen"
 	"pipit.sh/pipit/internal/symtab"
 	"pipit.sh/pipit/internal/symtab/descriptor"
 )
@@ -295,12 +299,27 @@ func TestPackCompiledFileSetToBytesPacksWhatALoaderAccepts(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := PackCompiledFileSetToBytes(tt.fileSet)
+			data, err := PackCompiledFileSetToBytes(t.Context(), tt.fileSet)
 
 			require.NoError(t, err)
 			assert.NotEmpty(t, data)
 		})
 	}
+}
+
+func TestPackCompiledFileSetToBytesStopsWhenCancelled(t *testing.T) {
+	t.Parallel()
+	root := &program.CompiledFunction{
+		Name: "root",
+		Body: []isa.Instruction{isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid)},
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	data, err := PackCompiledFileSetToBytes(ctx, program.NewCompiledFileSet(root, nil, nil, nil))
+
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Nil(t, data)
 }
 
 func TestPackCompiledFileSetToBytesRefusesWhatALoaderWouldRefuse(t *testing.T) {
@@ -331,7 +350,7 @@ func TestPackCompiledFileSetToBytesRefusesWhatALoaderWouldRefuse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := PackCompiledFileSetToBytes(tt.fileSet)
+			data, err := PackCompiledFileSetToBytes(t.Context(), tt.fileSet)
 
 			require.Error(t, err)
 			if tt.wantErr != nil {
@@ -343,4 +362,57 @@ func TestPackCompiledFileSetToBytesRefusesWhatALoaderWouldRefuse(t *testing.T) {
 			require.Nil(t, data, "no bytes are returned with the error")
 		})
 	}
+}
+
+func TestEmbeddedFieldsAndBackReferencesSurvivePacking(t *testing.T) {
+	t.Parallel()
+
+	original := descriptor.TypeDescriptorData{
+		Kind: uint8(descriptor.KindNamed), PackagePath: "example.com/p", Name: "L",
+		Elem: &descriptor.TypeDescriptorData{
+			Kind: uint8(descriptor.KindSlice),
+			Elem: &descriptor.TypeDescriptorData{
+				Kind: uint8(descriptor.KindStruct),
+				Fields: []descriptor.TypeDescriptorFieldData{
+					{Name: "Base", Embedded: true, Typ: descriptor.TypeDescriptorData{Kind: uint8(descriptor.KindNamed), PackagePath: "example.com/p", Name: "L", BackReference: true}},
+					{Name: "Plain", Typ: descriptor.TypeDescriptorData{Kind: uint8(descriptor.KindBasic), BasicKind: uint8(reflect.Int)}},
+				},
+			},
+		},
+	}
+	builder := flatbuffers.NewBuilder(256)
+	builder.Finish(packTypeDescriptor(builder, original))
+	payload := builder.FinishedBytes()
+
+	decoded, err := unpackTypeDescriptor(schemagen.GetRootAsTypeDescriptor(payload, 0), 0, len(payload), newDescriptorDecodeCache())
+	require.NoError(t, err)
+	fields := decoded.Elem.Elem.Fields
+	require.True(t, fields[0].Embedded)
+	require.True(t, fields[0].Typ.BackReference)
+	require.False(t, fields[1].Embedded)
+	require.False(t, fields[1].Typ.BackReference)
+}
+
+func TestCallSiteArgumentTypeNamesSurvivePacking(t *testing.T) {
+	t.Parallel()
+
+	builder := flatbuffers.NewBuilder(256)
+	site := codec.CallSiteData{
+		IsNative:                  true,
+		ArgumentStaticTypeNames:   []string{"Label", ""},
+		ArgumentStaticTypeStrings: []string{"main.Label", "int"},
+	}
+	builder.Finish(packCallSite(builder, site))
+	payload := builder.FinishedBytes()
+	packed := schemagen.GetRootAsCallSite(payload, 0)
+
+	names, err := unpackStrings(packed.ArgumentStaticTypeNamesLength(), packed.ArgumentStaticTypeNames, len(payload))
+	require.NoError(t, err)
+	require.Equal(t, site.ArgumentStaticTypeNames, names)
+	typeStrings, err := unpackStrings(packed.ArgumentStaticTypeStringsLength(), packed.ArgumentStaticTypeStrings, len(payload))
+	require.NoError(t, err)
+	require.Equal(t, site.ArgumentStaticTypeStrings, typeStrings)
+	empty, err := unpackStrings(0, packed.ArgumentStaticTypeNames, len(payload))
+	require.NoError(t, err)
+	require.Nil(t, empty)
 }

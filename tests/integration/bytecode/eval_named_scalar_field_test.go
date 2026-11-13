@@ -63,7 +63,7 @@ func main() {}
 `,
 			entrypoint:       "run",
 			want:             int64(42),
-			fastPathOpName:   "GET_STRUCT_FIELD_INT_T0",
+			fastPathOpName:   "GET_STRUCT_FIELD_INT64",
 			shouldHaveFastOp: true,
 		},
 		{
@@ -85,7 +85,7 @@ func main() {}
 `,
 			entrypoint:       "run",
 			want:             true,
-			fastPathOpName:   "GET_STRUCT_FIELD_BOOL_T0",
+			fastPathOpName:   "GET_STRUCT_FIELD_BOOL",
 			shouldHaveFastOp: true,
 		},
 		{
@@ -107,7 +107,7 @@ func main() {}
 `,
 			entrypoint:       "run",
 			want:             uint64(99),
-			fastPathOpName:   "GET_STRUCT_FIELD_UINT_T0",
+			fastPathOpName:   "GET_STRUCT_FIELD_UINT64",
 			shouldHaveFastOp: true,
 		},
 		{
@@ -131,7 +131,7 @@ func main() {}
 `,
 			entrypoint:     "run",
 			want:           int64(16),
-			fastPathOpName: "GET_STRUCT_FIELD_INT_T0",
+			fastPathOpName: "GET_STRUCT_FIELD_INT64",
 		},
 		{
 			name: "named_string_with_methods_stays_slow",
@@ -155,7 +155,7 @@ func main() {}
 			entrypoint: "run",
 			want:       int64(5),
 
-			slowPathOpName: "PACK_TYPED",
+			slowPathOpName: "BOX_AS_TYPE",
 		},
 	}
 

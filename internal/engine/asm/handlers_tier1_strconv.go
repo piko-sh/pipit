@@ -38,20 +38,20 @@ const (
 // for this group.
 func tier1StrconvHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		handlerSubOpStrconvFormatBool(),
-		handlerSubOpStrconvItoa(),
-		handlerSubOpStrconvFormatInt(),
+		handlerStrconvFormatBool(),
+		handlerStrconvItoa(),
+		handlerStrconvFormatInt(),
 	}
 }
 
-// handlerSubOpStrconvFormatBool builds the inlined SubOpStrconvFormatBool handler. No Go
-// call is needed because strconv.FormatBool's return values are statically interned.
+// handlerStrconvFormatBool builds the inlined SubOpStrconvFormatBool handler. No Go call
+// is needed because strconv.FormatBool's return values are statically interned.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpStrconvFormatBool() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerStrconvFormatBool() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return guardPointerBankWriter(asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSubOpStrconvFormatBool",
-		Comment:   "handlerSubOpStrconvFormatBool sets strings[B] = bools[C] ? \"true\" : \"false\" by stamping a pre-allocated header.",
+		Name:      "handlerStrconvFormatBool",
+		Comment:   "handlerStrconvFormatBool sets strings[B] = bools[C] ? \"true\" : \"false\" by stamping a pre-allocated header.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
@@ -60,26 +60,26 @@ func handlerSubOpStrconvFormatBool() asmgen.HandlerDefinition[BytecodeArchitectu
 	})
 }
 
-// handlerSubOpStrconvItoa builds the SubOpStrconvItoa handler, setting strings[B] =
+// handlerStrconvItoa builds the SubOpStrconvItoa handler, setting strings[B] =
 // strconv.Itoa(int(ints[C])).
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpStrconvItoa() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerStrconvItoa() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return inlineGoTwoOperandShim(
-		"handlerSubOpStrconvItoa",
-		"handlerSubOpStrconvItoa sets strings[B] = strconv.Itoa(int(ints[C])) via asmCallStrconvItoa.",
+		"handlerStrconvItoa",
+		"handlerStrconvItoa sets strings[B] = strconv.Itoa(int(ints[C])) via asmCallStrconvItoa.",
 		goSymbolStrconvItoa,
 	)
 }
 
-// handlerSubOpStrconvFormatInt builds the SubOpStrconvFormatInt handler, setting
-// strings[B] = strconv.FormatInt(ints[C], int(ints[ext.A])).
+// handlerStrconvFormatInt builds the SubOpStrconvFormatInt handler, setting strings[B] =
+// strconv.FormatInt(ints[C], int(ints[ext.A])).
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpStrconvFormatInt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerStrconvFormatInt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return inlineGoThreeOperandShim(
-		"handlerSubOpStrconvFormatInt",
-		"handlerSubOpStrconvFormatInt sets strings[B] = strconv.FormatInt(ints[C], int(ints[ext.A])) via asmCallStrconvFormatInt.",
+		"handlerStrconvFormatInt",
+		"handlerStrconvFormatInt sets strings[B] = strconv.FormatInt(ints[C], int(ints[ext.A])) via asmCallStrconvFormatInt.",
 		goSymbolStrconvFormatInt,
 	)
 }

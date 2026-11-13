@@ -23,11 +23,17 @@ import (
 	"piko.sh/asmgen/asmamd64"
 )
 
-// EmitSetStructFieldGeneralT0 emits the tier-0 fast path for writing general[B] into a
+// EmitSetStructFieldGeneral emits the tier-0 fast path for writing general[B] into a
 // struct field covering pointer-kind and cycle-broken any fields.
 //
+// The fast path stores a nil data word, and a non-nil pointer only through the
+// revoked-epoch route (emitRevokedEpochStoreRouteAMD64), which makes exactly the decision
+// and the note of the Go handler's own route for that epoch. Any other value may
+// reference arena storage, so it falls back to the Go handler, which applies the store
+// barrier, and the fast path writes no arena reference outside the barriers.
+//
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (*BytecodeAMD64Arch) EmitSetStructFieldGeneralT0(e *asmgen.Emitter) {
+func (*BytecodeAMD64Arch) EmitSetStructFieldGeneral(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationCompare8Bits, "runtime·writeBarrier(SB), $0")
 	inst(e, asmamd64.OperationJumpIfNotEqual, "sf_shim")
 	emitStructFieldLayoutRowAMD64(e)
@@ -40,7 +46,7 @@ func (*BytecodeAMD64Arch) EmitSetStructFieldGeneralT0(e *asmgen.Emitter) {
 	e.Label("ss_done")
 	e.Instruction(macroDispatchNext)
 	e.Label("sf_shim")
-	inst(e, asmamd64.OperationJump, "·handlerPathBShimSetStructFieldGeneralT0(SB)")
+	inst(e, asmamd64.OperationJump, "·handlerPathBShimSetStructFieldGeneral(SB)")
 }
 
 // emitSetStructFieldGeneralPointerArmAMD64 emits the plain pointer-field store arm,
@@ -76,11 +82,15 @@ func emitSetStructFieldGeneralPointerArmAMD64(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationJumpIfZero, "ss_ptr_store")
 	inst(e, asmamd64.OperationMove64Bits, "(AX), AX")
 	e.Label("ss_ptr_store")
+	inst(e, asmamd64.OperationTest64Bits, "AX, AX")
+	inst(e, asmamd64.OperationJumpIfZero, "ss_ptr_write")
+	emitRevokedEpochStoreRouteAMD64(e, "ss_ptr_write")
+	e.Label("ss_ptr_write")
 	inst(e, asmamd64.OperationMove64Bits, "AX, (DI)")
 	inst(e, asmamd64.OperationJump, "ss_done")
 	e.Label("ss_ptr_nil")
 	inst(e, asmamd64.OperationBitwiseXor64Bits, "AX, AX")
-	inst(e, asmamd64.OperationJump, "ss_ptr_store")
+	inst(e, asmamd64.OperationJump, "ss_ptr_write")
 }
 
 // emitSetStructFieldGeneralCycleBrokenArmAMD64 emits the cycle-broken `any` field store
@@ -138,13 +148,59 @@ func emitSetStructFieldGeneralCycleBrokenArmAMD64(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationTest64Bits, "$0x80, CX")
 	inst(e, asmamd64.OperationJumpIfZero, "ss_iface_store")
 	inst(e, asmamd64.OperationMove64Bits, "(BX), BX")
+	emitSetStructFieldGeneralInterfaceStoreAMD64(e)
+}
+
+// emitSetStructFieldGeneralInterfaceStoreAMD64 emits the cycle-broken arm's store: a nil
+// data word goes straight to the write, and a pointer through the revoked-epoch route. AX
+// holds the value's type word, BX its data word, CX its flag word, SI its kind and DI the
+// field's address.
+//
+// Takes e (*asmgen.Emitter) which receives the emitted instructions.
+func emitSetStructFieldGeneralInterfaceStoreAMD64(e *asmgen.Emitter) {
 	e.Label("ss_iface_store")
+	inst(e, asmamd64.OperationTest64Bits, "BX, BX")
+	inst(e, asmamd64.OperationJumpIfZero, "ss_iface_write")
+	inst(e, asmamd64.OperationCompare64Bits, "SI, $22")
+	inst(e, asmamd64.OperationJumpIfNotEqual, "sf_shim")
+	emitRevokedEpochStoreRouteAMD64(e, "ss_iface_write")
+	e.Label("ss_iface_write")
 	inst(e, asmamd64.OperationMove64Bits, "AX, (DI)")
 	inst(e, asmamd64.OperationMove64Bits, "BX, 8(DI)")
 	inst(e, asmamd64.OperationJump, "ss_done")
 	e.Label("ss_iface_nil")
 	inst(e, asmamd64.OperationBitwiseXor64Bits, "BX, BX")
-	inst(e, asmamd64.OperationJump, "ss_iface_store")
+	inst(e, asmamd64.OperationJump, "ss_iface_write")
+}
+
+// emitRevokedEpochStoreRouteAMD64 emits the revoked-epoch pointer-store tests and note.
+//
+// The non-nil pointer has already been checked to have the field's own type (or any
+// pointer type, for a cycle-broken any field). The tests allow a store without the Go
+// handler and follow the Go handler's revoked-epoch route in order
+// (storePointerFieldRevokedEpoch, storePointerInAnyFieldRevokedEpoch).
+//
+// Takes e (*asmgen.Emitter) which receives the emitted instructions.
+// Takes store (string) which is the label that stores the pointer.
+func emitRevokedEpochStoreRouteAMD64(e *asmgen.Emitter, store string) {
+	inst(e, asmamd64.OperationMove64Bits, "CTX_ARENA_ROUTE_STATE(R15), SI")
+	inst(e, asmamd64.OperationTest64Bits, "SI, SI")
+	inst(e, asmamd64.OperationJumpIfZero, "sf_shim")
+	inst(e, asmamd64.OperationCompare8Bits, "ROUTE_LOCAL_BLIND(SI), $0")
+	inst(e, asmamd64.OperationJumpIfEqual, "sf_shim")
+	inst(e, asmamd64.OperationTest64Bits, "$FLAG_RO, CX")
+	inst(e, asmamd64.OperationJumpIfNotZero, "sf_shim")
+	inst(e, asmamd64.OperationMove64Bits, "CTX_FRAME_POINTER(R15), CX")
+	inst(e, asmamd64.OperationSignedMultiply64Bits, "$CALLFRAME_SIZE, CX")
+	inst(e, asmamd64.OperationAdd64Bits, "CTX_CSTACK_BASE(R15), CX")
+	inst(e, asmamd64.OperationMove64Bits, "CF_FUNCTION(CX), CX")
+	inst(e, asmamd64.OperationCompare64Bits, "FN_FIELD_STORE_GRANTS(CX), $0")
+	inst(e, asmamd64.OperationJumpIfNotEqual, "sf_shim")
+	inst(e, asmamd64.OperationIncrement64Bits, "ROUTE_NOTE_SEQ(SI)")
+	inst(e, asmamd64.OperationCompare8Bits, "·licenceCounting(SB), $0")
+	inst(e, asmamd64.OperationJumpIfEqual, store)
+	inst(e, asmamd64.OperationIncrement64Bits, "ROUTE_NOTES_UNTRACED(SI)")
+	inst(e, asmamd64.OperationIncrement64Bits, "ROUTE_NOTES_BLIND(SI)")
 }
 
 // emitSetStructFieldValueSlotAMD64 loads the address of general[B] into BX. AX and CX are

@@ -26,81 +26,36 @@ import (
 	"unsafe"
 )
 
-const (
-	// flagKindMask masks the low 5 bits where reflect.Kind is stored in reflect.Value.flag.
-	flagKindMask uintptr = 1<<5 - 1
-
-	// flagIndir indicates that reflect.Value.ptr is a *T rather than the value itself.
-	flagIndir uintptr = 1 << 7
-
-	// flagAddr indicates that the reflect.Value is addressable.
-	flagAddr uintptr = 1 << 8
-)
+// safeTypeFrontSlots is the number of slots in the registry's lock-free front.
+const safeTypeFrontSlots = 1 << 10
 
 var (
-	// safeTypeRegistryMu guards the safe-build type registry maps.
+	// safeTypeRegistryMu guards safeTypeRegistryByPtr.
 	safeTypeRegistryMu sync.RWMutex
 
-	// safeTypeRegistryByPtr recovers the reflect.Type from a token.
-	safeTypeRegistryByPtr = make(map[unsafe.Pointer]reflect.Type)
+	// safeTypeRegistryByPtr recovers the registered entry from a token.
+	safeTypeRegistryByPtr = make(map[unsafe.Pointer]*safeTypeEntry)
+
+	// safeTypeFront holds, per slot, the entry of the token last looked up there.
+	safeTypeFront [safeTypeFrontSlots]frontPointer[safeTypeEntry]
 )
 
-// unsafeReflectValue mirrors the runtime layout of reflect.Value. On the safe build
-// callers must NOT cast a *reflect.Value to a *unsafeReflectValue; the type exists only
-// so reference sites compile under -tags safe.
-type unsafeReflectValue struct {
-	// typ would point at the *abi.Type on the unsafe build.
-	typ unsafe.Pointer
-
-	// ptr would carry the value's storage word on the unsafe build.
-	ptr unsafe.Pointer
-
-	// flag would carry flagAddr | flagIndir | Kind on the unsafe build.
-	flag uintptr
-}
-
-// emptyInterface mirrors the runtime layout of an interface header.
-type emptyInterface struct {
-	// typ is the dynamic type pointer for the interface header.
-	typ unsafe.Pointer
-
-	// data is the dynamic value word; for reflect.Type it IS the *abi.Type pointer.
-	data unsafe.Pointer
-}
-
-// snapshotSliceHeader mirrors the runtime layout of a Go slice header. The struct is
-// exposed so callers that bump-allocate snapshot slots in vm.go compile under -tags safe;
-// the GC tracks Data as a pointer.
-type snapshotSliceHeader struct {
-	// Data points at the slice's element backing array.
-	Data unsafe.Pointer
-
-	// Len is the slice's logical length.
-	Len int
-
-	// Cap is the slice's underlying capacity.
-	Cap int
-}
-
-// safeTypeAnchor is the heap-resident anchor that backs each safe-build type token.
-// Storing the reflect.Type inside the anchor keeps both the anchor and the type reachable
-// for the GC, so passing the anchor's address through unsafe.Pointer fields is GC-safe.
-type safeTypeAnchor struct {
-	// t is the reflect.Type the anchor represents.
+// safeTypeEntry pairs a token with the reflect.Type it was minted from. An entry is never
+// changed once it is registered, so the front can hand it out without a lock.
+type safeTypeEntry struct {
+	// t is the reflect.Type the token stands for. Holding it keeps the type reachable.
 	t reflect.Type
-}
 
-// safeTypeRegistryByType deduplicates anchors so that calling reflectValueABIType twice
-// for the same reflect.Type yields the same token.
-var safeTypeRegistryByType = make(map[reflect.Type]*safeTypeAnchor)
+	// token is the *abi.Type pointer read from t's interface header.
+	token unsafe.Pointer
+}
 
 // ResetSafeTypeRegistryForTest is a no-op for the safe build.
 func ResetSafeTypeRegistryForTest() {}
 
-// ReflectValuePtr extracts the storage address of a reflect.Value via the public reflect
-// API. For addressable Values the returned pointer matches the unsafe path's behaviour;
-// for non-addressable direct-iface kinds the fallback returns the held value via
-// UnsafePointer().
+// ReflectValuePtr extracts the storage address of a reflect.Value via the public API.
+//
+// For non-addressable direct-iface kinds it returns the held value via UnsafePointer().
 //
 // Takes v (reflect.Value) which the caller asserts is addressable or of a direct-iface
 // kind.
@@ -111,7 +66,7 @@ func ReflectValuePtr(v reflect.Value) unsafe.Pointer {
 		return nil
 	}
 	if v.CanAddr() {
-		return v.Addr().UnsafePointer()
+		return unsafe.Pointer(v.UnsafeAddr())
 	}
 	switch v.Kind() {
 	case reflect.Pointer, reflect.Map, reflect.Chan, reflect.Func, reflect.UnsafePointer:
@@ -126,32 +81,30 @@ func ReflectValuePtr(v reflect.Value) unsafe.Pointer {
 //
 // The returned token also indexes a side registry so safeLookupType can recover the
 // reflect.Type for helpers that need it. The implementation relies on reflect.Type's
-// interface representation being stable while avoiding the go:linkname trampolines that
-// wasm and -tags safe forbid.
+// interface representation being stable.
 //
 // Takes t (reflect.Type) which the caller pre-derives.
 //
-// Returns nil for a nil t; otherwise the underlying *abi.Type pointer.
+// Returns nil for a nil t. Otherwise it returns the underlying *abi.Type pointer.
 //
-// Concurrency: Safe for concurrent use; guarded by safeTypeRegistryMu.
+// Safe for concurrent use. A registered token is found without a lock, and registration
+// is guarded by safeTypeRegistryMu.
 func reflectValueABIType(t reflect.Type) unsafe.Pointer {
 	if t == nil {
 		return nil
 	}
 	abiPtr := (*emptyInterface)(unsafe.Pointer(&t)).data
-	safeTypeRegistryMu.RLock()
-	if _, ok := safeTypeRegistryByPtr[abiPtr]; ok {
-		safeTypeRegistryMu.RUnlock()
+	if safeTypeEntryFor(abiPtr) != nil {
 		return abiPtr
 	}
-	safeTypeRegistryMu.RUnlock()
 	safeTypeRegistryMu.Lock()
-	if _, ok := safeTypeRegistryByPtr[abiPtr]; !ok {
-		anchor := &safeTypeAnchor{t: t}
-		safeTypeRegistryByType[t] = anchor
-		safeTypeRegistryByPtr[abiPtr] = t
+	entry := safeTypeRegistryByPtr[abiPtr]
+	if entry == nil {
+		entry = &safeTypeEntry{t: t, token: abiPtr}
+		safeTypeRegistryByPtr[abiPtr] = entry
 	}
 	safeTypeRegistryMu.Unlock()
+	safeTypeFrontSlot(abiPtr).Store(entry)
 	return abiPtr
 }
 
@@ -160,17 +113,15 @@ func reflectValueABIType(t reflect.Type) unsafe.Pointer {
 // Takes token (unsafe.Pointer) which is the *abi.Type pointer previously returned by
 // reflectValueABIType.
 //
-// Returns the reflect.Type for the token; nil when the token is not in the registry.
-//
-// Concurrency: Safe for concurrent use; guarded by safeTypeRegistryMu.
+// Returns reflect.Type which is the token's type, or nil when it is not registered.
 func safeLookupType(token unsafe.Pointer) reflect.Type {
 	if token == nil {
 		return nil
 	}
-	safeTypeRegistryMu.RLock()
-	t := safeTypeRegistryByPtr[token]
-	safeTypeRegistryMu.RUnlock()
-	return t
+	if entry := safeTypeEntryFor(token); entry != nil {
+		return entry.t
+	}
+	return nil
 }
 
 // wrapTypedSliceSrcType extracts the abi-type token from a slice-typed reflect.Value.
@@ -256,22 +207,41 @@ func unsafeDirectIfaceKindValue(cachedABIType unsafe.Pointer, value unsafe.Point
 	return *(*reflect.Value)(unsafe.Pointer(&v))
 }
 
-// structFieldUnsafeBase is the safe-lane stub that always declines.
-//
-// The unsafe lane provides the real base-pointer resolver for struct-field handlers. Both
-// arguments share the unsafe signature and are not read here.
-//
-// Takes registers (*Registers) which would provide the general bank.
-// Takes generalRegister (uint8) which would index the receiver.
-//
-// Returns (nil, false) unconditionally.
-func structFieldUnsafeBase(_ *Registers, _ uint8) (unsafe.Pointer, bool) {
-	return nil, false
-}
-
 // stampEmbeddedReadOnly returns v unchanged in the safe build.
 //
 // Takes v (reflect.Value) which is the field value.
 //
 // Returns reflect.Value which is v.
 func stampEmbeddedReadOnly(v reflect.Value) reflect.Value { return v }
+
+// safeTypeFrontSlot returns the front slot a token maps to.
+//
+// Takes token (unsafe.Pointer) which is a type token.
+//
+// Returns *frontPointer[safeTypeEntry] which is its slot.
+func safeTypeFrontSlot(token unsafe.Pointer) *frontPointer[safeTypeEntry] {
+	address := uintptr(token)
+	return &safeTypeFront[(address>>4^address>>14)&(safeTypeFrontSlots-1)]
+}
+
+// safeTypeEntryFor returns the registered entry for a token.
+//
+// Takes token (unsafe.Pointer) which is a non-nil type token.
+//
+// Returns *safeTypeEntry which is nil when the token was never registered.
+//
+// Safe for concurrent use. The front is read and written atomically, and the map is read
+// under safeTypeRegistryMu.
+func safeTypeEntryFor(token unsafe.Pointer) *safeTypeEntry {
+	slot := safeTypeFrontSlot(token)
+	if entry := slot.Load(); entry != nil && entry.token == token {
+		return entry
+	}
+	safeTypeRegistryMu.RLock()
+	entry := safeTypeRegistryByPtr[token]
+	safeTypeRegistryMu.RUnlock()
+	if entry != nil {
+		slot.Store(entry)
+	}
+	return entry
+}

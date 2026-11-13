@@ -159,7 +159,7 @@ for i := 0; i < 10; i++ {
 
 func TestAtomicCancellationBackgroundCtx(t *testing.T) {
 	t.Parallel()
-	vm := engine.NewVM(context.Background(), engine.NewGlobalStore(), symtab.NewSymbolRegistry(nil))
+	vm := engine.NewVM(t.Context(), engine.NewGlobalStore(), symtab.NewSymbolRegistry(nil))
 	require.Equal(t, uint32(0), vm.Cancelled.Load(), "a background context leaves the cancelled flag clear")
 }
 

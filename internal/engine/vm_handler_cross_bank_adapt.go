@@ -25,10 +25,10 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-// handleSubOpAdoptGeneralToSlicesInt extracts a []int64 from a reflect.Value held in
-// general[C] and writes the slice header to slicesInt[B]. Sub-int-width sources widen
-// element-by-element via unboxToTypedIntSlice, allocating a fresh int64 backing because
-// element strides differ.
+// handleUnboxSliceInt64 extracts a []int64 from a reflect.Value held in general[C] and
+// writes the slice header to slicesInt[B]. Sub-int-width sources widen element-by-element
+// via unboxToTypedIntSlice, allocating a fresh int64 backing because element strides
+// differ.
 //
 // Takes vm (*VM) which receives the interpreted panic on type assertion failure.
 // Takes registers (*Registers) which holds the register banks.
@@ -37,7 +37,7 @@ import (
 //
 // Returns opContinue on success, opPanicError when the held value is not assignable to
 // []int64 (or any narrower signed-int slice).
-func handleSubOpAdoptGeneralToSlicesInt(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleUnboxSliceInt64(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	value := registers.General[instruction.C]
 	if !value.IsValid() {
 		registers.SlicesInt[instruction.B] = nil
@@ -52,21 +52,20 @@ func handleSubOpAdoptGeneralToSlicesInt(vm *VM, _ *CallFrame, registers *Registe
 	return opContinue
 }
 
-// handleSubOpAdoptGeneralToSlicesString mirrors handleSubOpAdoptGeneralToSlicesInt for
-// the slicesString bank.
+// handleUnboxSliceString mirrors handleUnboxSliceInt64 for the slicesString bank.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which is the active register file.
 // Takes instruction (isa.Instruction) which is the current instruction.
 //
 // Returns opContinue or opPanicError.
-func handleSubOpAdoptGeneralToSlicesString(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleUnboxSliceString(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	value := registers.General[instruction.C]
 	if !value.IsValid() {
 		registers.slicesString[instruction.B] = nil
 		return opContinue
 	}
-	typed, ok := reflect.TypeAssert[[]string](value)
+	typed, ok := typedSliceOf[string](value)
 	if !ok {
 		vm.evalError = fmt.Errorf("cannot convert %s to []string", value.Type())
 		return opPanicError
@@ -75,21 +74,20 @@ func handleSubOpAdoptGeneralToSlicesString(vm *VM, _ *CallFrame, registers *Regi
 	return opContinue
 }
 
-// handleSubOpAdoptGeneralToSlicesBool mirrors handleSubOpAdoptGeneralToSlicesInt for the
-// slicesBool bank.
+// handleUnboxSliceBool mirrors handleUnboxSliceInt64 for the slicesBool bank.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which is the active register file.
 // Takes instruction (isa.Instruction) which is the current instruction.
 //
 // Returns opContinue or opPanicError.
-func handleSubOpAdoptGeneralToSlicesBool(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleUnboxSliceBool(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	value := registers.General[instruction.C]
 	if !value.IsValid() {
 		registers.slicesBool[instruction.B] = nil
 		return opContinue
 	}
-	typed, ok := reflect.TypeAssert[[]bool](value)
+	typed, ok := typedSliceOf[bool](value)
 	if !ok {
 		vm.evalError = fmt.Errorf("cannot convert %s to []bool", value.Type())
 		return opPanicError
@@ -98,17 +96,16 @@ func handleSubOpAdoptGeneralToSlicesBool(vm *VM, _ *CallFrame, registers *Regist
 	return opContinue
 }
 
-// handleSubOpAdoptGeneralToSlicesUint mirrors handleSubOpAdoptGeneralToSlicesInt for the
-// slicesUint bank. Sub-int-width sources ([]uint / []uint16 / []uint32 / []uintptr) widen
-// element-by-element via unboxToTypedUintSlice; see that helper for the storage-alignment
-// rationale.
+// handleUnboxSliceUint64 mirrors handleUnboxSliceInt64 for the slicesUint bank.
+// Sub-int-width sources ([]uint / []uint16 / []uint32 / []uintptr) widen
+// element-by-element via unboxToTypedUintSlice.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which is the active register file.
 // Takes instruction (isa.Instruction) which is the current instruction.
 //
 // Returns opContinue or opPanicError.
-func handleSubOpAdoptGeneralToSlicesUint(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleUnboxSliceUint64(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	value := registers.General[instruction.C]
 	if !value.IsValid() {
 		registers.slicesUint[instruction.B] = nil
@@ -123,21 +120,20 @@ func handleSubOpAdoptGeneralToSlicesUint(vm *VM, _ *CallFrame, registers *Regist
 	return opContinue
 }
 
-// handleSubOpAdoptGeneralToSlicesByte mirrors handleSubOpAdoptGeneralToSlicesInt for the
-// slicesByte bank.
+// handleUnboxSliceByte mirrors handleUnboxSliceInt64 for the slicesByte bank.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which is the active register file.
 // Takes instruction (isa.Instruction) which is the current instruction.
 //
 // Returns opContinue or opPanicError.
-func handleSubOpAdoptGeneralToSlicesByte(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleUnboxSliceByte(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	value := registers.General[instruction.C]
 	if !value.IsValid() {
 		registers.slicesByte[instruction.B] = nil
 		return opContinue
 	}
-	typed, ok := reflect.TypeAssert[[]byte](value)
+	typed, ok := typedSliceOf[byte](value)
 	if !ok {
 		vm.evalError = fmt.Errorf("cannot convert %s to []byte", value.Type())
 		return opPanicError
@@ -146,48 +142,49 @@ func handleSubOpAdoptGeneralToSlicesByte(vm *VM, _ *CallFrame, registers *Regist
 	return opContinue
 }
 
-// handleSubOpBoxSliceFloat boxes a typed []float64 into the general bank: general[B] =
-// reflect.ValueOf(slicesFloat[C]). Mirror of handleSubOpBoxSliceInt for the float bank.
+// handleBoxSliceFloat64 boxes a typed []float64 into the general bank, computing
+// general[B] = reflect.ValueOf(slicesFloat[C]). Mirror of handleBoxSliceInt64 for the
+// float bank.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the destination general register B and
 // the source slicesFloat register C.
 //
 // Returns opContinue.
-func handleSubOpBoxSliceFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleBoxSliceFloat64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.General[instruction.B] = reflect.ValueOf(registers.slicesFloat[instruction.C])
 	return opContinue
 }
 
-// handleSubOpBoxSliceString mirrors handleSubOpBoxSliceFloat for the slicesString bank.
+// handleBoxSliceString mirrors handleBoxSliceFloat64 for the slicesString bank.
 //
 // Takes registers (*Registers) which is the active register file.
 // Takes instruction (isa.Instruction) which is the current instruction.
 //
 // Returns opContinue.
-func handleSubOpBoxSliceString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleBoxSliceString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.General[instruction.B] = reflect.ValueOf(registers.slicesString[instruction.C])
 	return opContinue
 }
 
-// handleSubOpBoxSliceBool mirrors handleSubOpBoxSliceFloat for the slicesBool bank.
+// handleBoxSliceBool mirrors handleBoxSliceFloat64 for the slicesBool bank.
 //
 // Takes registers (*Registers) which is the active register file.
 // Takes instruction (isa.Instruction) which is the current instruction.
 //
 // Returns opContinue.
-func handleSubOpBoxSliceBool(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleBoxSliceBool(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.General[instruction.B] = reflect.ValueOf(registers.slicesBool[instruction.C])
 	return opContinue
 }
 
-// handleSubOpBoxSliceUint mirrors handleSubOpBoxSliceFloat for the slicesUint bank.
+// handleBoxSliceUint64 mirrors handleBoxSliceFloat64 for the slicesUint bank.
 //
 // Takes registers (*Registers) which is the active register file.
 // Takes instruction (isa.Instruction) which is the current instruction.
 //
 // Returns opContinue.
-func handleSubOpBoxSliceUint(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleBoxSliceUint64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.General[instruction.B] = reflect.ValueOf(registers.slicesUint[instruction.C])
 	return opContinue
 }

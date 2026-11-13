@@ -20,12 +20,15 @@ package extract
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"golang.org/x/tools/go/packages"
 )
 
 const (
@@ -156,7 +159,7 @@ func runGenerate(ctx context.Context, arguments []string, stdout, stderr io.Writ
 
 	_, _ = fmt.Fprintf(stdout, "Extracting %d packages...\n", len(manifest.Packages))
 
-	packages, err := ExtractContext(ctx, manifest.ImportPaths(), manifest.GenericConfigs())
+	extracted, err := Extract(ctx, manifest.ImportPaths(), manifest.GenericConfigs())
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "Error extracting packages: %s\n", err)
 		return 1
@@ -181,7 +184,7 @@ func runGenerate(ctx context.Context, arguments []string, stdout, stderr io.Writ
 		ec.output = output
 	}
 
-	if err := emitPackageFiles(packages, ec); err != nil {
+	if err := emitPackageFiles(ctx, extracted, ec); err != nil {
 		return 1
 	}
 
@@ -333,29 +336,29 @@ func selectPackages(configs []PackageConfig, prefixes []string) []PackageConfig 
 
 // emitPackageFiles writes the files the --emit selection asks for.
 //
-// Takes packages ([]ExtractedPackage) which are the extracted packages.
+// Takes extracted ([]ExtractedPackage) which are the extracted packages.
 // Takes ec (emitContext) which bundles manifest, configs, flags, output and writers.
 //
 // Returns error when any generation or write step fails.
-func emitPackageFiles(packages []ExtractedPackage, ec emitContext) error {
+func emitPackageFiles(ctx context.Context, extracted []ExtractedPackage, ec emitContext) error {
 	if ec.flags.emit == emitIndex {
-		return writeIndexFile(packages, ec)
+		return writeIndexFile(extracted, ec)
 	}
 
 	if ec.flags.emit != emitTypes {
 		if err := writeRegisterFile(ec); err != nil {
 			return err
 		}
-		for i := range packages {
-			if err := emitSinglePackage(&packages[i], ec); err != nil {
+		for i := range extracted {
+			if err := emitSinglePackage(&extracted[i], ec); err != nil {
 				return err
 			}
 		}
 	}
 
-	importPaths := collectAllImportPaths(packages)
+	importPaths := collectAllImportPaths(extracted)
 	if ec.flags.emit != emitSymbols && len(importPaths) > 0 {
-		if err := writeTypesLoader(packages, ec); err != nil {
+		if err := writeTypesLoader(ctx, extracted, ec); err != nil {
 			_, _ = fmt.Fprintf(ec.stderr, errorLineFmt, err)
 			return err
 		}
@@ -370,12 +373,12 @@ func emitPackageFiles(packages []ExtractedPackage, ec emitContext) error {
 // writeIndexFile emits the import-path index, which names the extracted packages without
 // referencing them.
 //
-// Takes packages ([]ExtractedPackage) which are the extracted packages.
+// Takes extracted ([]ExtractedPackage) which are the extracted packages.
 // Takes ec (emitContext) which bundles manifest, flags, output and writers.
 //
 // Returns error when generation or writing fails.
-func writeIndexFile(packages []ExtractedPackage, ec emitContext) error {
-	source, err := ec.generator.GenerateIndexFile(collectAllImportPaths(packages), ec.manifest.Package)
+func writeIndexFile(extracted []ExtractedPackage, ec emitContext) error {
+	source, err := ec.generator.GenerateIndexFile(collectAllImportPaths(extracted), ec.manifest.Package)
 	if err != nil {
 		_, _ = fmt.Fprintf(ec.stderr, "Error generating index file: %s\n", err)
 		return err
@@ -439,13 +442,13 @@ func emitSinglePackage(extractedPackage *ExtractedPackage, ec emitContext) error
 // collectAllImportPaths returns the import paths of all extracted packages, which the
 // types descriptor lists so build tooling can load the same package set.
 //
-// Takes packages ([]ExtractedPackage) which are the extracted packages.
+// Takes extracted ([]ExtractedPackage) which are the extracted packages.
 //
 // Returns []string which lists all package import paths.
-func collectAllImportPaths(packages []ExtractedPackage) []string {
-	paths := make([]string, 0, len(packages))
-	for i := range packages {
-		paths = append(paths, packages[i].ImportPath)
+func collectAllImportPaths(extracted []ExtractedPackage) []string {
+	paths := make([]string, 0, len(extracted))
+	for i := range extracted {
+		paths = append(paths, extracted[i].ImportPath)
 	}
 	return paths
 }
@@ -455,26 +458,44 @@ func collectAllImportPaths(packages []ExtractedPackage) []string {
 // generated package rebuild complete types.Package values at run time without a Go
 // toolchain.
 //
-// Takes packages ([]ExtractedPackage) which carry the loaded types packages.
+// Takes extracted ([]ExtractedPackage) which carry the loaded types packages.
 // Takes ec (emitContext) which bundles manifest, flags, output and writers.
 //
 // Returns error when generation or writing of any loader file fails.
-func writeTypesLoader(packages []ExtractedPackage, ec emitContext) error {
-	blobs, err := GenerateTypesExportBlobs(packages)
+func writeTypesLoader(ctx context.Context, extracted []ExtractedPackage, ec emitContext) error {
+	files, err := typesLoaderFiles(ctx, extracted, ec)
 	if err != nil {
-		return fmt.Errorf("encoding types export data: %w", err)
+		return err
+	}
+	return writeTypesExportFiles(files, ec)
+}
+
+// typesLoaderFiles generates the types loader sources, the types manifest, one blob per
+// extracted package, and each build-tag variant's manifest and blobs.
+//
+// Takes extracted ([]ExtractedPackage) which carry the loaded types packages.
+// Takes ec (emitContext) which bundles manifest, flags, output and writers.
+//
+// Returns []generatedOutput which holds every file to write.
+// Returns error when encoding or generation fails.
+func typesLoaderFiles(ctx context.Context, extracted []ExtractedPackage, ec emitContext) ([]generatedOutput, error) {
+	blobs, err := GenerateTypesExportBlobs(extracted)
+	if err != nil {
+		return nil, fmt.Errorf("encoding types export data: %w", err)
 	}
 	loaderSource, err := ec.generator.GenerateTypesLoaderFile(ec.manifest.Package)
 	if err != nil {
-		return fmt.Errorf("generating types_loader: %w", err)
+		return nil, fmt.Errorf("generating types_loader: %w", err)
 	}
 	wasmSource, err := ec.generator.GenerateTypesLoaderWASMFile(ec.manifest.Package)
 	if err != nil {
-		return fmt.Errorf("generating types_loader wasm stub: %w", err)
+		return nil, fmt.Errorf("generating types_loader wasm stub: %w", err)
 	}
-	manifestSource, err := ec.generator.GenerateTypesManifestFile(blobs, ec.manifest.Package, runtime.Version())
+	variants := ec.manifest.TypesExportVariants
+	manifestSource, err := ec.generator.generateTypesManifestFileFor(blobs, ec.manifest.Package, runtime.Version(),
+		typesExportManifestConstraint(variants, ""))
 	if err != nil {
-		return fmt.Errorf("generating types manifest: %w", err)
+		return nil, fmt.Errorf("generating types manifest: %w", err)
 	}
 	files := []generatedOutput{
 		{label: "types_loader", name: TypesLoaderFileName, data: loaderSource},
@@ -484,9 +505,32 @@ func writeTypesLoader(packages []ExtractedPackage, ec emitContext) error {
 	for _, blob := range blobs {
 		files = append(files, generatedOutput{label: "types_export " + blob.ImportPath, name: blob.FileName, data: blob.Data})
 	}
+	for _, tag := range variants {
+		variantFiles, err := typesExportVariantFiles(ctx, extracted, tag, ec)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, variantFiles...)
+	}
+	return files, nil
+}
+
+// writeTypesExportFiles resets the types export directory, creates each variant's
+// directory, and writes the generated files.
+//
+// Takes files ([]generatedOutput) which holds every file to write.
+// Takes ec (emitContext) which bundles manifest, flags, output and writers.
+//
+// Returns error when a directory or file cannot be written.
+func writeTypesExportFiles(files []generatedOutput, ec emitContext) error {
 	if ec.output != nil {
 		if err := resetTypesExportDirectory(ec.output); err != nil {
 			return err
+		}
+		for _, tag := range ec.manifest.TypesExportVariants {
+			if err := ec.output.MkdirAll(TypesExportDirectory+"/"+tag, extractDirectoryPerms); err != nil {
+				return fmt.Errorf("creating %s/%s: %w", TypesExportDirectory, tag, err)
+			}
 		}
 	}
 	for _, file := range files {
@@ -495,6 +539,75 @@ func writeTypesLoader(packages []ExtractedPackage, ec emitContext) error {
 		}
 	}
 	return nil
+}
+
+// typesExportVariantFiles loads the extracted packages' types again in the build tag
+// selects and returns that variant's manifest and blobs.
+//
+// Takes extracted ([]ExtractedPackage) which are the extracted packages (default build).
+// Takes tag (string) which is the variant's build tag.
+// Takes ec (emitContext) which bundles manifest, flags, output and writers.
+//
+// Returns []generatedOutput which holds the variant's manifest and blobs.
+// Returns error when loading, encoding or generation fails.
+func typesExportVariantFiles(ctx context.Context, extracted []ExtractedPackage, tag string, ec emitContext) ([]generatedOutput, error) {
+	paths := collectAllImportPaths(extracted)
+	config := &packages.Config{
+		Context:    ctx,
+		Mode:       packages.NeedName | packages.NeedTypes | packages.NeedImports | packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedFiles,
+		BuildFlags: []string{"-tags=" + tag},
+	}
+	loaded, err := packages.Load(config, paths...)
+	if err != nil {
+		return nil, fmt.Errorf("loading packages with -tags=%s: %w", tag, err)
+	}
+	variantPackages := make([]ExtractedPackage, 0, len(loaded))
+	for _, goPackage := range loaded {
+		if err := variantPackageErrors(goPackage, tag); err != nil {
+			return nil, err
+		}
+		variantPackages = append(variantPackages, ExtractedPackage{
+			ImportPath: goPackage.PkgPath, TypesPackage: goPackage.Types, Name: "", Symbols: nil, GenericFuncs: nil,
+			LinkedGenericFuncs: nil, LinkedGenericTypes: nil, NativeBackedGenericTypes: nil,
+		})
+	}
+	blobs, err := GenerateTypesExportBlobs(variantPackages)
+	if err != nil {
+		return nil, fmt.Errorf("encoding types export data with -tags=%s: %w", tag, err)
+	}
+	for index := range blobs {
+		blobs[index].FileName = typesExportVariantBlobFileName(tag, blobs[index].ImportPath)
+	}
+	manifestSource, err := ec.generator.generateTypesManifestFileFor(blobs, ec.manifest.Package, runtime.Version(),
+		typesExportManifestConstraint(ec.manifest.TypesExportVariants, tag))
+	if err != nil {
+		return nil, fmt.Errorf("generating types manifest for -tags=%s: %w", tag, err)
+	}
+	files := []generatedOutput{{label: "types_manifest " + tag, name: typesExportVariantManifestFileName(tag), data: manifestSource}}
+	for _, blob := range blobs {
+		files = append(files, generatedOutput{label: "types_export " + tag + " " + blob.ImportPath, name: blob.FileName, data: blob.Data})
+	}
+	return files, nil
+}
+
+// variantPackageErrors reports the errors packages.Load recorded for one package of a
+// types export variant.
+//
+// Takes goPackage (*packages.Package) which is the loaded package.
+// Takes tag (string) which is the variant's build tag.
+//
+// Returns error which wraps errTypesExportVariantPackage and joins every recorded error,
+// or nil when the package loaded cleanly.
+func variantPackageErrors(goPackage *packages.Package, tag string) error {
+	if len(goPackage.Errors) == 0 {
+		return nil
+	}
+	failures := make([]error, 0, len(goPackage.Errors))
+	for _, failure := range goPackage.Errors {
+		failures = append(failures, failure)
+	}
+	return fmt.Errorf("%w: package %s with -tags=%s: %w", errTypesExportVariantPackage, goPackage.PkgPath, tag,
+		errors.Join(failures...))
 }
 
 // resetTypesExportDirectory removes stale export blobs and recreates the blob directory

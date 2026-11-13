@@ -16,7 +16,7 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
-//go:build safe || (js && wasm)
+//go:build safe
 
 package engine
 
@@ -50,141 +50,135 @@ func readSliceStructFieldLayout(frame *CallFrame) (program.StructFieldLayout, bo
 // Takes index (int) which is the element offset.
 // Takes layout (StructFieldLayout) which encodes the field path inside the element.
 //
-// Returns the leaf reflect.Value selected by the path.
-// Returns true on success; false when bounds, kind, or field-index checks fail.
-func sliceStructFieldReflectLeaf(vm *VM, slice reflect.Value, index int, layout program.StructFieldLayout) (reflect.Value, bool) {
-	collection, _, ok := resolveIndexCollection(vm, slice)
+// Returns reflect.Value which is the leaf selected by the path.
+// Returns OpResult which is what the handler returns on failure. It is the result of
+// raising the bounds or nil-pointer panic, which a recover may have caught, and
+// opPanicError for a shape the walk cannot follow.
+// Returns bool which is true on success and false when a bounds, kind or field-index
+// check fails.
+func sliceStructFieldReflectLeaf(vm *VM, slice reflect.Value, index int, layout program.StructFieldLayout) (reflect.Value, OpResult, bool) {
+	collection, indexResult, ok := resolveIndexCollection(vm, slice)
 	if !ok {
-		return reflect.Value{}, false
+		return reflect.Value{}, indexResult, false
 	}
-	if _, ok := checkSliceBounds(vm, collection, index); !ok {
-		return reflect.Value{}, false
+	if boundsResult, ok := checkSliceBounds(vm, collection, index); !ok {
+		return reflect.Value{}, boundsResult, false
 	}
 	element := unwrapInterfaceElement(collection.Index(index))
 	for level := uint8(0); level < layout.PathLength; level++ {
 		if element.Kind() != reflect.Struct {
-			return reflect.Value{}, false
+			return reflect.Value{}, opPanicError, false
 		}
 		fieldIndex := int(layout.Path[level])
 		if fieldIndex >= element.NumField() {
-			return reflect.Value{}, false
+			return reflect.Value{}, opPanicError, false
 		}
 		element = element.Field(fieldIndex)
 	}
-	return element, true
+	return element, opContinue, true
 }
 
-// handleSliceIndexStructFieldInt writes ints[a] = (slice[c]).field.int.
-//
-// Safe-build mirror of OpSliceIndexStructFieldInt. Reads the layout extension word, walks
-// the field path via reflect, and stores the leaf Int() value.
+// handleGetElementFieldInt64 writes ints[a] = (slice[c]).field.int.
 //
 // Takes vm (*VM) which provides bounds-check error context.
 // Takes frame (*CallFrame) which supplies the extension word.
 // Takes registers (*Registers) which is the typed register file.
 // Takes instruction (instruction) which encodes dest A, slice B, and index C.
 //
-// Returns OpResult: opContinue on success, opPanicError on bounds / shape failure.
-func handleSliceIndexStructFieldInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+// Returns OpResult which is opContinue on success, opPanicError on bounds / shape
+// failure.
+func handleGetElementFieldInt64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout, ok := readSliceStructFieldLayout(frame)
 	if !ok {
 		return opPanicError
 	}
-	field, ok := sliceStructFieldReflectLeaf(vm, registers.General[instruction.B], int(registers.Ints[instruction.C]), layout)
+	field, failure, ok := sliceStructFieldReflectLeaf(vm, registers.General[instruction.B], int(registers.Ints[instruction.C]), layout)
 	if !ok {
-		return opPanicError
+		return failure
 	}
 	registers.Ints[instruction.A] = field.Int()
 	return opContinue
 }
 
-// handleSliceIndexStructFieldUint writes uints[a] = (slice[c]).field.uint.
-//
-// Safe-build mirror of isa.OpSliceIndexStructFieldUint.
+// handleGetElementFieldUint64 writes uints[a] = (slice[c]).field.uint.
 //
 // Takes vm (*VM) which provides bounds-check error context.
 // Takes frame (*CallFrame) which supplies the extension word.
 // Takes registers (*Registers) which is the typed register file.
 // Takes instruction (instruction) which encodes dest A, slice B, and index C.
 //
-// Returns OpResult: opContinue on success, opPanicError on failure.
-func handleSliceIndexStructFieldUint(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+// Returns OpResult which is opContinue on success, opPanicError on failure.
+func handleGetElementFieldUint64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout, ok := readSliceStructFieldLayout(frame)
 	if !ok {
 		return opPanicError
 	}
-	field, ok := sliceStructFieldReflectLeaf(vm, registers.General[instruction.B], int(registers.Ints[instruction.C]), layout)
+	field, failure, ok := sliceStructFieldReflectLeaf(vm, registers.General[instruction.B], int(registers.Ints[instruction.C]), layout)
 	if !ok {
-		return opPanicError
+		return failure
 	}
 	registers.Uints[instruction.A] = field.Uint()
 	return opContinue
 }
 
-// handleSliceIndexStructFieldFloat writes floats[a] = (slice[c]).field.float.
-//
-// Safe-build mirror of isa.OpSliceIndexStructFieldFloat.
+// handleGetElementFieldFloat64 writes floats[a] = (slice[c]).field.float.
 //
 // Takes vm (*VM) which provides bounds-check error context.
 // Takes frame (*CallFrame) which supplies the extension word.
 // Takes registers (*Registers) which is the typed register file.
 // Takes instruction (instruction) which encodes dest A, slice B, and index C.
 //
-// Returns OpResult: opContinue on success, opPanicError on failure.
-func handleSliceIndexStructFieldFloat(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+// Returns OpResult which is opContinue on success, opPanicError on failure.
+func handleGetElementFieldFloat64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout, ok := readSliceStructFieldLayout(frame)
 	if !ok {
 		return opPanicError
 	}
-	field, ok := sliceStructFieldReflectLeaf(vm, registers.General[instruction.B], int(registers.Ints[instruction.C]), layout)
+	field, failure, ok := sliceStructFieldReflectLeaf(vm, registers.General[instruction.B], int(registers.Ints[instruction.C]), layout)
 	if !ok {
-		return opPanicError
+		return failure
 	}
 	registers.Floats[instruction.A] = field.Float()
 	return opContinue
 }
 
-// handleSliceIndexStructFieldBool writes bools[a] = (slice[c]).field.bool.
-//
-// Safe-build mirror of isa.OpSliceIndexStructFieldBool.
+// handleGetElementFieldBool writes bools[a] = (slice[c]).field.bool.
 //
 // Takes vm (*VM) which provides bounds-check error context.
 // Takes frame (*CallFrame) which supplies the extension word.
 // Takes registers (*Registers) which is the typed register file.
 // Takes instruction (instruction) which encodes dest A, slice B, and index C.
 //
-// Returns OpResult: opContinue on success, opPanicError on failure.
-func handleSliceIndexStructFieldBool(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+// Returns OpResult which is opContinue on success, opPanicError on failure.
+func handleGetElementFieldBool(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout, ok := readSliceStructFieldLayout(frame)
 	if !ok {
 		return opPanicError
 	}
-	field, ok := sliceStructFieldReflectLeaf(vm, registers.General[instruction.B], int(registers.Ints[instruction.C]), layout)
+	field, failure, ok := sliceStructFieldReflectLeaf(vm, registers.General[instruction.B], int(registers.Ints[instruction.C]), layout)
 	if !ok {
-		return opPanicError
+		return failure
 	}
 	registers.Bools[instruction.A] = field.Bool()
 	return opContinue
 }
 
-// handleSliceIndexStructFieldString writes strings[a] = (slice[c]).field.string.
-//
-// Safe-build mirror of isa.OpSliceIndexStructFieldString.
+// handleGetElementFieldString writes strings[a] = (slice[c]).field.string.
 //
 // Takes vm (*VM) which provides bounds-check error context.
 // Takes frame (*CallFrame) which supplies the extension word.
 // Takes registers (*Registers) which is the typed register file.
 // Takes instruction (instruction) which encodes dest A, slice B, and index C.
 //
-// Returns OpResult: opContinue on success, opPanicError on failure.
-func handleSliceIndexStructFieldString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+// Returns OpResult which is opContinue on success, opPanicError on failure.
+func handleGetElementFieldString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout, ok := readSliceStructFieldLayout(frame)
 	if !ok {
 		return opPanicError
 	}
-	field, ok := sliceStructFieldReflectLeaf(vm, registers.General[instruction.B], int(registers.Ints[instruction.C]), layout)
+	field, failure, ok := sliceStructFieldReflectLeaf(vm, registers.General[instruction.B], int(registers.Ints[instruction.C]), layout)
 	if !ok {
-		return opPanicError
+		return failure
 	}
 	registers.Strings[instruction.A] = field.String()
 	return opContinue

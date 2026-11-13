@@ -19,22 +19,79 @@
 package symtab
 
 import (
+	"context"
 	"fmt"
 	"go/types"
+	"path"
 	"reflect"
+	"strings"
 
+	"pipit.sh/pipit/internal/link"
 	"pipit.sh/pipit/internal/symtab/descriptor"
 	"pipit.sh/pipit/internal/symtab/typemodel"
+)
+
+const (
+	// maximumNamedDescriptorBytes bounds the name and the package path of a named composite
+	// descriptor.
+	maximumNamedDescriptorBytes = 1 << 12
 )
 
 // errorReflectType is the predeclared error interface, which a descriptor identifies by
 // its name alone.
 var errorReflectType = reflect.TypeFor[error]()
 
-// reflectTypeMemo caches the reflect.Type already reconstructed for a nested descriptor,
-// keyed by the descriptor pointer. Without it, shared sub-descriptors would be rebuilt at
-// every parent, turning reconstruction into an exponential walk.
-type reflectTypeMemo map[*descriptor.TypeDescriptor]reflect.Type
+// reflectTypeMemo is one reconstruction's memory.
+//
+// It caches the reflect.Type already reconstructed for a nested descriptor, keyed by the
+// descriptor pointer. Without it, shared sub-descriptors would be rebuilt at every
+// parent, turning reconstruction into an exponential walk. It also keeps the order
+// entries were added, so a group of self-referential types whose build lost a race can
+// drop exactly the entries derived from its discarded types, and the groups of
+// self-referential types found by one walk of the top-level descriptor.
+type reflectTypeMemo struct {
+	// types maps each reconstructed descriptor to its runtime type.
+	types map[*descriptor.TypeDescriptor]reflect.Type
+
+	// root is the top-level descriptor the reconstruction started from.
+	root *descriptor.TypeDescriptor
+
+	// cycles is the walk of root that finds its groups, made on first use.
+	cycles *cycleWalk
+
+	// added lists the descriptors entered in types, in order.
+	added []*descriptor.TypeDescriptor
+}
+
+// store enters node's runtime type.
+//
+// Takes node (*descriptor.TypeDescriptor) which is the descriptor.
+// Takes resolved (reflect.Type) which is its runtime type.
+func (memo *reflectTypeMemo) store(node *descriptor.TypeDescriptor, resolved reflect.Type) {
+	if _, known := memo.types[node]; !known {
+		memo.added = append(memo.added, node)
+	}
+	memo.types[node] = resolved
+}
+
+// rollback drops every entry added since mark.
+//
+// Takes mark (int) which is len(memo.added) when the entries to keep were complete.
+func (memo *reflectTypeMemo) rollback(mark int) {
+	for _, node := range memo.added[mark:] {
+		delete(memo.types, node)
+	}
+	memo.added = memo.added[:mark]
+}
+
+// newReflectTypeMemo returns an empty memo for a reconstruction from root.
+//
+// Takes root (*descriptor.TypeDescriptor) which is the top-level descriptor.
+//
+// Returns *reflectTypeMemo which holds nothing yet.
+func newReflectTypeMemo(root *descriptor.TypeDescriptor) *reflectTypeMemo {
+	return &reflectTypeMemo{types: make(map[*descriptor.TypeDescriptor]reflect.Type), root: root, cycles: nil, added: nil}
+}
 
 // ReflectTypeFor reconstructs a reflect.Type from a TypeDescriptor using the
 // SymbolRegistry to resolve named types.
@@ -46,8 +103,8 @@ type reflectTypeMemo map[*descriptor.TypeDescriptor]reflect.Type
 // type switch's nil clause records.
 // Returns error when a named type cannot be found in the registry, or the nil kind sits
 // inside a composite type.
-func ReflectTypeFor(typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry) (reflect.Type, error) {
-	return descriptorToReflectTypeAtDepth(typeDescriptor, registry, 0, reflectTypeMemo{})
+func ReflectTypeFor(ctx context.Context, typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry) (reflect.Type, error) {
+	return descriptorToReflectTypeAtDepth(ctx, typeDescriptor, registry, 0, newReflectTypeMemo(&typeDescriptor))
 }
 
 // ReconstructConstant rebuilds a reflect.Value from its serialised descriptor using the
@@ -59,14 +116,14 @@ func ReflectTypeFor(typeDescriptor descriptor.TypeDescriptor, registry *SymbolRe
 //
 // Returns reflect.Value which is the reconstructed runtime value.
 // Returns error when the referenced symbol or type cannot be found.
-func ReconstructConstant(constantDescriptor descriptor.GeneralConstantDescriptor, registry *SymbolRegistry) (reflect.Value, error) {
+func ReconstructConstant(ctx context.Context, constantDescriptor descriptor.GeneralConstantDescriptor, registry *SymbolRegistry) (reflect.Value, error) {
 	switch constantDescriptor.Kind {
 	case descriptor.GeneralConstantPackageSymbol:
 		value, ok := registry.Lookup(constantDescriptor.PackagePath, constantDescriptor.SymbolName)
 		if !ok {
 			return reflect.Value{}, fmt.Errorf("symbol %s.%s not found in registry", constantDescriptor.PackagePath, constantDescriptor.SymbolName)
 		}
-		return value, nil
+		return linkedSiblingOf(value), nil
 
 	case descriptor.GeneralConstantPackageSymbolAddress:
 		value, ok := registry.Lookup(constantDescriptor.PackagePath, constantDescriptor.SymbolName)
@@ -85,7 +142,7 @@ func ReconstructConstant(constantDescriptor descriptor.GeneralConstantDescriptor
 		return zeroValue, nil
 
 	case descriptor.GeneralConstantCompositeZero:
-		reflectType, err := ReflectTypeFor(constantDescriptor.TypeDescriptor, registry)
+		reflectType, err := ReflectTypeFor(ctx, constantDescriptor.TypeDescriptor, registry)
 		if err != nil {
 			return reflect.Value{}, fmt.Errorf("reconstructing composite type: %w", err)
 		}
@@ -99,17 +156,34 @@ func ReconstructConstant(constantDescriptor descriptor.GeneralConstantDescriptor
 	}
 }
 
+// linkedSiblingOf returns the sibling a generic function or method registered as a linked
+// function or method calls through, which is the value the compiler put in the constant.
+// Any other symbol value is returned unchanged.
+//
+// Takes value (reflect.Value) which is the registered symbol value.
+//
+// Returns reflect.Value which is the constant's value.
+func linkedSiblingOf(value reflect.Value) reflect.Value {
+	if linked, ok := reflect.TypeAssert[link.LinkedFunction](value); ok {
+		return linked.Target
+	}
+	if linked, ok := reflect.TypeAssert[link.LinkedMethod](value); ok {
+		return linked.Target
+	}
+	return value
+}
+
 // descriptorToReflectTypeAtDepth reconstructs a reflect.Type from a descriptor at a given
 // recursion depth. Refuses trees deeper than MaxTypeDescriptorDepth.
 //
 // Takes typeDescriptor (TypeDescriptor) which is the type to reconstruct.
 // Takes registry (*SymbolRegistry) which provides named type lookups.
 // Takes depth (int) which is the current nesting depth.
-// Takes memo (reflectTypeMemo) which caches already reconstructed sub-descriptors.
+// Takes memo (*reflectTypeMemo) which caches already reconstructed sub-descriptors.
 //
 // Returns reflect.Type which is the reconstructed type.
 // Returns error when a sub-descriptor is corrupt or the nesting depth limit is exceeded.
-func descriptorToReflectTypeAtDepth(typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry, depth int, memo reflectTypeMemo) (reflect.Type, error) {
+func descriptorToReflectTypeAtDepth(ctx context.Context, typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry, depth int, memo *reflectTypeMemo) (reflect.Type, error) {
 	if depth > descriptor.MaxTypeDescriptorDepth {
 		return nil, fmt.Errorf("%w: type nesting exceeds %d levels", errCorruptTypeDescriptor, descriptor.MaxTypeDescriptorDepth)
 	}
@@ -122,21 +196,27 @@ func descriptorToReflectTypeAtDepth(typeDescriptor descriptor.TypeDescriptor, re
 	case descriptor.KindBasic:
 		return descriptor.BasicKindToReflect(reflect.Kind(typeDescriptor.BasicKind)), nil
 	case descriptor.KindNamed:
-		return resolveNamedType(typeDescriptor, registry)
+		if typeDescriptor.BackReference {
+			return nil, fmt.Errorf("%w: back-reference to %s.%s outside its description", errCorruptTypeDescriptor, typeDescriptor.PackagePath, typeDescriptor.Name)
+		}
+		if typeDescriptor.Element != nil {
+			return resolveNamedCompositeType(ctx, typeDescriptor, registry, depth, memo)
+		}
+		return resolveNamedType(ctx, typeDescriptor, registry)
 	case descriptor.KindPtr:
-		return resolveElementContainer(typeDescriptor, registry, reflect.PointerTo, depth, memo)
+		return resolveElementContainer(ctx, typeDescriptor, registry, reflect.PointerTo, depth, memo)
 	case descriptor.KindSlice:
-		return resolveElementContainer(typeDescriptor, registry, reflect.SliceOf, depth, memo)
+		return resolveElementContainer(ctx, typeDescriptor, registry, reflect.SliceOf, depth, memo)
 	case descriptor.KindArray:
-		return resolveArrayType(typeDescriptor, registry, depth, memo)
+		return resolveArrayType(ctx, typeDescriptor, registry, depth, memo)
 	case descriptor.KindMap:
-		return resolveMapType(typeDescriptor, registry, depth, memo)
+		return resolveMapType(ctx, typeDescriptor, registry, depth, memo)
 	case descriptor.KindChan:
-		return resolveChannelType(typeDescriptor, registry, depth, memo)
+		return resolveChannelType(ctx, typeDescriptor, registry, depth, memo)
 	case descriptor.KindFunc:
-		return reconstructFunctionType(typeDescriptor, registry, depth, memo)
+		return reconstructFunctionType(ctx, typeDescriptor, registry, depth, memo)
 	case descriptor.KindStruct:
-		return reconstructStructType(typeDescriptor, registry, depth, memo)
+		return reconstructStructType(ctx, typeDescriptor, registry, depth, memo)
 	case descriptor.KindNil:
 		if depth > 0 {
 			return nil, fmt.Errorf("%w: nil type nested inside a composite type", errCorruptTypeDescriptor)
@@ -154,22 +234,22 @@ func descriptorToReflectTypeAtDepth(typeDescriptor descriptor.TypeDescriptor, re
 // Takes registry (*SymbolRegistry) which provides named type lookups.
 // Takes role (string) which names the sub-descriptor for the error message.
 // Takes depth (int) which is the enclosing descriptor's recursion depth.
-// Takes memo (reflectTypeMemo) which caches already reconstructed sub-descriptors.
+// Takes memo (*reflectTypeMemo) which caches already reconstructed sub-descriptors.
 //
 // Returns reflect.Type which is the reconstructed sub-type.
 // Returns error when the sub-descriptor is absent or cannot be resolved.
-func resolveSubDescriptor(sub *descriptor.TypeDescriptor, registry *SymbolRegistry, role string, depth int, memo reflectTypeMemo) (reflect.Type, error) {
+func resolveSubDescriptor(ctx context.Context, sub *descriptor.TypeDescriptor, registry *SymbolRegistry, role string, depth int, memo *reflectTypeMemo) (reflect.Type, error) {
 	if sub == nil {
 		return nil, fmt.Errorf("%w: missing %s sub-descriptor", errCorruptTypeDescriptor, role)
 	}
-	if cached, ok := memo[sub]; ok {
+	if cached, ok := memo.types[sub]; ok {
 		return cached, nil
 	}
-	resolved, err := descriptorToReflectTypeAtDepth(*sub, registry, depth+1, memo)
+	resolved, err := descriptorToReflectTypeAtDepth(ctx, *sub, registry, depth+1, memo)
 	if err != nil {
 		return nil, err
 	}
-	memo[sub] = resolved
+	memo.store(sub, resolved)
 	return resolved, nil
 }
 
@@ -181,18 +261,19 @@ func resolveSubDescriptor(sub *descriptor.TypeDescriptor, registry *SymbolRegist
 // Takes wrap (func(reflect.Type) reflect.Type) which builds the outer type from the
 // resolved element.
 // Takes depth (int) which is the current nesting depth.
-// Takes memo (reflectTypeMemo) which caches already reconstructed sub-descriptors.
+// Takes memo (*reflectTypeMemo) which caches already reconstructed sub-descriptors.
 //
 // Returns reflect.Type which is the wrapped container type.
 // Returns error when the element type cannot be resolved.
 func resolveElementContainer(
+	ctx context.Context,
 	typeDescriptor descriptor.TypeDescriptor,
 	registry *SymbolRegistry,
 	wrap func(reflect.Type) reflect.Type,
 	depth int,
-	memo reflectTypeMemo,
+	memo *reflectTypeMemo,
 ) (reflect.Type, error) {
-	elementType, err := resolveSubDescriptor(typeDescriptor.Element, registry, "element", depth, memo)
+	elementType, err := resolveSubDescriptor(ctx, typeDescriptor.Element, registry, "element", depth, memo)
 	if err != nil {
 		return nil, err
 	}
@@ -205,12 +286,12 @@ func resolveElementContainer(
 // length and element type.
 // Takes registry (*SymbolRegistry) which provides named type lookups.
 // Takes depth (int) which is the current nesting depth.
-// Takes memo (reflectTypeMemo) which caches already reconstructed sub-descriptors.
+// Takes memo (*reflectTypeMemo) which caches already reconstructed sub-descriptors.
 //
 // Returns reflect.Type which is the reconstructed array type.
 // Returns error when the element type cannot be resolved.
-func resolveArrayType(typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry, depth int, memo reflectTypeMemo) (reflect.Type, error) {
-	elementType, err := resolveSubDescriptor(typeDescriptor.Element, registry, "array element", depth, memo)
+func resolveArrayType(ctx context.Context, typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry, depth int, memo *reflectTypeMemo) (reflect.Type, error) {
+	elementType, err := resolveSubDescriptor(ctx, typeDescriptor.Element, registry, "array element", depth, memo)
 	if err != nil {
 		return nil, err
 	}
@@ -245,16 +326,16 @@ func safeReflectComposite(build func() reflect.Type) (result reflect.Type, err e
 // and value types.
 // Takes registry (*SymbolRegistry) which provides named type lookups.
 // Takes depth (int) which is the current nesting depth.
-// Takes memo (reflectTypeMemo) which caches already reconstructed sub-descriptors.
+// Takes memo (*reflectTypeMemo) which caches already reconstructed sub-descriptors.
 //
 // Returns reflect.Type which is the reconstructed map type.
 // Returns error when the key or value type cannot be resolved.
-func resolveMapType(typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry, depth int, memo reflectTypeMemo) (reflect.Type, error) {
-	keyType, err := resolveSubDescriptor(typeDescriptor.Key, registry, "map key", depth, memo)
+func resolveMapType(ctx context.Context, typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry, depth int, memo *reflectTypeMemo) (reflect.Type, error) {
+	keyType, err := resolveSubDescriptor(ctx, typeDescriptor.Key, registry, "map key", depth, memo)
 	if err != nil {
 		return nil, err
 	}
-	valueType, err := resolveSubDescriptor(typeDescriptor.Value, registry, "map value", depth, memo)
+	valueType, err := resolveSubDescriptor(ctx, typeDescriptor.Value, registry, "map value", depth, memo)
 	if err != nil {
 		return nil, err
 	}
@@ -267,12 +348,12 @@ func resolveMapType(typeDescriptor descriptor.TypeDescriptor, registry *SymbolRe
 // direction and element type.
 // Takes registry (*SymbolRegistry) which provides named type lookups.
 // Takes depth (int) which is the current nesting depth.
-// Takes memo (reflectTypeMemo) which caches already reconstructed sub-descriptors.
+// Takes memo (*reflectTypeMemo) which caches already reconstructed sub-descriptors.
 //
 // Returns reflect.Type which is the reconstructed channel type.
 // Returns error when the element type cannot be resolved.
-func resolveChannelType(typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry, depth int, memo reflectTypeMemo) (reflect.Type, error) {
-	elementType, err := resolveSubDescriptor(typeDescriptor.Element, registry, "channel element", depth, memo)
+func resolveChannelType(ctx context.Context, typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry, depth int, memo *reflectTypeMemo) (reflect.Type, error) {
+	elementType, err := resolveSubDescriptor(ctx, typeDescriptor.Element, registry, "channel element", depth, memo)
 	if err != nil {
 		return nil, err
 	}
@@ -287,14 +368,14 @@ func resolveChannelType(typeDescriptor descriptor.TypeDescriptor, registry *Symb
 // parameter and result types.
 // Takes registry (*SymbolRegistry) which provides named type lookups.
 // Takes depth (int) which is the current nesting depth.
-// Takes memo (reflectTypeMemo) which caches already reconstructed sub-descriptors.
+// Takes memo (*reflectTypeMemo) which caches already reconstructed sub-descriptors.
 //
 // Returns reflect.Type which is the reconstructed function type.
 // Returns error when any parameter or result type cannot be resolved.
-func reconstructFunctionType(typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry, depth int, memo reflectTypeMemo) (reflect.Type, error) {
+func reconstructFunctionType(ctx context.Context, typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry, depth int, memo *reflectTypeMemo) (reflect.Type, error) {
 	parameterTypes := make([]reflect.Type, len(typeDescriptor.Params))
 	for i := range typeDescriptor.Params {
-		parameterType, err := resolveSubDescriptor(&typeDescriptor.Params[i], registry, "parameter", depth, memo)
+		parameterType, err := resolveSubDescriptor(ctx, &typeDescriptor.Params[i], registry, "parameter", depth, memo)
 		if err != nil {
 			return nil, err
 		}
@@ -302,7 +383,7 @@ func reconstructFunctionType(typeDescriptor descriptor.TypeDescriptor, registry 
 	}
 	resultTypes := make([]reflect.Type, len(typeDescriptor.Results))
 	for i := range typeDescriptor.Results {
-		resultType, err := resolveSubDescriptor(&typeDescriptor.Results[i], registry, "result", depth, memo)
+		resultType, err := resolveSubDescriptor(ctx, &typeDescriptor.Results[i], registry, "result", depth, memo)
 		if err != nil {
 			return nil, err
 		}
@@ -319,22 +400,23 @@ func reconstructFunctionType(typeDescriptor descriptor.TypeDescriptor, registry 
 // field names, types, and tags.
 // Takes registry (*SymbolRegistry) which provides named type lookups.
 // Takes depth (int) which is the current nesting depth.
-// Takes memo (reflectTypeMemo) which caches already reconstructed sub-descriptors.
+// Takes memo (*reflectTypeMemo) which caches already reconstructed sub-descriptors.
 //
 // Returns reflect.Type which is the reconstructed struct type.
 // Returns error when any field type cannot be resolved.
-func reconstructStructType(typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry, depth int, memo reflectTypeMemo) (reflect.Type, error) {
+func reconstructStructType(ctx context.Context, typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry, depth int, memo *reflectTypeMemo) (reflect.Type, error) {
 	structFields := make([]reflect.StructField, len(typeDescriptor.Fields))
 	for i := range typeDescriptor.Fields {
-		fieldType, err := resolveSubDescriptor(&typeDescriptor.Fields[i].Typ, registry, "field", depth, memo)
+		fieldType, err := resolveSubDescriptor(ctx, &typeDescriptor.Fields[i].Typ, registry, "field", depth, memo)
 		if err != nil {
 			return nil, err
 		}
 		structFields[i] = reflect.StructField{
-			Name:    typeDescriptor.Fields[i].Name,
-			Type:    fieldType,
-			Tag:     reflect.StructTag(typeDescriptor.Fields[i].Tag),
-			PkgPath: typeDescriptor.Fields[i].PackagePath,
+			Name:      typeDescriptor.Fields[i].Name,
+			Type:      fieldType,
+			Tag:       reflect.StructTag(typeDescriptor.Fields[i].Tag),
+			PkgPath:   typeDescriptor.Fields[i].PackagePath,
+			Anonymous: typeDescriptor.Fields[i].Embedded,
 		}
 	}
 	if err := checkReconstructedStructSize(structFields); err != nil {
@@ -364,11 +446,34 @@ func resolveHostNamedDescriptor(typeDescriptor descriptor.TypeDescriptor, regist
 	if registry == nil {
 		return nil, false
 	}
+	if erased, ok := nativeBackedInstantiation(typeDescriptor, registry); ok {
+		return erased, true
+	}
 	hostType, ok := registry.HostNamedType(typeDescriptor.PackagePath, typeDescriptor.Name)
 	if !ok || !descriptorShapeMatches(typeDescriptor, hostType) {
 		return nil, false
 	}
 	return hostType, true
+}
+
+// nativeBackedInstantiation resolves a descriptor of the erased instantiation of a
+// native-backed generic type (sync/atomic.Pointer[struct {}]), which every instantiation
+// of the type runs on, to that type, whose methods are native.
+//
+// Takes typeDescriptor (TypeDescriptor) which names the type with its type arguments.
+// Takes registry (*SymbolRegistry) which holds the native-backed generic types.
+//
+// Returns the erased instantiation and true, or false for any other descriptor.
+func nativeBackedInstantiation(typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry) (reflect.Type, bool) {
+	base, _, instantiated := strings.Cut(typeDescriptor.Name, "[")
+	if !instantiated {
+		return nil, false
+	}
+	erased, ok := registry.NativeBackedReflectType(typeDescriptor.PackagePath, base)
+	if !ok || erased.Name() != typeDescriptor.Name || !descriptorShapeMatches(typeDescriptor, erased) {
+		return nil, false
+	}
+	return erased, true
 }
 
 // descriptorShapeMatches reports whether reflectType has the shape typeDescriptor
@@ -407,6 +512,68 @@ func descriptorShapeMatches(typeDescriptor descriptor.TypeDescriptor, reflectTyp
 	}
 }
 
+// resolveNamedCompositeType rebuilds a named array, slice, map, channel or function type
+// from its name and the descriptor of its underlying type. The registry returns the type
+// the compile built when it ran in this process, so values keep one runtime type.
+//
+// Takes typeDescriptor (TypeDescriptor) which names the type and carries its underlying
+// type as Element.
+// Takes registry (*SymbolRegistry) which provides named type lookups for the underlying
+// type.
+// Takes depth (int) which is the current nesting depth.
+// Takes memo (*reflectTypeMemo) which caches already reconstructed sub-descriptors.
+//
+// Returns reflect.Type which is the named type.
+// Returns error when the underlying type cannot be resolved or the type cannot be built.
+func resolveNamedCompositeType(ctx context.Context, typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry, depth int, memo *reflectTypeMemo) (reflect.Type, error) {
+	if err := checkNamedCompositeDescriptor(typeDescriptor, registry); err != nil {
+		return nil, err
+	}
+	cycle, err := descriptorCycleOf(&typeDescriptor, memo)
+	if err != nil {
+		return nil, err
+	}
+	if cycle != nil {
+		return resolveNamedCompositeCycle(ctx, typeDescriptor, cycle, registry, depth, memo)
+	}
+	underlying, err := resolveSubDescriptor(ctx, typeDescriptor.Element, registry, "underlying", depth, memo)
+	if err != nil {
+		return nil, err
+	}
+	bareName, _, _ := strings.Cut(typeDescriptor.Name, "[")
+	identity := typemodel.NamedCompositeIdentity{
+		PkgPath:  typeDescriptor.PackagePath,
+		PkgName:  path.Base(typeDescriptor.PackagePath),
+		Name:     typeDescriptor.Name,
+		BareName: bareName,
+	}
+	named, err := registry.NamedCompositeQuota().TypeFor(identity, underlying)
+	if err != nil {
+		return nil, fmt.Errorf("named type %s.%s: %w", typeDescriptor.PackagePath, typeDescriptor.Name, err)
+	}
+	return named, nil
+}
+
+// checkNamedCompositeDescriptor refuses a named composite descriptor the compiler could
+// never have written.
+//
+// Takes typeDescriptor (descriptor.TypeDescriptor) which is a KindNamed descriptor with
+// Element.
+// Takes registry (*SymbolRegistry) which supplies the host packages. May be nil.
+//
+// Returns error which wraps errCorruptTypeDescriptor.
+func checkNamedCompositeDescriptor(typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry) error {
+	switch {
+	case typeDescriptor.Name == "":
+		return fmt.Errorf("%w: named type without a name", errCorruptTypeDescriptor)
+	case len(typeDescriptor.Name) > maximumNamedDescriptorBytes, len(typeDescriptor.PackagePath) > maximumNamedDescriptorBytes:
+		return fmt.Errorf("%w: named type name or package path passes %d bytes", errCorruptTypeDescriptor, maximumNamedDescriptorBytes)
+	case registry != nil && registry.HasHostPackage(typeDescriptor.PackagePath):
+		return fmt.Errorf("%w: named type %s.%s claims a host package", errCorruptTypeDescriptor, typeDescriptor.PackagePath, typeDescriptor.Name)
+	}
+	return nil
+}
+
 // resolveNamedType looks up a named type in the SymbolRegistry and extracts its element
 // type from the (*T)(nil) registration pattern.
 //
@@ -416,11 +583,11 @@ func descriptorShapeMatches(typeDescriptor descriptor.TypeDescriptor, reflectTyp
 //
 // Returns reflect.Type which is the resolved named type.
 // Returns error when the named type is not found in the registry.
-func resolveNamedType(typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry) (reflect.Type, error) {
+func resolveNamedType(ctx context.Context, typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry) (reflect.Type, error) {
 	value, ok := registry.Lookup(typeDescriptor.PackagePath, typeDescriptor.Name)
 	if !ok {
 		if basic, isScalar := basicKindForReflectKind(reflect.Kind(typeDescriptor.BasicKind)); isScalar {
-			if poolType := typemodel.NamedScalarPoolTypeForPath(typeDescriptor.PackagePath, typeDescriptor.Name, basic); poolType != nil {
+			if poolType := typemodel.NamedScalarPoolTypeForPath(ctx, typeDescriptor.PackagePath, typeDescriptor.Name, basic); poolType != nil {
 				return poolType, nil
 			}
 		}

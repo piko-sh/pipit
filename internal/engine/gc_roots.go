@@ -83,6 +83,17 @@ func (vm *VM) walkRoots(visitor rootVisitor) {
 	vm.walkClosureCacheRoots(visitor)
 }
 
+// walkPrivateRoots is walkRoots without the globals, which every goroutine of the VM's
+// tree shares. A shared mark reads no global (sharedMarkApplies).
+//
+// Takes visitor (rootVisitor) which carries the per-category callbacks.
+func (vm *VM) walkPrivateRoots(visitor rootVisitor) {
+	vm.walkFrameRoots(visitor)
+	vm.walkDeferStackRoots(visitor)
+	vm.walkVMStateRoots(visitor)
+	vm.walkClosureCacheRoots(visitor)
+}
+
 // walkFrameRoots visits every register and frame-metadata pointer in the active call
 // stack.
 //

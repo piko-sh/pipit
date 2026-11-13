@@ -16,7 +16,7 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
-//go:build !safe && !(js && wasm)
+//go:build !safe
 
 package engine
 
@@ -57,14 +57,27 @@ type sliceStructFieldResolution struct {
 	panicResult OpResult
 }
 
+// failure returns the result a handler gives for a resolution that did not succeed.
+//
+// A bounds or nil-pointer panic has been raised by then and a recover may have caught it,
+// so the result of raising it is passed on. A shape the walk cannot follow raised nothing
+// and is a plain error.
+//
+// Returns OpResult which is what the handler returns.
+func (r sliceStructFieldResolution) failure() OpResult {
+	if r.panicResult != opContinue {
+		return r.panicResult
+	}
+	return opPanicError
+}
+
 // readSliceStructFieldLayout fetches the StructLayoutTable entry referenced by the
-// trailing isa.OpExt word and advances the program counter past the extension.
+// trailing isa.OpExtension word and advances the program counter past the extension.
 //
-// Takes frame (*CallFrame) which provides the layout table and the isa.OpExt word at the
-// current program counter.
+// Takes frame (*CallFrame) which provides the layout table and the isa.OpExtension word
+// at the current program counter.
 //
-// Returns the resolved layout and true on success; the zero layout and false when the
-// layout index is out of range.
+// Returns the resolved layout and true on success.
 func readSliceStructFieldLayout(frame *CallFrame) (program.StructFieldLayout, bool) {
 	layoutIndex := readExtensionWideIndex(frame)
 	if int(layoutIndex) >= len(frame.Function.StructLayoutTable) {
@@ -122,7 +135,7 @@ func sliceStructFieldResolve(vm *VM, slice reflect.Value, index int, layout prog
 		ok: true, fieldPointer: nil, useUnsafe: false, panicResult: 0}
 }
 
-// handleSliceIndexStructFieldInt reads slice[index].field where the leaf is an int-kind
+// handleGetElementFieldInt64 reads slice[index].field where the leaf is an int-kind
 // value, writing the result to ints[A]. The extension word carries the StructLayoutTable
 // index.
 //
@@ -132,14 +145,14 @@ func sliceStructFieldResolve(vm *VM, slice reflect.Value, index int, layout prog
 // Takes instruction (instruction) which encodes A/B/C operands.
 //
 // Returns opPanicError on bounds / nil failure or opContinue on success.
-func handleSliceIndexStructFieldInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetElementFieldInt64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout, ok := readSliceStructFieldLayout(frame)
 	if !ok {
 		return opPanicError
 	}
 	r := sliceStructFieldResolve(vm, registers.General[instruction.B], int(registers.Ints[instruction.C]), layout, frame)
 	if !r.ok {
-		return opPanicError
+		return r.failure()
 	}
 	if r.useUnsafe {
 		switch reflect.Kind(layout.Kind) {
@@ -161,7 +174,7 @@ func handleSliceIndexStructFieldInt(vm *VM, frame *CallFrame, registers *Registe
 	return opContinue
 }
 
-// handleSliceIndexStructFieldUint reads slice[index].field for uint leaves into uints[A].
+// handleGetElementFieldUint64 reads slice[index].field for uint leaves into uints[A].
 //
 // Takes vm (*VM) which receives the EvalError on failure.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -170,14 +183,14 @@ func handleSliceIndexStructFieldInt(vm *VM, frame *CallFrame, registers *Registe
 // Takes instruction (instruction) which encodes A/B/C operands.
 //
 // Returns opPanicError on failure or opContinue on success.
-func handleSliceIndexStructFieldUint(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetElementFieldUint64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout, ok := readSliceStructFieldLayout(frame)
 	if !ok {
 		return opPanicError
 	}
 	r := sliceStructFieldResolve(vm, registers.General[instruction.B], int(registers.Ints[instruction.C]), layout, frame)
 	if !r.ok {
-		return opPanicError
+		return r.failure()
 	}
 	if r.useUnsafe {
 		switch reflect.Kind(layout.Kind) {
@@ -201,8 +214,7 @@ func handleSliceIndexStructFieldUint(vm *VM, frame *CallFrame, registers *Regist
 	return opContinue
 }
 
-// handleSliceIndexStructFieldFloat reads slice[index].field for float leaves into
-// floats[A].
+// handleGetElementFieldFloat64 reads slice[index].field for float leaves into floats[A].
 //
 // Takes vm (*VM) which receives the EvalError on failure.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -211,14 +223,14 @@ func handleSliceIndexStructFieldUint(vm *VM, frame *CallFrame, registers *Regist
 // Takes instruction (instruction) which encodes A/B/C operands.
 //
 // Returns opPanicError on failure or opContinue on success.
-func handleSliceIndexStructFieldFloat(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetElementFieldFloat64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout, ok := readSliceStructFieldLayout(frame)
 	if !ok {
 		return opPanicError
 	}
 	r := sliceStructFieldResolve(vm, registers.General[instruction.B], int(registers.Ints[instruction.C]), layout, frame)
 	if !r.ok {
-		return opPanicError
+		return r.failure()
 	}
 	if r.useUnsafe {
 		switch reflect.Kind(layout.Kind) {
@@ -234,7 +246,7 @@ func handleSliceIndexStructFieldFloat(vm *VM, frame *CallFrame, registers *Regis
 	return opContinue
 }
 
-// handleSliceIndexStructFieldBool reads slice[index].field for bool leaves into bools[A].
+// handleGetElementFieldBool reads slice[index].field for bool leaves into bools[A].
 //
 // Takes vm (*VM) which receives the EvalError on failure.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -245,14 +257,14 @@ func handleSliceIndexStructFieldFloat(vm *VM, frame *CallFrame, registers *Regis
 // Returns opPanicError on failure or opContinue on success.
 //
 //nolint:dupl // hot-path twin
-func handleSliceIndexStructFieldBool(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetElementFieldBool(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout, ok := readSliceStructFieldLayout(frame)
 	if !ok {
 		return opPanicError
 	}
 	r := sliceStructFieldResolve(vm, registers.General[instruction.B], int(registers.Ints[instruction.C]), layout, frame)
 	if !r.ok {
-		return opPanicError
+		return r.failure()
 	}
 	if r.useUnsafe {
 		registers.Bools[instruction.A] = *(*bool)(r.fieldPointer)
@@ -262,10 +274,7 @@ func handleSliceIndexStructFieldBool(vm *VM, frame *CallFrame, registers *Regist
 	return opContinue
 }
 
-// handleSliceIndexStructFieldString reads slice[index].field for string leaves into
-// strings[A]. The 16-byte Go string header (data pointer + length) is copied directly
-// without allocating a fresh Go string - the destination shares the underlying byte data
-// with the source until the string register is overwritten.
+// handleGetElementFieldString reads slice[index].field for string leaves into strings[A].
 //
 // Takes vm (*VM) which receives the EvalError on failure.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -276,14 +285,14 @@ func handleSliceIndexStructFieldBool(vm *VM, frame *CallFrame, registers *Regist
 // Returns opPanicError on failure or opContinue on success.
 //
 //nolint:dupl // hot-path twin
-func handleSliceIndexStructFieldString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetElementFieldString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout, ok := readSliceStructFieldLayout(frame)
 	if !ok {
 		return opPanicError
 	}
 	r := sliceStructFieldResolve(vm, registers.General[instruction.B], int(registers.Ints[instruction.C]), layout, frame)
 	if !r.ok {
-		return opPanicError
+		return r.failure()
 	}
 	if r.useUnsafe {
 		registers.Strings[instruction.A] = *(*string)(r.fieldPointer)

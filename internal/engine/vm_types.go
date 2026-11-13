@@ -65,7 +65,7 @@ type CallFrame struct {
 	upvalues []upvalue
 
 	// returnDestination records where to place return values in the CALLER's frame on
-	// return. Set by opCall.
+	// return. Set by isa.SubOpCall.
 	returnDestination []program.VarLocation
 
 	// arenaSave records the arena state before this frame's registers were allocated.
@@ -87,20 +87,6 @@ type CallFrame struct {
 	// rootSwapped records that entering this frame swapped the VM's root to the callee's
 	// bundle, so the snapshot must be restored when the frame pops.
 	rootSwapped bool
-}
-
-// initialiseUpvalues sets up the frame's upvalue slice from closure cells by aliasing the
-// cell array directly. upvalue is a single *UpvalueCell field, so the memory layouts
-// match (compile-time asserted above).
-//
-// Takes cells ([]*UpvalueCell) which provides the upvalue cells captured by the closure.
-// Takes _ (*RegisterArena) which is unused but retained for call-site uniformity.
-func (f *CallFrame) initialiseUpvalues(cells []*program.UpvalueCell, _ *RegisterArena) {
-	if len(cells) == 0 {
-		f.upvalues = nil
-		return
-	}
-	f.upvalues = unsafe.Slice((*upvalue)(unsafe.Pointer(&cells[0])), len(cells))
 }
 
 // SimpleDeferRecord captures the registration state for a trivial defer.
@@ -170,6 +156,13 @@ type SimpleDeferRecord struct { //nolint:govet // ASM offsets fixed
 
 // VMLimits holds resource constraints enforced during execution.
 type VMLimits struct {
+	// BorrowDeclarations holds the borrow classes the host declared for its native
+	// functions, or nil.
+	//
+	// Licensed arenas consult them; the arenas of the abandon fallback, which reuse nothing,
+	// do not. The declarations are frozen before the first evaluation.
+	BorrowDeclarations *BorrowDeclarations
+
 	// CapabilityHook is the optional capability hook consulted before every gated native
 	// operation; nil is treated as permissive.
 	CapabilityHook policy.CapabilityHook
@@ -229,10 +222,48 @@ type VMLimits struct {
 	// check.
 	DeadlockGrace time.Duration
 
-	// CallbackTimeout limits each native invocation of an interpreted closure,
-	// returning fault.ErrCallbackTimeout at the next poll or blocking wait. Zero
-	// disables this additional limit.
+	// CallbackTimeout limits each native invocation of an interpreted closure, returning
+	// fault.ErrCallbackTimeout at the next poll or blocking wait. Zero disables this
+	// additional limit.
 	CallbackTimeout time.Duration
+
+	// FinaliserTimeout limits each run of a guest finaliser or cleanup, which the Go runtime
+	// calls after the execution that registered it may have ended. Zero means
+	// defaultFinaliserTimeout.
+	FinaliserTimeout time.Duration
+
+	// AbortUnwindCost is the total cost, in cost-table units, the pending defers of a
+	// stopped VM may spend between them while it unwinds; zero selects the default of
+	// 100,000.
+	AbortUnwindCost int64
+
+	// AbortUnwindWall is the total wall time the pending defers of a stopped VM may spend
+	// waiting while it unwinds; zero selects the default of one second.
+	AbortUnwindWall time.Duration
+
+	// AbortUnwindDeferWallMax caps the wall time one deferred call of an unwinding may
+	// spend; zero selects the default of 500 ms.
+	AbortUnwindDeferWallMax time.Duration
+
+	// AbortUnwindNativeGrace is how long past its wall deadline a deferred call of an
+	// unwinding may stay inside a native call before the unwinding is abandoned and its
+	// goroutine, VM and arena are leaked; zero selects the default of 200 ms.
+	AbortUnwindNativeGrace time.Duration
+
+	// GoroutineJoinUnwindCap bounds how long the join at the end of an execution keeps
+	// waiting, from its start, while VMs of the execution unwind; zero selects the default
+	// of ten seconds.
+	GoroutineJoinUnwindCap time.Duration
+
+	// LeakedUnwinderCap is how many unwindings left blocked in native code a service allows;
+	// the one that reaches it fails the service closed with fault.ErrUnwindLeakLimit. Zero
+	// selects the default of 64.
+	LeakedUnwinderCap int64
+
+	// LockWalkMaxValues caps the values the abandoned-lock check visits from the package
+	// variables; a walk cut at the cap fails the service closed. Zero selects the default of
+	// 4,194,304.
+	LockWalkMaxValues int
 
 	// ForceGoDispatch forces the pure Go dispatch loop even on architectures with ASM
 	// threaded dispatch (amd64, arm64). Used for testing dispatch parity.
@@ -246,6 +277,12 @@ type VMLimits struct {
 	// DisableMinorGC keeps the register arena's minor collection from running. Memory grows
 	// until MaxArenaBytes is hit.
 	DisableMinorGC bool
+
+	// AbandonArenasOnRelease makes every VM of the execution acquire a freshly constructed
+	// arena, never one from the pool, with dead-chunk recycling off and no licence, and drop
+	// it to the garbage collector on release instead of resetting and pooling it, so no
+	// arena memory is reused.
+	AbandonArenasOnRelease bool
 }
 
 // ResourceTracker holds shared atomic counters for resource tracking across parent and
@@ -257,17 +294,26 @@ type ResourceTracker struct {
 	// fault.ErrDeadlock. Set through VM.SetExecutionCancel.
 	executionCancel atomic.Pointer[context.CancelCauseFunc]
 
+	// unwindersFailed holds the report of the leaked unwinding that reached the cap, once
+	// one has. It is never cleared: the service stays failed closed.
+	unwindersFailed atomic.Pointer[leakedUnwindersError]
+
+	// locks records the locks the current execution took through the sync calls Pipit makes,
+	// whether a VM of it was stopped, and the report that failed the service closed
+	// (sync_lock_ledger.go).
+	locks lockLedger
+
 	// spawned counts every goroutine launched by interpreted code that has not yet exited,
 	// so the main goroutine can join its children when it returns.
 	spawned sync.WaitGroup
 
-	// GoroutineCount tracks the number of active goroutines spawned by the VM.
-	GoroutineCount atomic.Int32
+	// licenceBlind counts the licensed-reuse walks skipped by the arenas of this goroutine
+	// tree; see licenceBlindSource.
+	licenceBlind licenceBlindCounters
 
-	// GoroutinesUnscheduled counts goroutines that have been registered but whose body has
-	// not yet started running, so the join can tell a goroutine the Go scheduler has not
-	// reached yet from one that is stuck.
-	GoroutinesUnscheduled atomic.Int32
+	// blockEpoch advances every time a counted goroutine resumes, so a deadlock grace timer
+	// can tell "still stuck" from "stuck again".
+	blockEpoch atomic.Uint64
 
 	// outputBytes tracks the total bytes written to stderr by print statements.
 	outputBytes atomic.Int64
@@ -286,41 +332,31 @@ type ResourceTracker struct {
 	// gave up joining them. A Service with a non-zero count must not be reused.
 	LeakedGoroutines atomic.Int64
 
+	// AbandonedLocks counts the locks stopped executions left held (sync_lock_ledger.go).
+	// Once it is non-zero every later execution fails at once with fault.ErrLockAbandoned.
+	AbandonedLocks atomic.Int64
+
+	// LeakedUnwinders counts the unwindings of stopped VMs left blocked in native code
+	// (vm_abort_unwind.go). Once it reaches the service's cap every later execution fails at
+	// once with fault.ErrUnwindLeakLimit.
+	LeakedUnwinders atomic.Int64
+
+	// unwinding counts VMs of the execution running their pending defers under the abort
+	// unwinding (VM.unwindAfterAbort), so the join can tell a goroutine running its defers
+	// within the unwinding's allowance from one that is stuck.
+	unwinding atomic.Int32
+
 	// blocked counts VM goroutines parked on an operation only another VM goroutine can
 	// complete; the deadlock check compares it with the live goroutine count.
 	blocked atomic.Int32
 
-	// blockEpoch advances every time a counted goroutine resumes, so a deadlock grace timer
-	// can tell "still stuck" from "stuck again".
-	blockEpoch atomic.Uint64
-}
+	// GoroutineCount tracks the number of active goroutines spawned by the VM.
+	GoroutineCount atomic.Int32
 
-// RegisterGoroutine records a newly launched goroutine on both the concurrency counter
-// and the join group. Must be paired with ReleaseGoroutine on every exit path.
-func (t *ResourceTracker) RegisterGoroutine() {
-	t.spawned.Add(1)
-	t.GoroutinesUnscheduled.Add(1)
-}
-
-// MarkGoroutineStarted records that a registered goroutine's body has begun running, so
-// the join no longer treats it as waiting for the scheduler.
-func (t *ResourceTracker) MarkGoroutineStarted() {
-	t.GoroutinesUnscheduled.Add(-1)
-}
-
-// AbandonGoroutine releases a registered goroutine that was rejected before its body was
-// ever launched.
-func (t *ResourceTracker) AbandonGoroutine() {
-	t.MarkGoroutineStarted()
-	t.ReleaseGoroutine()
-}
-
-// ReleaseGoroutine marks a goroutine as finished: the join group is released before the
-// concurrency counter drops so that a zero GoroutineCount always implies the join group
-// has been fully released too.
-func (t *ResourceTracker) ReleaseGoroutine() {
-	t.spawned.Done()
-	t.GoroutineCount.Add(-1)
+	// GoroutinesUnscheduled counts goroutines that have been registered but whose body has
+	// not yet started running, so the join can tell a goroutine the Go scheduler has not
+	// reached yet from one that is stuck.
+	GoroutinesUnscheduled atomic.Int32
 }
 
 // deferredCall records a single deferred function call.
@@ -421,6 +457,48 @@ type countingWriter struct {
 
 	// Tracker is the shared resource tracker that accumulates byte counts.
 	Tracker *ResourceTracker
+}
+
+// initialiseUpvalues sets up the frame's upvalue slice from closure cells by aliasing the
+// cell array directly. upvalue is a single *UpvalueCell field, so the memory layouts
+// match (compile-time asserted above).
+//
+// Takes cells ([]*UpvalueCell) which provides the upvalue cells captured by the closure.
+// Takes _ (*RegisterArena) which is unused but retained for call-site uniformity.
+func (f *CallFrame) initialiseUpvalues(cells []*program.UpvalueCell, _ *RegisterArena) {
+	if len(cells) == 0 {
+		f.upvalues = nil
+		return
+	}
+	f.upvalues = unsafe.Slice((*upvalue)(unsafe.Pointer(&cells[0])), len(cells))
+}
+
+// RegisterGoroutine records a newly launched goroutine on both the concurrency counter
+// and the join group. Must be paired with ReleaseGoroutine on every exit path.
+func (t *ResourceTracker) RegisterGoroutine() {
+	t.spawned.Add(1)
+	t.GoroutinesUnscheduled.Add(1)
+}
+
+// MarkGoroutineStarted records that a registered goroutine's body has begun running, so
+// the join no longer treats it as waiting for the scheduler.
+func (t *ResourceTracker) MarkGoroutineStarted() {
+	t.GoroutinesUnscheduled.Add(-1)
+}
+
+// AbandonGoroutine releases a registered goroutine that was rejected before its body was
+// ever launched.
+func (t *ResourceTracker) AbandonGoroutine() {
+	t.MarkGoroutineStarted()
+	t.ReleaseGoroutine()
+}
+
+// ReleaseGoroutine marks a goroutine as finished: the join group is released before the
+// concurrency counter drops so that a zero GoroutineCount always implies the join group
+// has been fully released too.
+func (t *ResourceTracker) ReleaseGoroutine() {
+	t.spawned.Done()
+	t.GoroutineCount.Add(-1)
 }
 
 // Write writes p to the underlying writer and adds the byte count to the tracker.

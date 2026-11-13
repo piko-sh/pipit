@@ -54,18 +54,7 @@ func (c *Compiler) tryCompileLinkedCall(
 	selectorExpression *ast.SelectorExpr,
 	expression *ast.CallExpr,
 ) (program.VarLocation, bool, error) {
-	if c.symbols == nil {
-		return program.VarLocation{}, false, nil
-	}
-	typeObject, ok := c.Info.Uses[selectorExpression.Sel]
-	if !ok || typeObject.Pkg() == nil {
-		return program.VarLocation{}, false, nil
-	}
-	value, found := c.symbols.Lookup(typeObject.Pkg().Path(), typeObject.Name())
-	if !found || !value.IsValid() || value.Type() != typemodel.LinkedFunctionReflectType {
-		return program.VarLocation{}, false, nil
-	}
-	linked, ok := typeAssertValue[link.LinkedFunction](value)
+	typeObject, linked, ok := c.linkedFunctionOf(selectorExpression)
 	if !ok {
 		return program.VarLocation{}, false, nil
 	}
@@ -82,11 +71,41 @@ func (c *Compiler) tryCompileLinkedCall(
 	if err != nil {
 		return program.VarLocation{}, false, err
 	}
-	program.EmitWide(c.Function, isa.OpLoadGeneralConst, fnRegister, constIndex)
+	program.EmitWide(c.Function, isa.OpLoadGeneralConstant, fnRegister, constIndex)
 
 	location, callErr := c.compileLinkedNativeCall(ctx, expression,
 		program.VarLocation{Register: fnRegister, Kind: isa.RegisterGeneral}, typeArgs, nil)
 	return location, true, callErr
+}
+
+// linkedFunctionOf returns the linked generic function a package-qualified selector
+// names.
+//
+// Takes selectorExpression (*ast.SelectorExpr) which is the selector.
+//
+// Returns types.Object which is the function's object.
+// Returns link.LinkedFunction which is the registered linked function.
+// Returns bool which is false when the selector names no linked function.
+func (c *Compiler) linkedFunctionOf(selectorExpression *ast.SelectorExpr) (types.Object, link.LinkedFunction, bool) {
+	if c.symbols == nil {
+		return nil, link.LinkedFunction{}, false
+	}
+	if _, isSelection := c.Info.Selections[selectorExpression]; isSelection {
+		return nil, link.LinkedFunction{}, false
+	}
+	typeObject, ok := c.Info.Uses[selectorExpression.Sel]
+	if !ok || typeObject.Pkg() == nil {
+		return nil, link.LinkedFunction{}, false
+	}
+	value, found := c.symbols.Lookup(typeObject.Pkg().Path(), typeObject.Name())
+	if !found || !value.IsValid() || value.Type() != typemodel.LinkedFunctionReflectType {
+		return nil, link.LinkedFunction{}, false
+	}
+	linked, ok := typeAssertValue[link.LinkedFunction](value)
+	if !ok {
+		return nil, link.LinkedFunction{}, false
+	}
+	return typeObject, linked, true
 }
 
 // resolveLinkedTypeArgs extracts the concrete type arguments from types.Info.Instances
@@ -133,9 +152,32 @@ func (c *Compiler) resolveLinkedTypeArgs(
 				position, typeArgs.At(position),
 				c.positionString(selectorExpression.Pos()))
 		}
+		if interfaceLosesItsMethods(typeArgs.At(position), reflectType) {
+			return nil, fmt.Errorf("%w: %s argument %d (%s) is an interface whose methods its runtime type does not carry, at %s",
+				fault.ErrLinkedCallTypeArgUnresolvable, selectorExpression.Sel.Name,
+				position, typeArgs.At(position),
+				c.positionString(selectorExpression.Pos()))
+		}
 		reflected[position] = reflectType
 	}
 	return reflected, nil
+}
+
+// interfaceLosesItsMethods reports whether typeArgument is an interface with methods that
+// its runtime type represents without them, as it does for interfaces declared in script
+// code. A linked sibling given that type would treat the interface as any, so an
+// assertion to it would hold for every value.
+//
+// Takes typeArgument (types.Type) which is the type argument.
+// Takes reflectType (reflect.Type) which is its runtime type.
+//
+// Returns true when the methods are lost.
+func interfaceLosesItsMethods(typeArgument types.Type, reflectType reflect.Type) bool {
+	iface, ok := typeArgument.Underlying().(*types.Interface)
+	if !ok || iface.NumMethods() == 0 {
+		return false
+	}
+	return reflectType.Kind() != reflect.Interface || reflectType.NumMethod() < iface.NumMethods()
 }
 
 // emitLinkedCallWithReturns handles the multi-return assignment path (a, b :=
@@ -156,18 +198,7 @@ func (c *Compiler) emitLinkedCallWithReturns(
 	callExpression *ast.CallExpr,
 	returnLocations []program.VarLocation,
 ) (bool, error) {
-	if c.symbols == nil {
-		return false, nil
-	}
-	typeObject, ok := c.Info.Uses[selectorExpression.Sel]
-	if !ok || typeObject.Pkg() == nil {
-		return false, nil
-	}
-	value, found := c.symbols.Lookup(typeObject.Pkg().Path(), typeObject.Name())
-	if !found || !value.IsValid() || value.Type() != typemodel.LinkedFunctionReflectType {
-		return false, nil
-	}
-	linked, ok := typeAssertValue[link.LinkedFunction](value)
+	typeObject, linked, ok := c.linkedFunctionOf(selectorExpression)
 	if !ok {
 		return false, nil
 	}
@@ -184,7 +215,7 @@ func (c *Compiler) emitLinkedCallWithReturns(
 	if err != nil {
 		return false, err
 	}
-	program.EmitWide(c.Function, isa.OpLoadGeneralConst, fnRegister, constIndex)
+	program.EmitWide(c.Function, isa.OpLoadGeneralConstant, fnRegister, constIndex)
 
 	argumentLocations, err := c.compileArgumentExpressions(ctx, callExpression)
 	if err != nil {
@@ -327,7 +358,7 @@ func (c *Compiler) tryCompileLinkedMethodCall(
 	if err != nil {
 		return program.VarLocation{}, false, err
 	}
-	program.EmitWide(c.Function, isa.OpLoadGeneralConst, fnRegister, constIndex)
+	program.EmitWide(c.Function, isa.OpLoadGeneralConstant, fnRegister, constIndex)
 
 	location, callErr := c.compileLinkedNativeCall(ctx, expression,
 		program.VarLocation{Register: fnRegister, Kind: isa.RegisterGeneral}, typeArgs, selectorExpression.X)

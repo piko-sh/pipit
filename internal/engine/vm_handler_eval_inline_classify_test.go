@@ -29,8 +29,8 @@ import (
 
 func inlineableSite(returnRegister uint8) program.CallSite {
 	return program.CallSite{
-		Arguments: []program.VarLocation{{Kind: isa.RegisterGeneral}, {Kind: isa.RegisterSliceUint}},
-		Returns:   []program.VarLocation{{Kind: isa.RegisterUint, Register: returnRegister}},
+		Arguments: []program.VarLocation{{Kind: isa.RegisterGeneral}, {Kind: isa.RegisterSliceUint64}},
+		Returns:   []program.VarLocation{{Kind: isa.RegisterUint64, Register: returnRegister}},
 	}
 }
 
@@ -41,10 +41,10 @@ func binopUintCandidate(arithmetic isa.Opcode) *program.CompiledFunction {
 	callee.Body = []isa.Instruction{
 		{Op: isa.OpGetStructFieldGeneral, A: 0, B: 0, C: 0},
 		isa.NewTier1Instruction(isa.SubOpCallMethodInlineable, 0, 0),
-		isa.NewInstruction(isa.OpExt, 0, 0, 0),
+		isa.NewInstruction(isa.OpExtension, 0, 0, 0),
 		{Op: isa.OpGetStructFieldGeneral, A: 1, B: 0, C: 1},
 		isa.NewTier1Instruction(isa.SubOpCallMethodInlineable, 1, 0),
-		isa.NewInstruction(isa.OpExt, 0, 0, 0),
+		isa.NewInstruction(isa.OpExtension, 0, 0, 0),
 		{Op: arithmetic, A: 0, B: 4, C: 5},
 		tier2Return(1),
 	}
@@ -58,9 +58,9 @@ func TestMatchBinopUintShapeAcceptsEachArithmeticFamily(t *testing.T) {
 		name       string
 		arithmetic isa.Opcode
 	}{
-		{name: "unsigned addition", arithmetic: isa.OpAddUint},
-		{name: "unsigned subtraction", arithmetic: isa.OpSubUint},
-		{name: "unsigned multiplication", arithmetic: isa.OpMulUint},
+		{name: "unsigned addition", arithmetic: isa.OpAddUint64},
+		{name: "unsigned subtraction", arithmetic: isa.OpSubtractUint64},
+		{name: "unsigned multiplication", arithmetic: isa.OpMultiplyUint64},
 	}
 
 	for _, tt := range tests {
@@ -97,12 +97,12 @@ func TestMatchBinopUintShapeRecordsAnOptionalTruncation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			callee := binopUintCandidate(isa.OpAddUint)
+			callee := binopUintCandidate(isa.OpAddUint64)
 			callee.Body = []isa.Instruction{
 				callee.Body[0], callee.Body[1], callee.Body[2],
 				callee.Body[3], callee.Body[4], callee.Body[5],
 				callee.Body[6],
-				{Op: isa.OpTruncateNarrow, A: 0, B: tt.width, C: uint8(isa.RegisterUint)},
+				{Op: isa.OpTruncateToWidth, A: 0, B: tt.width, C: uint8(isa.RegisterUint64)},
 				tier2Return(1),
 			}
 			descriptor := &program.InlineDescriptor{}
@@ -131,12 +131,12 @@ func TestMatchBinopUintShapeRefusesATruncationItCannotEncode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			callee := binopUintCandidate(isa.OpAddUint)
+			callee := binopUintCandidate(isa.OpAddUint64)
 			callee.Body = []isa.Instruction{
 				callee.Body[0], callee.Body[1], callee.Body[2],
 				callee.Body[3], callee.Body[4], callee.Body[5],
 				callee.Body[6],
-				{Op: isa.OpTruncateNarrow, A: 0, B: tt.width, C: uint8(isa.RegisterUint)},
+				{Op: isa.OpTruncateToWidth, A: 0, B: tt.width, C: uint8(isa.RegisterUint64)},
 				tier2Return(1),
 			}
 
@@ -149,12 +149,12 @@ func TestMatchBinopUintShapeRefusesATruncationItCannotEncode(t *testing.T) {
 func TestMatchBinopUintShapeAcceptsAnOptionalMove(t *testing.T) {
 	t.Parallel()
 
-	callee := binopUintCandidate(isa.OpAddUint)
+	callee := binopUintCandidate(isa.OpAddUint64)
 	callee.Body = []isa.Instruction{
 		callee.Body[0], callee.Body[1], callee.Body[2],
 		callee.Body[3], callee.Body[4], callee.Body[5],
 		callee.Body[6],
-		isa.NewTier1Instruction(isa.SubOpMoveUint, 1, 0),
+		isa.NewTier1Instruction(isa.SubOpMoveUint64, 1, 0),
 		tier2Return(1),
 	}
 
@@ -166,7 +166,7 @@ func TestMatchBinopUintShapeToleratesPaddingExceptBesideAnExtensionWord(t *testi
 
 	t.Run("padding around the field reads and the arithmetic is skipped", func(t *testing.T) {
 		t.Parallel()
-		callee := binopUintCandidate(isa.OpAddUint)
+		callee := binopUintCandidate(isa.OpAddUint64)
 		body := callee.Body
 		callee.Body = []isa.Instruction{
 			nop(), body[0], body[1], body[2],
@@ -180,7 +180,7 @@ func TestMatchBinopUintShapeToleratesPaddingExceptBesideAnExtensionWord(t *testi
 
 	t.Run("padding between a call and its extension word breaks the shape", func(t *testing.T) {
 		t.Parallel()
-		callee := binopUintCandidate(isa.OpAddUint)
+		callee := binopUintCandidate(isa.OpAddUint64)
 		body := callee.Body
 		callee.Body = []isa.Instruction{
 			body[0], body[1], nop(), body[2],
@@ -210,7 +210,7 @@ func TestMatchBinopUintShapeRefusesEveryGuardViolation(t *testing.T) {
 		},
 		{
 			name:   "an opening instruction that is not a general field read",
-			mutate: func(callee *program.CompiledFunction) { callee.Body[0] = isa.Instruction{Op: isa.OpAddInt} },
+			mutate: func(callee *program.CompiledFunction) { callee.Body[0] = isa.Instruction{Op: isa.OpAddInt64} },
 		},
 		{
 			name:   "a field read against a non-zero receiver",
@@ -227,7 +227,7 @@ func TestMatchBinopUintShapeRefusesEveryGuardViolation(t *testing.T) {
 		{
 			name: "a first call that is not a method call",
 			mutate: func(callee *program.CompiledFunction) {
-				callee.Body[1] = isa.NewTier1Instruction(isa.SubOpNegInt, 0, 0)
+				callee.Body[1] = isa.NewTier1Instruction(isa.SubOpNegateInt64, 0, 0)
 			},
 		},
 		{
@@ -239,13 +239,13 @@ func TestMatchBinopUintShapeRefusesEveryGuardViolation(t *testing.T) {
 		{
 			name: "a call site whose return slot is not unsigned",
 			mutate: func(callee *program.CompiledFunction) {
-				callee.CallSites[0].Returns[0].Kind = isa.RegisterInt
+				callee.CallSites[0].Returns[0].Kind = isa.RegisterInt64
 			},
 		},
 		{
 			name: "a call site whose receiver is not in the general bank",
 			mutate: func(callee *program.CompiledFunction) {
-				callee.CallSites[0].Arguments[0].Kind = isa.RegisterInt
+				callee.CallSites[0].Arguments[0].Kind = isa.RegisterInt64
 			},
 		},
 		{
@@ -256,7 +256,7 @@ func TestMatchBinopUintShapeRefusesEveryGuardViolation(t *testing.T) {
 		},
 		{
 			name:   "an arithmetic opcode outside the unsigned family",
-			mutate: func(callee *program.CompiledFunction) { callee.Body[6].Op = isa.OpDivUint },
+			mutate: func(callee *program.CompiledFunction) { callee.Body[6].Op = isa.OpDivideUint64 },
 		},
 		{
 			name:   "an arithmetic left operand that is not the first call's return slot",
@@ -268,12 +268,12 @@ func TestMatchBinopUintShapeRefusesEveryGuardViolation(t *testing.T) {
 		},
 		{
 			name:   "a body that does not end in a return",
-			mutate: func(callee *program.CompiledFunction) { callee.Body[7] = isa.Instruction{Op: isa.OpAddInt} },
+			mutate: func(callee *program.CompiledFunction) { callee.Body[7] = isa.Instruction{Op: isa.OpAddInt64} },
 		},
 		{
 			name: "real work after the return",
 			mutate: func(callee *program.CompiledFunction) {
-				callee.Body = append(callee.Body, isa.Instruction{Op: isa.OpAddInt})
+				callee.Body = append(callee.Body, isa.Instruction{Op: isa.OpAddInt64})
 			},
 		},
 	}
@@ -281,7 +281,7 @@ func TestMatchBinopUintShapeRefusesEveryGuardViolation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			callee := binopUintCandidate(isa.OpAddUint)
+			callee := binopUintCandidate(isa.OpAddUint64)
 			tt.mutate(callee)
 
 			require.False(t, matchBinopUintShape(callee, nil),
@@ -315,19 +315,19 @@ func TestIsInlineableShapeRequiresTwoArgumentsAndAnUnsignedReturn(t *testing.T) 
 		want      bool
 	}{
 		{name: "a general receiver with an unsigned return is inlineable",
-			arguments: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterSliceUint}, returns: []isa.RegisterKind{isa.RegisterUint}, want: true},
+			arguments: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterSliceUint64}, returns: []isa.RegisterKind{isa.RegisterUint64}, want: true},
 		{name: "a single argument is refused",
-			arguments: []isa.RegisterKind{isa.RegisterGeneral}, returns: []isa.RegisterKind{isa.RegisterUint}, want: false},
+			arguments: []isa.RegisterKind{isa.RegisterGeneral}, returns: []isa.RegisterKind{isa.RegisterUint64}, want: false},
 		{name: "three arguments are refused",
-			arguments: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterSliceUint, isa.RegisterInt}, returns: []isa.RegisterKind{isa.RegisterUint}, want: false},
+			arguments: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterSliceUint64, isa.RegisterInt64}, returns: []isa.RegisterKind{isa.RegisterUint64}, want: false},
 		{name: "no return slot is refused",
-			arguments: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterSliceUint}, returns: nil, want: false},
+			arguments: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterSliceUint64}, returns: nil, want: false},
 		{name: "two return slots are refused",
-			arguments: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterSliceUint}, returns: []isa.RegisterKind{isa.RegisterUint, isa.RegisterUint}, want: false},
+			arguments: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterSliceUint64}, returns: []isa.RegisterKind{isa.RegisterUint64, isa.RegisterUint64}, want: false},
 		{name: "a receiver outside the general bank is refused",
-			arguments: []isa.RegisterKind{isa.RegisterInt, isa.RegisterSliceUint}, returns: []isa.RegisterKind{isa.RegisterUint}, want: false},
+			arguments: []isa.RegisterKind{isa.RegisterInt64, isa.RegisterSliceUint64}, returns: []isa.RegisterKind{isa.RegisterUint64}, want: false},
 		{name: "a return outside the unsigned bank is refused",
-			arguments: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterSliceUint}, returns: []isa.RegisterKind{isa.RegisterInt}, want: false},
+			arguments: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterSliceUint64}, returns: []isa.RegisterKind{isa.RegisterInt64}, want: false},
 	}
 
 	for _, tt := range tests {
@@ -351,11 +351,11 @@ func TestInlineEvalFullFrameCalleeAcceptableChecksBanksAndCounts(t *testing.T) {
 
 	acceptable := func() *program.CompiledFunction {
 		callee := program.NewNamedFunction("callee")
-		callee.ParameterKinds = []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterSliceUint}
-		callee.ResultKinds = []isa.RegisterKind{isa.RegisterUint}
+		callee.ParameterKinds = []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterSliceUint64}
+		callee.ResultKinds = []isa.RegisterKind{isa.RegisterUint64}
 		callee.NumRegisters[isa.RegisterGeneral] = 1
-		callee.NumRegisters[isa.RegisterUint] = 1
-		callee.NumRegisters[isa.RegisterSliceUint] = 1
+		callee.NumRegisters[isa.RegisterUint64] = 1
+		callee.NumRegisters[isa.RegisterSliceUint64] = 1
 		return callee
 	}
 
@@ -369,13 +369,13 @@ func TestInlineEvalFullFrameCalleeAcceptableChecksBanksAndCounts(t *testing.T) {
 		name   string
 	}{
 		{name: "a single parameter", mutate: func(c *program.CompiledFunction) { c.ParameterKinds = c.ParameterKinds[:1] }},
-		{name: "a receiver outside the general bank", mutate: func(c *program.CompiledFunction) { c.ParameterKinds[0] = isa.RegisterInt }},
-		{name: "an environment parameter in an unsupported bank", mutate: func(c *program.CompiledFunction) { c.ParameterKinds[1] = isa.RegisterInt }},
+		{name: "a receiver outside the general bank", mutate: func(c *program.CompiledFunction) { c.ParameterKinds[0] = isa.RegisterInt64 }},
+		{name: "an environment parameter in an unsupported bank", mutate: func(c *program.CompiledFunction) { c.ParameterKinds[1] = isa.RegisterInt64 }},
 		{name: "no result", mutate: func(c *program.CompiledFunction) { c.ResultKinds = nil }},
-		{name: "a result outside the unsigned bank", mutate: func(c *program.CompiledFunction) { c.ResultKinds[0] = isa.RegisterInt }},
+		{name: "a result outside the unsigned bank", mutate: func(c *program.CompiledFunction) { c.ResultKinds[0] = isa.RegisterInt64 }},
 		{name: "no general registers", mutate: func(c *program.CompiledFunction) { c.NumRegisters[isa.RegisterGeneral] = 0 }},
-		{name: "no unsigned registers", mutate: func(c *program.CompiledFunction) { c.NumRegisters[isa.RegisterUint] = 0 }},
-		{name: "no unsigned slice register for a slice environment", mutate: func(c *program.CompiledFunction) { c.NumRegisters[isa.RegisterSliceUint] = 0 }},
+		{name: "no unsigned registers", mutate: func(c *program.CompiledFunction) { c.NumRegisters[isa.RegisterUint64] = 0 }},
+		{name: "no unsigned slice register for a slice environment", mutate: func(c *program.CompiledFunction) { c.NumRegisters[isa.RegisterSliceUint64] = 0 }},
 		{
 			name: "only one general register for a general environment",
 			mutate: func(c *program.CompiledFunction) {
@@ -405,10 +405,10 @@ func TestIsInlineEvalEnvKindAcceptsOnlyTwoBanks(t *testing.T) {
 		want bool
 	}{
 		{name: "the general bank is an environment", kind: isa.RegisterGeneral, want: true},
-		{name: "the unsigned slice bank is an environment", kind: isa.RegisterSliceUint, want: true},
-		{name: "the integer bank is not", kind: isa.RegisterInt, want: false},
-		{name: "the unsigned bank is not", kind: isa.RegisterUint, want: false},
-		{name: "the integer slice bank is not", kind: isa.RegisterSliceInt, want: false},
+		{name: "the unsigned slice bank is an environment", kind: isa.RegisterSliceUint64, want: true},
+		{name: "the integer bank is not", kind: isa.RegisterInt64, want: false},
+		{name: "the unsigned bank is not", kind: isa.RegisterUint64, want: false},
+		{name: "the integer slice bank is not", kind: isa.RegisterSliceInt64, want: false},
 		{name: "the string bank is not", kind: isa.RegisterString, want: false},
 	}
 

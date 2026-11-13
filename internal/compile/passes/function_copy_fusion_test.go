@@ -48,13 +48,13 @@ func copyFusionFunction(tail ...isa.Instruction) *program.CompiledFunction {
 
 func fuseCopyAtStart(compiledFunction *program.CompiledFunction) bool {
 	body := compiledFunction.Body
-	return FuseCopyStructFieldGeneralT0(compiledFunction, body, 0, len(body), BuildAllJumpTargets(body))
+	return FuseCopyStructFieldGeneral(compiledFunction, body, 0, len(body), BuildAllJumpTargets(body))
 }
 
 func TestFuseCopyStructFieldFollowsFusedBranches(t *testing.T) {
 	t.Parallel()
 
-	writeTemp := mk(isa.OpLoadGeneralConst, copyFusionTemp, 0, 0)
+	writeTemp := mk(isa.OpLoadGeneralConstant, copyFusionTemp, 0, 0)
 	readTemp := mk(isa.OpMoveGeneral, 9, copyFusionTemp, 0)
 	ret := isa.NewTier2Instruction(isa.SubOpTier2Return, 0)
 
@@ -65,17 +65,17 @@ func TestFuseCopyStructFieldFollowsFusedBranches(t *testing.T) {
 	}{
 		{
 			name:  "both edges of a fused compare write the temporary",
-			tail:  []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 0, 1), fusedExt(1), writeTemp, ret},
+			tail:  []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLessThanInt64ThenJumpIfFalse, 0, 1), fusedExt(1), writeTemp, ret},
 			fused: true,
 		},
 		{
 			name:  "the taken edge of a fused compare reads the temporary",
-			tail:  []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 0, 1), fusedExt(1), writeTemp, readTemp, ret},
+			tail:  []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLessThanInt64ThenJumpIfFalse, 0, 1), fusedExt(1), writeTemp, readTemp, ret},
 			fused: false,
 		},
 		{
 			name:  "the fall-through of a fused compare reads the temporary",
-			tail:  []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 0, 1), fusedExt(1), readTemp, writeTemp, ret},
+			tail:  []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLessThanInt64ThenJumpIfFalse, 0, 1), fusedExt(1), readTemp, writeTemp, ret},
 			fused: false,
 		},
 		{
@@ -86,7 +86,7 @@ func TestFuseCopyStructFieldFollowsFusedBranches(t *testing.T) {
 		{
 			name: "a uint fusion's padding is stepped over before the fall-through, and its target reads",
 			tail: []isa.Instruction{
-				isa.NewTier1Instruction(isa.SubOpEqUintConstJumpFalse, 0, 7), fusedExt(1), mk(isa.OpNop, 0, 0, 0),
+				isa.NewTier1Instruction(isa.SubOpEqualUint64ImmediateThenJumpIfFalse, 0, 7), fusedExt(1), mk(isa.OpNoOperation, 0, 0, 0),
 				writeTemp,
 				readTemp,
 				ret,
@@ -96,7 +96,7 @@ func TestFuseCopyStructFieldFollowsFusedBranches(t *testing.T) {
 		{
 			name: "a uint fusion's padding is stepped over before the fall-through, and its target writes",
 			tail: []isa.Instruction{
-				isa.NewTier1Instruction(isa.SubOpEqUintConstJumpFalse, 0, 7), fusedExt(1), mk(isa.OpNop, 0, 0, 0),
+				isa.NewTier1Instruction(isa.SubOpEqualUint64ImmediateThenJumpIfFalse, 0, 7), fusedExt(1), mk(isa.OpNoOperation, 0, 0, 0),
 				writeTemp,
 				writeTemp,
 				ret,
@@ -121,8 +121,8 @@ func TestFuseCopyStructFieldFollowsFusedBranches(t *testing.T) {
 			compiledFunction := copyFusionFunction(testCase.tail...)
 			require.Equal(t, testCase.fused, fuseCopyAtStart(compiledFunction))
 			if testCase.fused {
-				require.Equal(t, isa.OpCopyStructFieldGeneralT0, compiledFunction.Body[0].Op)
-				require.Equal(t, isa.OpExt, compiledFunction.Body[1].Op)
+				require.Equal(t, isa.OpCopyStructFieldGeneral, compiledFunction.Body[0].Op)
+				require.Equal(t, isa.OpExtension, compiledFunction.Body[1].Op)
 			} else {
 				require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[0].Op, "a refused fusion leaves the pair alone")
 			}

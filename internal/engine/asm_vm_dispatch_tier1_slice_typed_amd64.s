@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerSliceGetIntDirect sets ints[A] = slicesInt[B][ints[C]] with bounds check.
-TEXT ·handlerSliceGetIntDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceInt64Element sets ints[A] = slicesInt[B][ints[C]] with bounds check.
+TEXT ·handlerGetSliceInt64Element(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $16, BX
 	MOVBLZX BL, BX
@@ -50,8 +50,8 @@ TEXT ·handlerSliceGetIntDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	JMP     ·pathBFallback(SB)
 
-// handlerSliceSetIntDirect sets slicesInt[A][ints[B]] = ints[C] with bounds check.
-TEXT ·handlerSliceSetIntDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSetSliceInt64Element sets slicesInt[A][ints[B]] = ints[C] with bounds check.
+TEXT ·handlerSetSliceInt64Element(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $8, BX
 	MOVBLZX BL, BX
@@ -74,8 +74,8 @@ TEXT ·handlerSliceSetIntDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	JMP     ·pathBFallback(SB)
 
-// handlerSliceGetIntDirectUnchecked sets ints[A] = slicesInt[B][ints[C]] without a bounds check (BCE-proven).
-TEXT ·handlerSliceGetIntDirectUnchecked(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceInt64ElementUnchecked sets ints[A] = slicesInt[B][ints[C]] without a bounds check (BCE-proven).
+TEXT ·handlerGetSliceInt64ElementUnchecked(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $16, BX
 	MOVBLZX BL, BX
@@ -95,8 +95,8 @@ TEXT ·handlerSliceGetIntDirectUnchecked(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CX, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSliceSetIntDirectUnchecked sets slicesInt[A][ints[B]] = ints[C] without a bounds check (BCE-proven).
-TEXT ·handlerSliceSetIntDirectUnchecked(SB), NOSPLIT|NOFRAME, $0
+// handlerSetSliceInt64ElementUnchecked sets slicesInt[A][ints[B]] = ints[C] without a bounds check (BCE-proven).
+TEXT ·handlerSetSliceInt64ElementUnchecked(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $8, BX
 	MOVBLZX BL, BX
@@ -115,8 +115,8 @@ TEXT ·handlerSliceSetIntDirectUnchecked(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CX, (DI)(BX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpLenSliceIntDirect sets ints[B] = int64(len(slicesInt[C])).
-TEXT ·handlerSubOpLenSliceIntDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerLengthSliceInt64 sets ints[B] = int64(len(slicesInt[C])).
+TEXT ·handlerLengthSliceInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -129,8 +129,8 @@ TEXT ·handlerSubOpLenSliceIntDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpLenSliceFloatDirect sets ints[B] = int64(len(slicesFloat[C])).
-TEXT ·handlerSubOpLenSliceFloatDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerLengthSliceFloat64 sets ints[B] = int64(len(slicesFloat[C])).
+TEXT ·handlerLengthSliceFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -143,8 +143,8 @@ TEXT ·handlerSubOpLenSliceFloatDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpLenSliceStringDirect sets ints[B] = int64(len(slicesString[C])).
-TEXT ·handlerSubOpLenSliceStringDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerLengthSliceString sets ints[B] = int64(len(slicesString[C])).
+TEXT ·handlerLengthSliceString(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -157,8 +157,8 @@ TEXT ·handlerSubOpLenSliceStringDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpLenSliceBoolDirect sets ints[B] = int64(len(slicesBool[C])).
-TEXT ·handlerSubOpLenSliceBoolDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerLengthSliceBool sets ints[B] = int64(len(slicesBool[C])).
+TEXT ·handlerLengthSliceBool(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -171,8 +171,8 @@ TEXT ·handlerSubOpLenSliceBoolDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpLenSliceUintDirect sets ints[B] = int64(len(slicesUint[C])).
-TEXT ·handlerSubOpLenSliceUintDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerLengthSliceUint64 sets ints[B] = int64(len(slicesUint[C])).
+TEXT ·handlerLengthSliceUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -185,8 +185,8 @@ TEXT ·handlerSubOpLenSliceUintDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpLenSliceByteDirect sets ints[B] = int64(len(slicesByte[C])).
-TEXT ·handlerSubOpLenSliceByteDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerLengthSliceByte sets ints[B] = int64(len(slicesByte[C])).
+TEXT ·handlerLengthSliceByte(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -199,8 +199,8 @@ TEXT ·handlerSubOpLenSliceByteDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpSliceGetFloatDirect sets floats[B] = slicesFloat[C][ints[ext.A]] with bounds check.
-TEXT ·handlerSubOpSliceGetFloatDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceFloat64Element sets floats[B] = slicesFloat[C][ints[ext.A]] with bounds check.
+TEXT ·handlerGetSliceFloat64Element(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -224,8 +224,8 @@ TEXT ·handlerSubOpSliceGetFloatDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpSliceSetFloatDirect sets slicesFloat[B][ints[C]] = floats[ext.A] with bounds check.
-TEXT ·handlerSubOpSliceSetFloatDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSetSliceFloat64Element sets slicesFloat[B][ints[C]] = floats[ext.A] with bounds check.
+TEXT ·handlerSetSliceFloat64Element(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -249,8 +249,8 @@ TEXT ·handlerSubOpSliceSetFloatDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpSliceGetUintDirect sets uints[B] = slicesUint[C][ints[ext.A]] with bounds check.
-TEXT ·handlerSubOpSliceGetUintDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceUint64Element sets uints[B] = slicesUint[C][ints[ext.A]] with bounds check.
+TEXT ·handlerGetSliceUint64Element(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -275,8 +275,8 @@ TEXT ·handlerSubOpSliceGetUintDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpSliceSetUintDirect sets slicesUint[B][ints[C]] = uints[ext.A] with bounds check.
-TEXT ·handlerSubOpSliceSetUintDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSetSliceUint64Element sets slicesUint[B][ints[C]] = uints[ext.A] with bounds check.
+TEXT ·handlerSetSliceUint64Element(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -301,8 +301,8 @@ TEXT ·handlerSubOpSliceSetUintDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpSliceGetBoolDirect sets bools[B] = slicesBool[C][ints[ext.A]] with bounds check.
-TEXT ·handlerSubOpSliceGetBoolDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceBoolElement sets bools[B] = slicesBool[C][ints[ext.A]] with bounds check.
+TEXT ·handlerGetSliceBoolElement(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -327,8 +327,8 @@ TEXT ·handlerSubOpSliceGetBoolDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpSliceSetBoolDirect sets slicesBool[B][ints[C]] = bools[ext.A] with bounds check.
-TEXT ·handlerSubOpSliceSetBoolDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSetSliceBoolElement sets slicesBool[B][ints[C]] = bools[ext.A] with bounds check.
+TEXT ·handlerSetSliceBoolElement(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -353,8 +353,8 @@ TEXT ·handlerSubOpSliceSetBoolDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpSliceGetStringDirect sets strings[B] = slicesString[C][ints[ext.A]] with bounds check.
-TEXT ·handlerSubOpSliceGetStringDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceStringElement sets strings[B] = slicesString[C][ints[ext.A]] with bounds check.
+TEXT ·handlerGetSliceStringElement(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, AX
@@ -387,8 +387,8 @@ bounds_fail:
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpSliceGetByteDirect sets uints[B] = uint64(slicesByte[C][ints[ext.A]]) with bounds check.
-TEXT ·handlerSubOpSliceGetByteDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceByteElement sets uints[B] = uint64(slicesByte[C][ints[ext.A]]) with bounds check.
+TEXT ·handlerGetSliceByteElement(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -413,8 +413,33 @@ TEXT ·handlerSubOpSliceGetByteDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpSliceSetByteDirect sets slicesByte[B][ints[C]] = byte(uints[ext.A]) with bounds check.
-TEXT ·handlerSubOpSliceSetByteDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceByteElementInt64 sets ints[B] = int64(slicesByte[C][ints[ext.A]]) with bounds check.
+TEXT ·handlerGetSliceByteElementInt64(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	MOVQ    DX, BX
+	SHRQ    $24, BX
+	MOVQ    CTX_SLICES_BYTE_BASE(R15), SI
+	IMULQ   $24, BX
+	ADDQ    BX, SI
+	MOVQ    0(SI), DI
+	MOVQ    8(SI), CX
+	MOVL    (R12)(R14*4), BX
+	SHRQ    $8, BX
+	MOVBLZX BL, BX
+	MOVQ    (R8)(BX*8), BX
+	CMPQ    BX, CX
+	JAE     bounds_fail
+	MOVBLZX (DI)(BX*1), CX
+	MOVQ    CX, (R8)(AX*8)
+	INCQ    R14
+	DISPATCH_NEXT()
+bounds_fail:
+	JMP     ·pathBFallback(SB)
+
+// handlerSetSliceByteElement sets slicesByte[B][ints[C]+ext.B] = byte(uints[ext.A]) with bounds check.
+TEXT ·handlerSetSliceByteElement(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -424,11 +449,15 @@ TEXT ·handlerSubOpSliceSetByteDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_SLICES_BYTE_BASE(R15), SI
 	IMULQ   $24, AX
 	ADDQ    AX, SI
+	MOVL    (R12)(R14*4), AX
+	MOVQ    AX, CX
+	SHRQ    $16, CX
+	MOVBLZX CL, CX
+	ADDQ    CX, BX
 	MOVQ    0(SI), DI
 	MOVQ    8(SI), CX
 	CMPQ    BX, CX
 	JAE     bounds_fail
-	MOVL    (R12)(R14*4), AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
 	MOVQ    CTX_UINTS_BASE(R15), SI
@@ -439,8 +468,71 @@ TEXT ·handlerSubOpSliceSetByteDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpSliceByteSlice sets slicesByte[A] = slicesByte[C][ints[ext.b]:ints[ext.c]] (no max-bound) inline.
-TEXT ·handlerSubOpSliceByteSlice(SB), NOSPLIT|NOFRAME, $0
+// handlerSetSliceByteElementRun stores ext1.C bytes at slicesByte[B][ints[C]+ext1.B] onwards, the byte of each store from the uint register its own extension word names in A.
+TEXT ·handlerSetSliceByteElementRun(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	MOVQ    DX, BX
+	SHRQ    $24, BX
+	MOVQ    (R8)(BX*8), BX
+	MOVQ    CTX_SLICES_BYTE_BASE(R15), SI
+	IMULQ   $24, AX
+	ADDQ    AX, SI
+	MOVQ    0(SI), DI
+	MOVQ    8(SI), SI
+	MOVL    (R12)(R14*4), AX
+	MOVQ    AX, CX
+	SHRQ    $16, CX
+	MOVBLZX CL, CX
+	ADDQ    CX, BX
+	CMPQ    BX, SI
+	JAE     bounds_fail
+	MOVQ    AX, CX
+	SHRQ    $24, CX
+	CMPQ    CX, $2
+	JLT     bounds_fail
+	CMPQ    CX, $4
+	JA      bounds_fail
+	SUBQ    BX, SI
+	CMPQ    CX, SI
+	JA      bounds_fail
+	ADDQ    BX, DI
+	MOVQ    CTX_UINTS_BASE(R15), SI
+	SHRQ    $8, AX
+	MOVBLZX AL, AX
+	MOVQ    (SI)(AX*8), AX
+	MOVB    AL, (DI)
+	MOVL    4(R12)(R14*4), AX
+	SHRQ    $8, AX
+	MOVBLZX AL, AX
+	MOVQ    (SI)(AX*8), AX
+	MOVB    AL, 1(DI)
+	CMPQ    CX, $3
+	JLT     run_of_two
+	MOVL    8(R12)(R14*4), AX
+	SHRQ    $8, AX
+	MOVBLZX AL, AX
+	MOVQ    (SI)(AX*8), AX
+	MOVB    AL, 2(DI)
+	CMPQ    CX, $4
+	JLT     run_of_three
+	MOVL    12(R12)(R14*4), AX
+	SHRQ    $8, AX
+	MOVBLZX AL, AX
+	MOVQ    (SI)(AX*8), AX
+	MOVB    AL, 3(DI)
+	INCQ    R14
+run_of_three:
+	INCQ    R14
+run_of_two:
+	ADDQ    $2, R14
+	DISPATCH_NEXT()
+bounds_fail:
+	JMP     ·pathBFallback(SB)
+
+// handlerSliceSliceByte sets slicesByte[A] = slicesByte[C][ints[ext.b]:ints[ext.c]] (no max-bound) inline.
+TEXT ·handlerSliceSliceByte(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, AX
@@ -501,8 +593,8 @@ bounds_fail:
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpMoveSliceInt copies slicesInt[C] to slicesInt[B] for the tier-1 typed-slice header move sub-op.
-TEXT ·handlerSubOpMoveSliceInt(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveSliceInt64 copies slicesInt[C] to slicesInt[B] for the tier-1 typed-slice header move sub-op.
+TEXT ·handlerMoveSliceInt64(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, AX
@@ -527,8 +619,8 @@ TEXT ·handlerSubOpMoveSliceInt(SB), NOSPLIT|NOFRAME, $0
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpMoveSliceFloat copies slicesFloat[C] to slicesFloat[B] for the tier-1 typed-slice header move sub-op.
-TEXT ·handlerSubOpMoveSliceFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveSliceFloat64 copies slicesFloat[C] to slicesFloat[B] for the tier-1 typed-slice header move sub-op.
+TEXT ·handlerMoveSliceFloat64(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, AX
@@ -553,8 +645,8 @@ TEXT ·handlerSubOpMoveSliceFloat(SB), NOSPLIT|NOFRAME, $0
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpMoveSliceString copies slicesString[C] to slicesString[B] for the tier-1 typed-slice header move sub-op.
-TEXT ·handlerSubOpMoveSliceString(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveSliceString copies slicesString[C] to slicesString[B] for the tier-1 typed-slice header move sub-op.
+TEXT ·handlerMoveSliceString(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, AX
@@ -579,8 +671,8 @@ TEXT ·handlerSubOpMoveSliceString(SB), NOSPLIT|NOFRAME, $0
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpMoveSliceBool copies slicesBool[C] to slicesBool[B] for the tier-1 typed-slice header move sub-op.
-TEXT ·handlerSubOpMoveSliceBool(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveSliceBool copies slicesBool[C] to slicesBool[B] for the tier-1 typed-slice header move sub-op.
+TEXT ·handlerMoveSliceBool(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, AX
@@ -605,8 +697,8 @@ TEXT ·handlerSubOpMoveSliceBool(SB), NOSPLIT|NOFRAME, $0
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpMoveSliceUint copies slicesUint[C] to slicesUint[B] for the tier-1 typed-slice header move sub-op.
-TEXT ·handlerSubOpMoveSliceUint(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveSliceUint64 copies slicesUint[C] to slicesUint[B] for the tier-1 typed-slice header move sub-op.
+TEXT ·handlerMoveSliceUint64(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, AX
@@ -631,8 +723,8 @@ TEXT ·handlerSubOpMoveSliceUint(SB), NOSPLIT|NOFRAME, $0
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpMoveSliceByte copies slicesByte[C] to slicesByte[B] for the tier-1 typed-slice header move sub-op.
-TEXT ·handlerSubOpMoveSliceByte(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveSliceByte copies slicesByte[C] to slicesByte[B] for the tier-1 typed-slice header move sub-op.
+TEXT ·handlerMoveSliceByte(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, AX
@@ -657,8 +749,8 @@ TEXT ·handlerSubOpMoveSliceByte(SB), NOSPLIT|NOFRAME, $0
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpSliceSliceIntDirect performs slicesInt[A] = slicesInt[C][low:high] with bounds check (any two-index form).
-TEXT ·handlerSubOpSliceSliceIntDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSliceSliceInt64 performs slicesInt[A] = slicesInt[C][low:high] with bounds check (any two-index form).
+TEXT ·handlerSliceSliceInt64(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, AX
@@ -720,8 +812,8 @@ bounds_fail:
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpSliceSliceFloatDirect performs slicesFloat[A] = slicesFloat[C][low:high] with bounds check (any two-index form).
-TEXT ·handlerSubOpSliceSliceFloatDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSliceSliceFloat64 performs slicesFloat[A] = slicesFloat[C][low:high] with bounds check (any two-index form).
+TEXT ·handlerSliceSliceFloat64(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, AX
@@ -783,8 +875,8 @@ bounds_fail:
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpSliceSliceStringDirect performs slicesString[A] = slicesString[C][low:high] with bounds check (any two-index form).
-TEXT ·handlerSubOpSliceSliceStringDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSliceSliceString performs slicesString[A] = slicesString[C][low:high] with bounds check (any two-index form).
+TEXT ·handlerSliceSliceString(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, AX
@@ -846,8 +938,8 @@ bounds_fail:
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpSliceSliceBoolDirect performs slicesBool[A] = slicesBool[C][low:high] with bounds check (any two-index form).
-TEXT ·handlerSubOpSliceSliceBoolDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSliceSliceBool performs slicesBool[A] = slicesBool[C][low:high] with bounds check (any two-index form).
+TEXT ·handlerSliceSliceBool(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, AX
@@ -908,8 +1000,8 @@ bounds_fail:
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpSliceSliceUintDirect performs slicesUint[A] = slicesUint[C][low:high] with bounds check (any two-index form).
-TEXT ·handlerSubOpSliceSliceUintDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSliceSliceUint64 performs slicesUint[A] = slicesUint[C][low:high] with bounds check (any two-index form).
+TEXT ·handlerSliceSliceUint64(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, AX
@@ -971,8 +1063,8 @@ bounds_fail:
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpAppendSliceIntDirect - 3-operand shim wrapping ·asmCallAppendSliceIntDirect (typed-bank []int64 append).
-TEXT ·handlerSubOpAppendSliceIntDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerAppendSliceInt64 - 3-operand shim wrapping ·asmCallAppendSliceInt64 (typed-bank []int64 append).
+TEXT ·handlerAppendSliceInt64(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -989,7 +1081,7 @@ TEXT ·handlerSubOpAppendSliceIntDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    BX, 8(SP)
 	MOVQ    CX, 16(SP)
 	MOVQ    AX, 24(SP)
-	CALL    ·asmCallAppendSliceIntDirect(SB)
+	CALL    ·asmCallAppendSliceInt64(SB)
 	MOVQ    32(SP), R15
 	ADJSP   $-40
 	MOVQ    CTX_SAVED_PC(R15), R14
@@ -1001,8 +1093,8 @@ TEXT ·handlerSubOpAppendSliceIntDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpAppendSliceFloatDirect - 3-operand shim wrapping ·asmCallAppendSliceFloatDirect (typed-bank []float64 append).
-TEXT ·handlerSubOpAppendSliceFloatDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerAppendSliceFloat64 - 3-operand shim wrapping ·asmCallAppendSliceFloat64 (typed-bank []float64 append).
+TEXT ·handlerAppendSliceFloat64(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -1019,7 +1111,7 @@ TEXT ·handlerSubOpAppendSliceFloatDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    BX, 8(SP)
 	MOVQ    CX, 16(SP)
 	MOVQ    AX, 24(SP)
-	CALL    ·asmCallAppendSliceFloatDirect(SB)
+	CALL    ·asmCallAppendSliceFloat64(SB)
 	MOVQ    32(SP), R15
 	ADJSP   $-40
 	MOVQ    CTX_SAVED_PC(R15), R14
@@ -1031,8 +1123,8 @@ TEXT ·handlerSubOpAppendSliceFloatDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpAppendSliceStringDirect - 3-operand shim wrapping ·asmCallAppendSliceStringDirect (typed-bank []string append).
-TEXT ·handlerSubOpAppendSliceStringDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerAppendSliceString - 3-operand shim wrapping ·asmCallAppendSliceString (typed-bank []string append).
+TEXT ·handlerAppendSliceString(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -1049,7 +1141,7 @@ TEXT ·handlerSubOpAppendSliceStringDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    BX, 8(SP)
 	MOVQ    CX, 16(SP)
 	MOVQ    AX, 24(SP)
-	CALL    ·asmCallAppendSliceStringDirect(SB)
+	CALL    ·asmCallAppendSliceString(SB)
 	MOVQ    32(SP), R15
 	ADJSP   $-40
 	MOVQ    CTX_SAVED_PC(R15), R14
@@ -1061,8 +1153,8 @@ TEXT ·handlerSubOpAppendSliceStringDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpAppendSliceBoolDirect - 3-operand shim wrapping ·asmCallAppendSliceBoolDirect (typed-bank []bool append).
-TEXT ·handlerSubOpAppendSliceBoolDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerAppendSliceBool - 3-operand shim wrapping ·asmCallAppendSliceBool (typed-bank []bool append).
+TEXT ·handlerAppendSliceBool(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -1079,7 +1171,7 @@ TEXT ·handlerSubOpAppendSliceBoolDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    BX, 8(SP)
 	MOVQ    CX, 16(SP)
 	MOVQ    AX, 24(SP)
-	CALL    ·asmCallAppendSliceBoolDirect(SB)
+	CALL    ·asmCallAppendSliceBool(SB)
 	MOVQ    32(SP), R15
 	ADJSP   $-40
 	MOVQ    CTX_SAVED_PC(R15), R14
@@ -1091,8 +1183,8 @@ TEXT ·handlerSubOpAppendSliceBoolDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpAppendSliceUintDirect - 3-operand shim wrapping ·asmCallAppendSliceUintDirect (typed-bank []uint64 append).
-TEXT ·handlerSubOpAppendSliceUintDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerAppendSliceUint64 - 3-operand shim wrapping ·asmCallAppendSliceUint64 (typed-bank []uint64 append).
+TEXT ·handlerAppendSliceUint64(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -1109,7 +1201,7 @@ TEXT ·handlerSubOpAppendSliceUintDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    BX, 8(SP)
 	MOVQ    CX, 16(SP)
 	MOVQ    AX, 24(SP)
-	CALL    ·asmCallAppendSliceUintDirect(SB)
+	CALL    ·asmCallAppendSliceUint64(SB)
 	MOVQ    32(SP), R15
 	ADJSP   $-40
 	MOVQ    CTX_SAVED_PC(R15), R14
@@ -1121,8 +1213,8 @@ TEXT ·handlerSubOpAppendSliceUintDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpAppendSliceByteDirect - 3-operand shim wrapping ·asmCallAppendSliceByteDirect (typed-bank []byte append).
-TEXT ·handlerSubOpAppendSliceByteDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerAppendSliceByte - 3-operand shim wrapping ·asmCallAppendSliceByte (typed-bank []byte append).
+TEXT ·handlerAppendSliceByte(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -1139,7 +1231,7 @@ TEXT ·handlerSubOpAppendSliceByteDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    BX, 8(SP)
 	MOVQ    CX, 16(SP)
 	MOVQ    AX, 24(SP)
-	CALL    ·asmCallAppendSliceByteDirect(SB)
+	CALL    ·asmCallAppendSliceByte(SB)
 	MOVQ    32(SP), R15
 	ADJSP   $-40
 	MOVQ    CTX_SAVED_PC(R15), R14

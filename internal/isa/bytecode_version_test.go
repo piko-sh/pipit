@@ -22,25 +22,32 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/schema"
 )
 
-func TestBytecodeVersionMajorIsTwelve(t *testing.T) {
+func TestTheBytecodeVersionMatchesTheSchemaFormatVersion(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, uint16(12), BytecodeVersionMajor,
-		"the synthesised-struct sentinel field, the embedded-field rename prefix and the "+
-			"cycle-broken tag key were renamed from piko to pipit; those names travel inside "+
-			"serialised type descriptors, and an older payload read by this engine would have "+
-			"its sentinel field go unrecognised and become visible to user code, so older "+
-			"cached payloads must be rejected rather than mis-rendered")
+	require.Equal(t, schema.BytecodeFormatVersion, BytecodeVersionMajor,
+		"the instruction set's major version and the schema's format version move together, so a "+
+			"payload from an older format is rejected by its schema hash")
 }
 
-func TestBytecodeVersionMinorIsOne(t *testing.T) {
+func TestTheMinorVersionMatchesTheSchemaFormatRevision(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, uint16(1), bytecodeVersionMinor,
-		"the 32-bit fused arithmetic operations were appended after major 12; the minor "+
-			"resets to 0 with each major bump")
+	require.Equal(t, schema.BytecodeFormatRevision, bytecodeVersionMinor,
+		"the minor version and the schema's format revision move together, so a build rejects "+
+			"a payload holding opcodes that were appended after it")
+}
+
+func TestTheMinorVersionCountsTheAdditiveRevisionsOfThisMajor(t *testing.T) {
+	t.Parallel()
+
+	require.EqualValues(t, 1, bytecodeVersionMinor,
+		"revision 1 appended opcodes to the ends of their tiers, leaving every earlier number as it was; "+
+			"the minor resets to 0 with the next major bump")
 }
 
 func TestDrillMarkersAtIotaZero(t *testing.T) {
@@ -55,22 +62,22 @@ func TestDrillMarkersAtIotaZero(t *testing.T) {
 	require.Zero(t, SubOpTier2DrillTier3,
 		"subOpTier2DrillTier3 must occupy tier-2 iota 0 so operand B == 0 "+
 			"means descend into tier 3")
-	require.Zero(t, SubOpTier3Nop,
-		"subOpTier3Nop must occupy tier-3 iota 0 so the all-drill word "+
+	require.Zero(t, SubOpTier3NoOperation,
+		"subOpTier3NoOperation must occupy tier-3 iota 0 so the all-drill word "+
 			"{0,0,0,0} encodes the no-op")
 }
 
-func TestOpNopAliasesDrillTier1(t *testing.T) {
+func TestOpNoOperationAliasesDrillTier1(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, OpDrillTier1, OpNop,
-		"after the Phase 4 migration opNop is a const alias for "+
+	require.Equal(t, OpDrillTier1, OpNoOperation,
+		"after the Phase 4 migration opNoOperation is a const alias for "+
 			"opDrillTier1 (both are opcode value 0); the tier-3 no-op "+
 			"is the all-drill word {opDrillTier1, subOpDrillTier2, "+
-			"subOpTier2DrillTier3, subOpTier3Nop} = {0,0,0,0} and is "+
+			"subOpTier2DrillTier3, subOpTier3NoOperation} = {0,0,0,0} and is "+
 			"fast-path-dispatched by the flat dispatch macro inline")
-	require.Zero(t, OpNop,
-		"opNop must remain at opcode value 0 so existing "+
-			"makeInstruction(opNop, 0, 0, 0) padding sites continue "+
+	require.Zero(t, OpNoOperation,
+		"opNoOperation must remain at opcode value 0 so existing "+
+			"makeInstruction(opNoOperation, 0, 0, 0) padding sites continue "+
 			"emitting the all-zero word")
 }

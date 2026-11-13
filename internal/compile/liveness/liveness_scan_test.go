@@ -16,20 +16,6 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
-// Copyright 2025 The Pipit Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package liveness_test
 
 import (
@@ -90,4 +76,43 @@ func TestLastUseDisabledByGoto(t *testing.T) {
 done:
 	_ = x`)
 	require.Nil(t, liveness.ComputeLastUseIndices(statements))
+}
+
+func TestDeclarationsInEveryFormAreFound(t *testing.T) {
+	t.Parallel()
+	statements := bodyStatements(t, `
+	var first, _ int
+	const second = 2
+	type third int
+	var (
+		fourth = 4
+		fifth  string
+	)
+	sixth, _ := first, second
+	_, _, _ = fifth, sixth, fourth
+	`)
+
+	lastUse := liveness.ComputeLastUseIndices(statements)
+	require.Equal(t, map[string]int{"first": 4, "second": 4, "fourth": 5, "fifth": 5, "sixth": 5}, lastUse)
+	require.Nil(t, liveness.ExtractDeclaredNames(statements[2]), "a type declaration declares no variable")
+}
+
+func TestABodyWithAGotoOrALabelIsNotScanned(t *testing.T) {
+	t.Parallel()
+
+	labelled := bodyStatements(t, `x := 1
+loop:
+	for x < 3 {
+		x++
+		continue loop
+	}
+	_ = x`)
+	require.Nil(t, liveness.ComputeLastUseIndices(labelled))
+	jumping := bodyStatements(t, `x := 1
+	goto end
+end:
+	_ = x`)
+	require.Nil(t, liveness.ComputeLastUseIndices(jumping))
+	require.Equal(t, []string{"y"}, liveness.ExtractDeclaredNames(bodyStatements(t, "here: y := 2\n_ = y")[0]))
+	require.Nil(t, liveness.ComputeLastUseIndices(bodyStatements(t, "println(1)")), "nothing declared")
 }

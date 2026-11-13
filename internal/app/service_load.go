@@ -19,12 +19,27 @@
 package app
 
 import (
+	"errors"
+	"fmt"
+	"maps"
 	"reflect"
+	"slices"
 
 	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/logging"
 	"pipit.sh/pipit/internal/policy"
 	"pipit.sh/pipit/internal/symtab"
 )
+
+// typesPackagesLoadErrorReporter is a symbol provider that reports why some of its
+// pre-built types packages could not be decoded. Such a provider still supplies the
+// packages that decoded, and generic type checking of the others is degraded.
+type typesPackagesLoadErrorReporter interface {
+	// TypesPackagesLoadError reports the decode failures.
+	//
+	// Returns error which is nil when every package decoded.
+	TypesPackagesLoadError() error
+}
 
 // UseSymbols sets the pre-registered native symbols for import resolution, protecting the
 // "unsafe" package from override.
@@ -43,23 +58,55 @@ func (s *Service) UseSymbols(symbols *symtab.SymbolRegistry) {
 //
 // Takes providers (symtab.SymbolProviderPort variadic) which are the symbol providers to
 // compose.
-func (s *Service) UseSymbolProviders(providers ...symtab.SymbolProviderPort) {
+//
+// Returns error which joins, per rejected package, an error wrapping
+// symtab.ErrTypesPackageLayout for a pre-built types package whose layout disagrees with
+// the native types, and the decode failures a provider reports.
+func (s *Service) UseSymbolProviders(providers ...symtab.SymbolProviderPort) error {
 	composite := symtab.NewCompositeSymbolProvider(providers...)
 	exports := composite.Exports()
 	delete(exports, policy.PkgUnsafe)
 	s.symbols = symtab.NewSymbolRegistry(exports)
+	s.symbols.SetNamedCompositeQuota(s.namedCompositeQuota)
 	s.symbols.ProtectPackage(policy.PkgUnsafe)
 
+	rejected := make([]error, 0, len(providers))
 	for _, p := range providers {
-		if tp, ok := p.(program.TypesPackageProviderPort); ok {
-			for path, pkg := range tp.TypesPackages() {
-				s.symbols.RegisterTypesPackage(path, pkg)
-			}
-		}
+		rejected = append(rejected, s.registerProviderTypes(p)...)
 	}
 
-	s.symbols.SynthesiseAll()
+	if s.constructionLog == nil {
+		s.constructionLog = logging.NewDeferred()
+	}
+	s.symbols.SynthesiseAll(s.constructionLog.Context())
 	s.applyClockOverrides()
+	return errors.Join(rejected...)
+}
+
+// registerProviderTypes registers the pre-built types packages one provider supplies.
+//
+// Takes provider (symtab.SymbolProviderPort) which may supply types packages and report
+// that some failed to decode.
+//
+// Returns []error which holds the provider's decode failure and each rejected package.
+func (s *Service) registerProviderTypes(provider symtab.SymbolProviderPort) []error {
+	var rejected []error
+	if reporter, reports := provider.(typesPackagesLoadErrorReporter); reports {
+		if err := reporter.TypesPackagesLoadError(); err != nil {
+			rejected = append(rejected, fmt.Errorf("decoding a symbol provider's types packages: %w", err))
+		}
+	}
+	typed, ok := provider.(program.TypesPackageProviderPort)
+	if !ok {
+		return rejected
+	}
+	packages := typed.TypesPackages()
+	for _, path := range slices.Sorted(maps.Keys(packages)) {
+		if err := s.symbols.RegisterTypesPackage(path, packages[path]); err != nil {
+			rejected = append(rejected, fmt.Errorf("registering the types of package %q: %w", path, err))
+		}
+	}
+	return rejected
 }
 
 // RegisterPackage registers symbols under a package path in the symbol registry. This is

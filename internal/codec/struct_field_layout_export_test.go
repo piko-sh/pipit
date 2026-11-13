@@ -40,7 +40,7 @@ func TestStructLayoutTableExportRoundTrip(t *testing.T) {
 				Path:         [4]uint8{0, 0, 0, 0},
 				PathLength:   1,
 				Kind:         uint8(reflect.Int64),
-				RegisterKind: uint8(isa.RegisterInt),
+				RegisterKind: uint8(isa.RegisterInt64),
 				Flags:        0,
 			},
 			{
@@ -58,7 +58,7 @@ func TestStructLayoutTableExportRoundTrip(t *testing.T) {
 				Path:         [4]uint8{3, 0, 0, 0},
 				PathLength:   1,
 				Kind:         uint8(reflect.Float64),
-				RegisterKind: uint8(isa.RegisterFloat),
+				RegisterKind: uint8(isa.RegisterFloat64),
 				Flags:        0,
 			},
 		},

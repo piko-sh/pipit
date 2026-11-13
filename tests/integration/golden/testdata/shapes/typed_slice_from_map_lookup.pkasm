@@ -4,78 +4,75 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun
-;   registers: int=10 string=2 general=3 sliceString=1
-;   dispatch:  asm=39 shim=9 exit=0 go=9
+;   registers: int64=12 string=2 general=3 sliceString=1
+;   dispatch:  asm=34 shim=17 exit=0 go=0
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=3  [1]=0  [2]=1  [3]=2  [4]=6
 ;   strings: [0]="a"  [1]="b"  [2]="c"  [3]="d"
 
-0000 G 2:MAKE_MAP                   0  12   0
-0001   0:EXT                        0   0   1
-0002 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
-0003 A 1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
-0004 S 0:MAKE_SLICE                 1   0   0
-0005   0:EXT                        1   0   0
-0006 A 0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "b"
-0007 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0008 G 1:MOVE_STRING_TO_GENERAL    44   2   1
-0009 S 0:INDEX_SET                  1   0   2
-0010 A 0:LOAD_STRING_CONST          1   2   0    ; strings[1] = "c"
-0011 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0012 G 1:MOVE_STRING_TO_GENERAL    44   2   1
-0013 S 0:INDEX_SET                  1   0   2
-0014 A 0:LOAD_STRING_CONST          1   3   0    ; strings[1] = "d"
-0015 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
-0016 G 1:MOVE_STRING_TO_GENERAL    44   2   1
-0017 S 0:INDEX_SET                  1   0   2
-0018 G 1:MOVE_STRING_TO_GENERAL    44   2   0
-0019 S 0:MAP_SET                    0   2   1
-0020 A 0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "b"
-0021 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0022 S 0:MAKE_SLICE                 1   0   0
-0023   0:EXT                        1   0   0
-0024 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "a"
-0025 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0026 G 1:MOVE_STRING_TO_GENERAL    44   2   1
-0027 S 0:INDEX_SET                  1   0   2
-0028 G 1:MOVE_STRING_TO_GENERAL    44   2   0
-0029 S 0:MAP_SET                    0   2   1
-0030 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0031 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
-0032 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0033 A 1:LT_INT_CONST_JUMP_FALSE  123   1   4
-0034   0:EXT                       29   0   0
-0035 S 0:MAP_INDEX_OK_STRING_GENERAL   1   0   0
-0036   0:EXT                        5   0   0
-0037 G 1:ADOPT_GENERAL_TO_SLICES_STRING 157   0   1
-0038 A 1:MOVE_INT                  35   4   5
-0039 G 1:NOT                       52   6   4
-0040 A 0:JUMP_IF_TRUE               6   3   0    ; if ints[6] != 0 goto +3
-0041 A 1:LEN_SLICE_STRING_DIRECT   25   7   0
-0042 A 1:LOAD_INT_CONST_SMALL      75   8   0    ; ints[8] = 0
-0043 A 0:EQ_INT                     6   7   8
-0044 A 0:JUMP_IF_FALSE              6   1   0    ; if ints[6] == 0 goto +1
-0045 A 1:JUMP                      74  18   0    ; goto 18
-0046 A 1:LOAD_INT_CONST_SMALL      75   5   0    ; ints[5] = 0
-0047 A 1:LEN_SLICE_STRING_DIRECT   25   6   0
-0048 A 1:LT_INT_JUMP_FALSE        116   5   6
-0049   0:EXT                        7   0   0
-0050 A 1:SLICE_GET_STRING_DIRECT   23   1   0
-0051   0:EXT                        5   0   0
-0052 A 1:LEN_STRING                65   8   1
-0053 A 0:ADD_INT                    9   0   8
-0054 A 1:MOVE_INT                  35   0   9
-0055 A 2:TIER2_INC_INT              0   1   5
-0056 A 1:JUMP                      74 246 255    ; goto -10
-0057 A 1:LEN_SLICE_STRING_DIRECT   25   5   0
-0058 A 0:REM_INT                    6   1   5
-0059 A 1:SLICE_GET_STRING_DIRECT   23   1   0
-0060   0:EXT                        6   0   0
-0061 A 1:MOVE_STRING               37   0   1
-0062 A 2:TIER2_INC_INT              0   1   1
-0063 A 1:JUMP                      74 225 255    ; goto -31
-0064 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 2:MAKE_MAP                                             0  12   0
+0001   0:EXTENSION                                            0   0   1
+0002 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "a"
+0003 A 1:LOAD_INT64_IMMEDIATE                                75   0   3    ; ints[0] = 3
+0004 S 0:MAKE_SLICE                                           1   0   0
+0005   0:EXTENSION                                            1   0   0
+0006 A 0:LOAD_STRING_CONSTANT                                 1   1   0    ; strings[1] = "b"
+0007 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0008 S 1:BOX_STRING                                          44   2   1
+0009 S 0:SET_ELEMENT                                          1   0   2
+0010 A 0:LOAD_STRING_CONSTANT                                 1   2   0    ; strings[1] = "c"
+0011 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0012 S 1:BOX_STRING                                          44   2   1
+0013 S 0:SET_ELEMENT                                          1   0   2
+0014 A 0:LOAD_STRING_CONSTANT                                 1   3   0    ; strings[1] = "d"
+0015 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0016 S 1:BOX_STRING                                          44   2   1
+0017 S 0:SET_ELEMENT                                          1   0   2
+0018 S 1:BOX_STRING                                          44   2   0
+0019 S 0:SET_MAP                                              0   2   1
+0020 A 0:LOAD_STRING_CONSTANT                                 0   1   0    ; strings[0] = "b"
+0021 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0022 S 0:MAKE_SLICE                                           1   0   0
+0023   0:EXTENSION                                            1   0   0
+0024 A 0:LOAD_STRING_CONSTANT                                 1   0   0    ; strings[1] = "a"
+0025 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0026 S 1:BOX_STRING                                          44   2   1
+0027 S 0:SET_ELEMENT                                          1   0   2
+0028 S 1:BOX_STRING                                          44   2   0
+0029 S 0:SET_MAP                                              0   2   1
+0030 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0031 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "a"
+0032 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0033 A 1:LESS_THAN_INT64_CONSTANT_THEN_JUMP_IF_FALSE        123   1   4
+0034   0:EXTENSION                                           26   0   0
+0035 A 1:LOAD_INT64_IMMEDIATE                                75  10   0    ; LICM hoist of PC 41
+0036 S 0:GET_MAP_STRING_GENERAL_OK                            1   0   0
+0037   0:EXTENSION                                            5   0   0
+0038 S 1:UNBOX_SLICE_STRING                                 157   0   1
+0039 A 1:MOVE_INT64                                          35   4   5
+0040 A 0:JUMP_IF_FALSE                                        4  20   0    ; if ints[4] == 0 goto +20
+0041 A 1:LENGTH_SLICE_STRING                                 25   7   0
+0042 A 1:NOT_EQUAL_INT64_THEN_JUMP_IF_FALSE                 121   7  10
+0043   0:EXTENSION                                           17   0   0
+0044 A 1:LOAD_INT64_IMMEDIATE                                75   5   0    ; ints[5] = 0
+0045 A 1:LENGTH_SLICE_STRING                                 25   6   0
+0046 A 1:LESS_THAN_INT64_THEN_JUMP_IF_FALSE                 116   5   6
+0047   0:EXTENSION                                            7   0   0
+0048 A 1:LENGTH_SLICE_STRING                                 25  11   0    ; LICM hoist of PC 53
+0049 A 1:GET_SLICE_STRING_ELEMENT                            23   1   0
+0050   0:EXTENSION                                            5   0   0
+0051 A 1:LENGTH_STRING                                       65   8   1
+0052 A 0:ADD_INT64                                            0   0   8
+0053 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN              77   5  11
+0054   0:EXTENSION                                          250 255   0
+0055 A 1:LENGTH_SLICE_STRING                                 25   5   0
+0056 A 0:REMAINDER_INT64                                      6   1   5
+0057 A 1:GET_SLICE_STRING_ELEMENT                            23   0   0
+0058   0:EXTENSION                                            6   0   0
+0059 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN_CONSTANT    215   1   4
+0060   0:EXTENSION                                          231 255   0
+0061 A 2:RETURN                                               0  10   1    ; 1 values

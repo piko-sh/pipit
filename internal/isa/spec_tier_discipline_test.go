@@ -26,7 +26,7 @@ import (
 
 var operandBytesAtTier = [tierCount]int{3, 2, 1, 0}
 
-var knownTierViolations = map[string]bool{}
+var knownTierViolations = map[int]bool{}
 
 func shapeOperandUse(shape OperandShape, tier Tier) (used int, overflows bool) {
 	roles := [NumInstructionOperands]OperandRole{shape.A, shape.B, shape.C}
@@ -78,11 +78,11 @@ func TestOperationsSitAtTheTierTheirArityRequires(t *testing.T) {
 		}
 
 		if row.Tier == wanted {
-			assert.False(t, knownTierViolations[row.Name], "%s is in knownTierViolations but now sits at the right tier; remove "+
+			assert.False(t, knownTierViolations[int(row.Tier)*SlotsPerTier+int(row.Code)], "%s is in knownTierViolations but now sits at the right tier; remove "+
 				"it from the list", row)
 			continue
 		}
-		if knownTierViolations[row.Name] {
+		if knownTierViolations[int(row.Tier)*SlotsPerTier+int(row.Code)] {
 			continue
 		}
 		assert.Failf(t, "operation at the wrong tier", "%s uses %d operand byte(s) so it belongs at tier %d, not tier %d. Tier 0 is "+

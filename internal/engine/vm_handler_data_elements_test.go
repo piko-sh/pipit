@@ -99,7 +99,7 @@ func TestIndexReadsFromSlicesArraysAndPointers(t *testing.T) {
 			registers.General[1] = tt.build()
 			registers.Ints[2] = tt.index
 
-			require.Equal(t, opContinue, handleIndex(vm, nil, registers, op(0, 1, 2)))
+			require.Equal(t, opContinue, handleGetElement(vm, nil, registers, op(0, 1, 2)))
 			tt.check(t, registers)
 		})
 	}
@@ -128,7 +128,7 @@ func TestIndexRefusesAnOutOfRangePosition(t *testing.T) {
 			registers.General[1] = tt.build()
 			registers.Ints[2] = tt.index
 
-			got := handleIndex(vm, nil, registers, op(0, 1, 2))
+			got := handleGetElement(vm, nil, registers, op(0, 1, 2))
 
 			require.NotEqual(t, opContinue, got, "an out-of-range index must not read past the collection")
 			require.Error(t, vm.evalError)
@@ -136,7 +136,7 @@ func TestIndexRefusesAnOutOfRangePosition(t *testing.T) {
 	}
 }
 
-func TestIndexSetWritesThroughToTheBackingArray(t *testing.T) {
+func TestSetElementWritesThroughToTheBackingArray(t *testing.T) {
 	t.Parallel()
 
 	t.Run("a slice element is replaced in place", func(t *testing.T) {
@@ -147,7 +147,7 @@ func TestIndexSetWritesThroughToTheBackingArray(t *testing.T) {
 		registers.Ints[1] = 1
 		registers.General[2] = reflect.ValueOf(42)
 
-		require.Equal(t, opContinue, handleIndexSet(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetElement(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, []int{1, 42, 3}, target, "the write must reach the caller's backing array")
 	})
 
@@ -159,7 +159,7 @@ func TestIndexSetWritesThroughToTheBackingArray(t *testing.T) {
 		registers.Ints[1] = 0
 		registers.General[2] = reflect.ValueOf("boxed")
 
-		require.Equal(t, opContinue, handleIndexSet(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetElement(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, "boxed", target[0])
 	})
 
@@ -170,12 +170,12 @@ func TestIndexSetWritesThroughToTheBackingArray(t *testing.T) {
 		registers.Ints[1] = 5
 		registers.General[2] = reflect.ValueOf(42)
 
-		require.NotEqual(t, opContinue, handleIndexSet(vm, frame, registers, op(0, 1, 2)))
+		require.NotEqual(t, opContinue, handleSetElement(vm, frame, registers, op(0, 1, 2)))
 		require.Error(t, vm.evalError)
 	})
 }
 
-func TestMapIndexReturnsTheElementZeroValueOnAMiss(t *testing.T) {
+func TestGetMapReturnsTheElementZeroValueOnAMiss(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -230,7 +230,7 @@ func TestMapIndexReturnsTheElementZeroValueOnAMiss(t *testing.T) {
 			registers.General[1] = tt.build()
 			registers.General[2] = tt.key
 
-			require.Equal(t, opContinue, handleMapIndex(vm, frame, registers, op(0, 1, 2)))
+			require.Equal(t, opContinue, handleGetMap(vm, frame, registers, op(0, 1, 2)))
 			tt.check(t, registers)
 		})
 	}
@@ -241,12 +241,12 @@ func TestMapIndexReturnsTheElementZeroValueOnAMiss(t *testing.T) {
 		registers.General[1] = reflect.ValueOf("not a map")
 		registers.General[2] = reflect.ValueOf("k")
 
-		require.Equal(t, opPanicError, handleMapIndex(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opPanicError, handleGetMap(vm, frame, registers, op(0, 1, 2)))
 		require.Error(t, vm.evalError)
 	})
 }
 
-func TestMapDeleteRemovesOnlyTheNamedKey(t *testing.T) {
+func TestDeleteFromMapRemovesOnlyTheNamedKey(t *testing.T) {
 	t.Parallel()
 
 	t.Run("a string key is removed", func(t *testing.T) {
@@ -256,7 +256,7 @@ func TestMapDeleteRemovesOnlyTheNamedKey(t *testing.T) {
 		registers.General[0] = reflect.ValueOf(target)
 		registers.General[1] = reflect.ValueOf("a")
 
-		require.Equal(t, opContinue, handleMapDelete(vm, frame, registers, op(0, 1, 0)))
+		require.Equal(t, opContinue, handleDeleteFromMapBody(vm, frame, registers, op(0, 1, 0)))
 		require.Len(t, target, 1)
 		require.Equal(t, 2, target["b"], "the untouched entry must survive")
 	})
@@ -268,7 +268,7 @@ func TestMapDeleteRemovesOnlyTheNamedKey(t *testing.T) {
 		registers.General[0] = reflect.ValueOf(target)
 		registers.General[1] = reflect.ValueOf(1)
 
-		require.Equal(t, opContinue, handleMapDelete(vm, frame, registers, op(0, 1, 0)))
+		require.Equal(t, opContinue, handleDeleteFromMapBody(vm, frame, registers, op(0, 1, 0)))
 		require.Len(t, target, 1)
 		require.Equal(t, 20, target[2])
 	})
@@ -280,7 +280,7 @@ func TestMapDeleteRemovesOnlyTheNamedKey(t *testing.T) {
 		registers.General[0] = reflect.ValueOf(target)
 		registers.General[1] = reflect.ValueOf("absent")
 
-		require.Equal(t, opContinue, handleMapDelete(vm, frame, registers, op(0, 1, 0)))
+		require.Equal(t, opContinue, handleDeleteFromMapBody(vm, frame, registers, op(0, 1, 0)))
 		require.Len(t, target, 1)
 	})
 
@@ -290,12 +290,12 @@ func TestMapDeleteRemovesOnlyTheNamedKey(t *testing.T) {
 		registers.General[0] = reflect.ValueOf(42)
 		registers.General[1] = reflect.ValueOf("k")
 
-		require.Equal(t, opPanicError, handleMapDelete(vm, frame, registers, op(0, 1, 0)))
+		require.Equal(t, opPanicError, handleDeleteFromMapBody(vm, frame, registers, op(0, 1, 0)))
 		require.Error(t, vm.evalError)
 	})
 }
 
-func TestMapSetStoresThroughTheDeclaredTypes(t *testing.T) {
+func TestSetMapStoresThroughTheDeclaredTypes(t *testing.T) {
 	t.Parallel()
 
 	t.Run("a string-keyed map accepts a new entry", func(t *testing.T) {
@@ -306,7 +306,7 @@ func TestMapSetStoresThroughTheDeclaredTypes(t *testing.T) {
 		registers.General[1] = reflect.ValueOf("k")
 		registers.General[2] = reflect.ValueOf(42)
 
-		require.Equal(t, opContinue, handleMapSet(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetMap(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, 42, target["k"])
 	})
 
@@ -318,7 +318,7 @@ func TestMapSetStoresThroughTheDeclaredTypes(t *testing.T) {
 		registers.General[1] = reflect.ValueOf("k")
 		registers.General[2] = reflect.ValueOf([]int{1})
 
-		require.Equal(t, opContinue, handleMapSet(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetMap(vm, frame, registers, op(0, 1, 2)))
 		require.Len(t, target, 1)
 	})
 
@@ -330,7 +330,7 @@ func TestMapSetStoresThroughTheDeclaredTypes(t *testing.T) {
 		registers.General[1] = reflect.ValueOf("k")
 		registers.General[2] = reflect.ValueOf(42)
 
-		require.Equal(t, opContinue, handleMapSet(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetMap(vm, frame, registers, op(0, 1, 2)))
 		require.Len(t, target, 1)
 		require.Equal(t, 42, target["k"])
 	})
@@ -342,7 +342,7 @@ func TestMapSetStoresThroughTheDeclaredTypes(t *testing.T) {
 		registers.General[1] = reflect.ValueOf("k")
 		registers.General[2] = reflect.ValueOf(1)
 
-		got := handleMapSet(vm, frame, registers, op(0, 1, 2))
+		got := handleSetMap(vm, frame, registers, op(0, 1, 2))
 
 		require.Equal(t, opPanicError, got,
 			"every map handler reports a non-map operand through the dispatch loop, not a raw panic")
@@ -358,12 +358,12 @@ func TestMapSetStoresThroughTheDeclaredTypes(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(7)
 		registers.General[2] = reflect.ValueOf(42)
 
-		require.Equal(t, opContinue, handleMapSet(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetMap(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, 42, target[7])
 	})
 }
 
-func TestMapIndexOkWritesThePresenceBitAlongsideTheValue(t *testing.T) {
+func TestGetMapOkWritesThePresenceBitAlongsideTheValue(t *testing.T) {
 	t.Parallel()
 
 	const okRegister uint8 = 6
@@ -372,8 +372,8 @@ func TestMapIndexOkWritesThePresenceBitAlongsideTheValue(t *testing.T) {
 		t.Helper()
 		builder := newBytecodeBuilder()
 		builder.numRegisters = wideRegCounts(8)
-		builder.Emit(isa.OpMapIndexOk, 0, 1, 2)
-		builder.body = append(builder.body, isa.NewInstruction(isa.OpExt, okRegister, 0, 0))
+		builder.Emit(isa.OpGetMapOk, 0, 1, 2)
+		builder.body = append(builder.body, isa.NewInstruction(isa.OpExtension, okRegister, 0, 0))
 		builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 		vm, frame, registers := newFramedVM(t, builder.build())
 		frame.ProgramCounter = 1
@@ -386,7 +386,7 @@ func TestMapIndexOkWritesThePresenceBitAlongsideTheValue(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(map[string]int{"k": 42})
 		registers.General[2] = reflect.ValueOf("k")
 
-		require.Equal(t, opContinue, handleMapIndexOk(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleGetMapOk(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, int64(42), registers.General[0].Int())
 		require.Equal(t, int64(1), registers.Ints[okRegister])
 	})
@@ -398,7 +398,7 @@ func TestMapIndexOkWritesThePresenceBitAlongsideTheValue(t *testing.T) {
 		registers.General[2] = reflect.ValueOf("absent")
 		registers.Ints[okRegister] = 1
 
-		require.Equal(t, opContinue, handleMapIndexOk(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleGetMapOk(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, int64(0), registers.General[0].Int())
 		require.Equal(t, int64(0), registers.Ints[okRegister])
 	})

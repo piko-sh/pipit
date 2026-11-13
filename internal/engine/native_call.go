@@ -33,10 +33,40 @@ import (
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/link"
+	"pipit.sh/pipit/internal/symtab/typemodel"
 )
 
-// setFinalizerPointer identifies runtime.SetFinalizer among native callees.
-var setFinalizerPointer = reflect.ValueOf(runtime.SetFinalizer).Pointer()
+const (
+	// slowCallNative counts native calls made through reflect.
+	slowCallNative = "call"
+
+	// slowCallClosure counts calls through a closure's reflect.MakeFunc wrapper.
+	slowCallClosure = "closure-callback"
+
+	// slowCallMethod counts calls through a method value's wrapper or typed adapter body.
+	slowCallMethod = "method-callback"
+)
+
+// methodFunctionMax bounds methodFunctions.
+const methodFunctionMax = 4096
+
+var (
+	// methodFunctions caches the method functions callNativeFunction calls method values
+	// through, by receiver type and method index.
+	methodFunctions typedCache[methodFunctionKey, reflect.Value]
+
+	// methodFunctionCount counts methodFunctions' entries.
+	methodFunctionCount atomic.Int64
+)
+
+// methodFunctionKey keys methodFunctions.
+type methodFunctionKey struct {
+	// typ is the receiver type.
+	typ reflect.Type
+
+	// index is the method's index in the type's exported method set.
+	index int
+}
 
 // argumentTypeContext carries the per-argument static-type metadata extracted from a
 // CallSite into coerceReflectArgument so the adapter-selection path can identify
@@ -91,23 +121,24 @@ type nativeArgShaping struct {
 	// fmtPrinting is true for fmt printing (not scanning) calls.
 	fmtPrinting bool
 
-	// encodingArguments is true when the callee is an encoding marshaller whose arguments
-	// carry struct tags.
-	encodingArguments bool
+	// sink classifies what the callee does with its `any` operands.
+	sink nativeAnySink
 
 	// skipInterfaceAdapter suppresses interface adapter wrapping for callees that accept
 	// reflect-level values directly.
 	skipInterfaceAdapter bool
 }
 
-// newNativeArgShaping reads the call site's cached classification.
+// newNativeArgShaping reads the call site's cached classification. A method value, which
+// one call site may see bound to different receivers, is classified on each call.
 //
+// Takes vm (*VM) which records the classification of method values it bound.
 // Takes registers (*Registers) which hold the operands (the format string, when any).
 // Takes site (*program.CallSite) which describes the call.
 // Takes reflectedFunction (reflect.Value) which is the native callee.
 //
 // Returns nativeArgShaping which shapes the operands.
-func newNativeArgShaping(registers *Registers, site *program.CallSite, reflectedFunction reflect.Value) nativeArgShaping {
+func newNativeArgShaping(vm *VM, registers *Registers, site *program.CallSite, reflectedFunction reflect.Value) nativeArgShaping {
 	parameterTypes := site.NativeParamTypes()
 	shaping := nativeArgShaping{
 		variadicElementType:  variadicElementTypeForSite(site),
@@ -117,13 +148,19 @@ func newNativeArgShaping(registers *Registers, site *program.CallSite, reflected
 		parameterCount:       len(parameterTypes),
 		fmtArguments:         false,
 		fmtPrinting:          false,
-		encodingArguments:    false,
+		sink:                 anySinkValue,
 		skipInterfaceAdapter: isPipitMakeFunctionClosure(reflectedFunction),
 	}
 	if cache := site.NativeParamCacheLoad(); cache != nil {
 		shaping.fmtArguments = cache.FmtArguments
 		shaping.fmtPrinting = cache.FmtArguments && !cache.FmtScan
-		shaping.encodingArguments = cache.EncodingArguments
+		shaping.sink = nativeAnySink(cache.AnySink)
+	}
+	if reflectedFunction.Pointer() == methodValueCallPC {
+		shaping.sink, _ = vm.calleeAnySink(reflectedFunction)
+		if shaping.sink == anySinkPrint && reflectedFunction.Type().IsVariadic() {
+			shaping.fmtArguments, shaping.fmtPrinting = true, true
+		}
 	}
 	if shaping.fmtPrinting && site.IsEllipsisSpread {
 		shaping.fmtFormat, _ = fmtFormatOperand(registers, site, parameterTypes)
@@ -133,9 +170,7 @@ func newNativeArgShaping(registers *Registers, site *program.CallSite, reflected
 	return shaping
 }
 
-// shape coerces operand i for its parameter: a spread slice as the variadic slice, a
-// variadic operand as the element type (then wrapped for fmt), a fixed operand as its
-// parameter type (then shadowed for an encoder).
+// shape coerces operand i for its parameter.
 //
 // Takes vm (*VM) which resolves adapters.
 // Takes site (*program.CallSite) which describes the call.
@@ -157,7 +192,10 @@ func (shaping nativeArgShaping) shape(vm *VM, site *program.CallSite, i int, raw
 	case shaping.variadicElementType != nil && variadic:
 		argument := coerceReflectArgument(vm, raw, shaping.variadicElementType, typeCtx)
 		if shaping.fmtPrinting {
-			return wrapFmtArgumentForVerb(vm, argument, fmtVerbAt(shaping.fmtVerbs, i-(shaping.parameterCount-1)), typeCtx.staticTypeName)
+			return shaping.printOperand(vm, argument, i, typeCtx.staticTypeName)
+		}
+		if isEmptyInterfaceType(shaping.variadicElementType) {
+			argument = prepareAnySinkArgument(vm, shaping.sink, argument, typeCtx)
 		}
 		if shaping.fmtArguments {
 			return wrapFmtArgument(vm, argument, typeCtx.staticTypeName)
@@ -165,13 +203,25 @@ func (shaping nativeArgShaping) shape(vm *VM, site *program.CallSite, i int, raw
 		return argument
 	case i < shaping.parameterCount:
 		argument := coerceReflectArgument(vm, raw, shaping.parameterTypes[i], typeCtx)
-		if shaping.encodingArguments && isEmptyInterfaceType(shaping.parameterTypes[i]) {
-			return shadowForMarshal(vm, argument)
+		if isEmptyInterfaceType(shaping.parameterTypes[i]) {
+			return prepareAnySinkArgument(vm, shaping.sink, argument, typeCtx)
 		}
 		return argument
 	default:
 		return raw
 	}
+}
+
+// printOperand wraps a variadic operand of a fmt printing call for fmt.
+//
+// Takes vm (*VM) which resolves script method tables.
+// Takes argument (reflect.Value) which is the coerced operand.
+// Takes i (int) which is the operand's index among the call's arguments.
+// Takes staticTypeName (string) which is the call site's recorded source-level type name.
+//
+// Returns reflect.Value which is the operand to pass.
+func (shaping nativeArgShaping) printOperand(vm *VM, argument reflect.Value, i int, staticTypeName string) reflect.Value {
+	return wrapFmtArgumentForVerb(vm, argument, fmtVerbAt(shaping.fmtVerbs, i-(shaping.parameterCount-1)), staticTypeName)
 }
 
 // adaptSpreadElements gives each element of a slice spread into an interface-typed
@@ -249,15 +299,16 @@ func (vm *VM) buildNativeBackedErasurePointees() map[reflect.Type]struct{} {
 	return pointees
 }
 
-// ownsInterpreterStorage reports whether p addresses memory the interpreter manages
-// rather than a Go heap allocation: a register-arena cell, slab or slice backing, or a
-// slot in a boundary snapshot chunk.
+// ownsInterpreterStorage reports whether p addresses interpreter-managed storage.
+//
+// This includes register-arena cells, slabs and slice backings, KRef slots, and boundary
+// snapshot slots, rather than ordinary Go heap allocations.
 //
 // Takes p (unsafe.Pointer) which is the address to classify.
 //
 // Returns bool which is true for interpreter-owned storage.
 func (vm *VM) ownsInterpreterStorage(p unsafe.Pointer) bool {
-	if vm.Arena != nil && (vm.Arena.ownsIndirectCell(p) || vm.Arena.OwnsSliceBacking(p) || vm.Arena.ownsScalarBox(p)) {
+	if vm.Arena != nil && (vm.Arena.ownsIndirectCell(p) || vm.Arena.OwnsSliceBacking(p) || vm.Arena.ownsScalarBox(p) || vm.Arena.krefContains(p)) {
 		return true
 	}
 	return vm.ownsBoundarySnapshot(p)
@@ -304,10 +355,31 @@ func handleCallNative(vm *VM, frame *CallFrame, registers *Registers, instructio
 		return opPanicError
 	}
 	site := &frame.Function.CallSites[siteIndex]
+	noteNativeCallIfGlobalsWatched(vm, registers, site)
+	if checks := takeAuditedReadsOnlyChecks(vm); checks != nil {
+		defer verifyReadsOnlyChecks(checks)
+	}
+	if vm.enterUnwindNative() {
+		defer vm.leaveUnwindNative()
+	}
+	restore, borrowing := prepareNativeCallHandOffs(vm, registers, site)
+	if restore != nil {
+		defer restore.undo(registers)
+	}
+	if borrowing {
+		defer vm.endBorrowingNativeCall()
+	}
+	if restore := detachArgumentsReusedWithoutLicence(vm, registers, site); restore != nil {
+		defer restore.undo(registers)
+	}
 
-	if site.BlocksHostGoroutine && (vm.holdsInterpreterLock || vm.Limits.Debug != nil) {
-		released := vm.releaseAroundBlock()
-		defer vm.reacquireAfterBlock(released)
+	if hold := vm.enterNativeCall(site); hold != nativeCallHoldsNothing {
+		defer vm.leaveNativeCall(hold)
+	}
+	if site.BlocksHostGoroutine {
+		if result, waited := tryInterruptibleSyncWait(vm, registers, site); waited {
+			return result
+		}
 	}
 
 	hookInstalled := vm.Limits.CapabilityHook != nil
@@ -315,7 +387,23 @@ func handleCallNative(vm *VM, frame *CallFrame, registers *Registers, instructio
 	if result, dispatched := tryCachedNativeFastPath(vm, site, registers, fastPath, hookInstalled); dispatched {
 		return result
 	}
+	return callNativeUncached(vm, frame, registers, site, siteIndex, fastPath == nil && !hookInstalled)
+}
 
+// callNativeUncached is handleCallNative's path for a call the cached fast path did not
+// take: a linked generic call, an interpreted closure, runtime.Goexit, a first call that
+// classifies the site, or reflect invocation.
+//
+// Takes vm (*VM) which is the virtual machine executing the instruction.
+// Takes frame (*CallFrame) which is the current call frame.
+// Takes registers (*Registers) which holds the current register banks.
+// Takes site (*program.CallSite) which is the call site.
+// Takes siteIndex (uint16) which is the call site's index.
+// Takes classify (bool) which is true when the site has no published entry and no
+// capability hook is installed, so the call may classify the site.
+//
+// Returns OpResult indicating the next execution step.
+func callNativeUncached(vm *VM, frame *CallFrame, registers *Registers, site *program.CallSite, siteIndex uint16, classify bool) OpResult {
 	reflectedFunction := registers.General[site.NativeRegister]
 	if !reflectedFunction.IsValid() {
 		panicHandleCallNativeZeroValue(frame, registers, site, siteIndex)
@@ -325,17 +413,19 @@ func handleCallNative(vm *VM, frame *CallFrame, registers *Registers, instructio
 		return handleCallLinkedReflect(vm, registers, site, reflectedFunction)
 	}
 
-	v := reflectedFunction.Interface()
-
-	if closure, ok := v.(*RuntimeClosure); ok {
-		return handleCallNativeClosure(vm, registers, site, closure)
+	var v any
+	if classify || reflectedFunction.Kind() != reflect.Func || !reflectedFunction.CanInterface() {
+		v = reflectedFunction.Interface()
+		if closure, ok := v.(*RuntimeClosure); ok {
+			return handleCallNativeClosure(vm, registers, site, closure)
+		}
 	}
 
 	if reflectedFunction.Pointer() == runtimeGoexitPointer {
 		return handleRuntimeGoexit(vm)
 	}
 
-	if !hookInstalled && fastPath == nil {
+	if classify {
 		if rc, handled := tryClassifyNativeFastPath(vm, registers, site, v); handled {
 			return rc
 		}
@@ -369,13 +459,11 @@ func tryClassifyNativeFastPath(vm *VM, registers *Registers, site *program.CallS
 	if !ok {
 		return opContinue, false
 	}
-	entry := &nativeFastPathEntry{fn: v, tag: tag, receiverAddr: 0}
+	entry := &nativeFastPathEntry{fn: v, tag: tag, method: nativeMethodShape{}}
 	if site.IsMethod {
-		if receiver := registers.General[site.MethodReceiverRegister]; receiver.CanAddr() {
-			entry.receiverAddr = receiver.Addr().Pointer()
-		}
+		entry = newNativeMethodEntry(tag, registers.General[site.NativeRegister])
 	}
-	atomic.StorePointer(&site.NativeFastPath, unsafe.Pointer(entry))
+	publishNativeFastPath(site, entry)
 	if panicValue != nil {
 		return raiseNativePanicAsInterpreted(vm, panicValue), true
 	}
@@ -419,29 +507,28 @@ func tryCachedNativeFastPath(vm *VM, site *program.CallSite, registers *Register
 //
 // Returns OpResult which is the outcome of the fast-path call.
 // Returns bool which is false when the register no longer holds a function of the cached
-// type, leaving the call to the full dispatch path.
+// type, or an argument does not fit the native's parameter, leaving the call to the full
+// dispatch path.
 func dispatchCachedNativeFastPath(vm *VM, site *program.CallSite, registers *Registers, entry *nativeFastPathEntry) (OpResult, bool) {
+	current := registers.General[site.NativeRegister]
 	if !site.IsMethod {
-		current := registers.General[site.NativeRegister]
-		if !current.IsValid() || current.Type() != reflect.TypeOf(entry.fn) {
+		if !current.IsValid() || current.Type() != reflect.TypeOf(entry.fn) || !fastPathArgumentsFit(entry.tag, site, registers) {
 			return opContinue, false
 		}
-		dispatchNativeFastPathTagged(vm, entry.tag, current.Interface(), site, registers)
-		return opContinue, true
+		return cachedNativeFastPathResult(vm, dispatchNativeFastPathTagged(vm, entry.tag, current.Interface(), site, registers))
 	}
-	receiver := registers.General[site.MethodReceiverRegister]
-	if receiver.CanAddr() && receiver.Addr().Pointer() == entry.receiverAddr {
-		dispatchNativeFastPathTagged(vm, entry.tag, entry.fn, site, registers)
-		return opContinue, true
+	if !current.IsValid() {
+		return opContinue, false
 	}
-	reflectedFunction := registers.General[site.NativeRegister]
-	refreshed := &nativeFastPathEntry{fn: reflectedFunction.Interface(), tag: entry.tag, receiverAddr: 0}
-	if receiver.CanAddr() {
-		refreshed.receiverAddr = receiver.Addr().Pointer()
-	}
-	atomic.StorePointer(&site.NativeFastPath, unsafe.Pointer(refreshed))
-	dispatchNativeFastPathTagged(vm, refreshed.tag, refreshed.fn, site, registers)
-	return opContinue, true
+	return dispatchCachedNativeMethod(vm, site, registers, entry, current)
+}
+
+// publishNativeFastPath publishes a call site's fast-path entry.
+//
+// Takes site (*CallSite) which receives the entry.
+// Takes entry (*nativeFastPathEntry) which is the immutable entry.
+func publishNativeFastPath(site *program.CallSite, entry *nativeFastPathEntry) {
+	atomic.StorePointer(&site.NativeFastPath, unsafe.Pointer(entry))
 }
 
 // handleCallNativeClosure invokes a compiled closure that was resolved from a native call
@@ -467,7 +554,7 @@ func handleCallNativeClosure(vm *VM, registers *Registers, site *program.CallSit
 	if vm.Arena != nil {
 		vm.Arena.SaveInto(&f.arenaSave)
 		callee.EnsurePrecomputedAllocCounts()
-		vm.Arena.allocRegistersIntoCached(&f.Registers, callee.PrecomputedAllocCounts, callee.NonZeroBankMask)
+		vm.Arena.allocRegistersIntoCached(&f.Registers, &callee.PrecomputedAllocCounts, callee.NonZeroBankMask)
 	} else {
 		f.Registers = NewRegisters(callee.NumRegisters)
 	}
@@ -584,6 +671,9 @@ func handleCallNativeReflect(vm *VM, registers *Registers, site *program.CallSit
 	if result, taken := tryNativeFastPathDispatch(vm, registers, site, reflectedFunction); taken {
 		return result
 	}
+	if opcodeCensusBuilt {
+		slowCallCensusRecord(slowCallNative, reflectedFunction.Type())
+	}
 	cacheParamTypes(site, reflectedFunction)
 
 	var handoff *gilHandoff
@@ -592,19 +682,13 @@ func handleCallNativeReflect(vm *VM, registers *Registers, site *program.CallSit
 	}
 	previousHandoff := vm.pendingGilHandoff
 	vm.pendingGilHandoff = handoff
-	arguments := buildReflectArgs(vm, registers, site, reflectedFunction)
+	arguments, argumentsHolder := buildReflectArgs(vm, registers, site, reflectedFunction)
 	vm.pendingGilHandoff = previousHandoff
-	defer releaseReflectValueBuffer(arguments)
+	defer releaseReflectValueBuffer(argumentsHolder)
 	if cache := site.NativeParamCacheLoad(); cache != nil && cache.Sleep {
 		return vm.interruptibleSleep(time.Duration(arguments[0].Int()))
 	}
-	if dispatched, ok := dispatchPipitErrorsIntrinsic(vm, registers, site, reflectedFunction, arguments); ok {
-		return dispatched
-	}
-	if dispatched, ok := dispatchSetFinalizerIntrinsic(vm, reflectedFunction, arguments); ok {
-		return dispatched
-	}
-	if dispatched, ok := dispatchCallStackIntrinsic(vm, registers, site, reflectedFunction, arguments); ok {
+	if dispatched, ok := dispatchNativeIntrinsic(vm, registers, site, reflectedFunction, arguments); ok {
 		return dispatched
 	}
 	if denial := consultCapabilityHookForNativeCall(vm, site, reflectedFunction, arguments); denial != nil {
@@ -614,10 +698,11 @@ func handleCallNativeReflect(vm *VM, registers *Registers, site *program.CallSit
 	unwrapPipitNamedTypeArguments(reflectedFunction, arguments)
 	unwrapPipitAdapterArguments(reflectedFunction, arguments)
 	shimReflectMakeFuncImpl(reflectedFunction, arguments)
-	if err := checkNativeInterfaceArguments(vm, reflectedFunction, arguments, site.IsEllipsisSpread); err != nil {
+	if err := checkNativeCallArguments(vm, site, reflectedFunction, arguments); err != nil {
 		vm.evalError = err
 		return opPanicError
 	}
+	renderStringKindPrintOperands(reflectedFunction, arguments)
 	results, panicValue, err := invokeNativeUnderHandoff(vm, site, reflectedFunction, arguments, handoff)
 	if panicValue != nil {
 		return raiseNativePanicAsInterpreted(vm, panicValue)
@@ -629,6 +714,31 @@ func handleCallNativeReflect(vm *VM, registers *Registers, site *program.CallSit
 	results = applyPipitReflectTypeOfNaming(vm, reflectedFunction, site, results)
 	storeReflectResults(registers, site.Returns, results)
 	return opContinue
+}
+
+// dispatchNativeIntrinsic runs the natives the interpreter answers itself, because their
+// native versions cannot see the program's method tables, storage or call stack. They
+// include errors.As, errors.Is and errors.Unwrap, runtime.SetFinalizer,
+// reflect.VisibleFields and the call-stack functions.
+//
+// Takes vm (*VM) which is the executing VM.
+// Takes registers (*Registers) which receive any results.
+// Takes site (*program.CallSite) which describes the call.
+// Takes reflectedFunction (reflect.Value) which is the native callee.
+// Takes arguments ([]reflect.Value) which are the prepared arguments.
+//
+// Returns the dispatch result and true when an intrinsic answered the call.
+func dispatchNativeIntrinsic(vm *VM, registers *Registers, site *program.CallSite, reflectedFunction reflect.Value, arguments []reflect.Value) (OpResult, bool) {
+	if dispatched, ok := dispatchPipitErrorsIntrinsic(vm, registers, site, reflectedFunction, arguments); ok {
+		return dispatched, true
+	}
+	if dispatched, ok := dispatchSetFinalizerIntrinsic(vm, reflectedFunction, arguments); ok {
+		return dispatched, true
+	}
+	if dispatched, ok := dispatchReflectVisibleFieldsIntrinsic(registers, site, reflectedFunction, arguments); ok {
+		return dispatched, true
+	}
+	return dispatchCallStackIntrinsic(vm, registers, site, reflectedFunction, arguments)
 }
 
 // safeReflectCallOrCallSlice dispatches via reflect.Value.CallSlice when the source call
@@ -649,12 +759,62 @@ func safeReflectCallOrCallSlice(function reflect.Value, arguments []reflect.Valu
 			err = fmt.Errorf("%w: %v", errNativeCallPanic, recovered)
 		}
 	}()
-	if ellipsisSpread {
-		results = function.CallSlice(arguments)
-	} else {
-		results = function.Call(arguments)
-	}
+	results = callNativeFunction(function, arguments, ellipsisSpread)
 	return results, nil, nil
+}
+
+// callNativeFunction calls a native function. A method value with a concrete receiver is
+// called as its type's method function with the receiver first, which costs reflect one
+// allocation less per call than the method value itself.
+//
+// Takes function (reflect.Value) which is the callee.
+// Takes arguments ([]reflect.Value) which are the call's arguments.
+// Takes ellipsisSpread (bool) which is true when the last argument is the variadic slice.
+//
+// Returns []reflect.Value which are the results.
+func callNativeFunction(function reflect.Value, arguments []reflect.Value, ellipsisSpread bool) []reflect.Value {
+	receiver, method, ok := concreteMethodValue(function)
+	if !ok {
+		if ellipsisSpread {
+			return function.CallSlice(arguments)
+		}
+		return function.Call(arguments)
+	}
+	withReceiver, holder := acquireReflectValueBuffer(len(arguments) + 1)
+	withReceiver[0] = receiver
+	copy(withReceiver[1:], arguments)
+	var results []reflect.Value
+	if ellipsisSpread {
+		results = method.CallSlice(withReceiver)
+	} else {
+		results = method.Call(withReceiver)
+	}
+	releaseReflectValueBuffer(holder)
+	return results
+}
+
+// cachedMethodFunction returns receiverType.Method(index).Func, cached for at most
+// methodFunctionMax receiver types and methods, since Type.Method builds the function
+// value each time it is called.
+//
+// Takes receiverType (reflect.Type) which is a concrete receiver type.
+// Takes index (int) which is the method's index.
+//
+// Returns reflect.Value which is the method function.
+// Returns bool which is false past the cache's bound or for an index out of range.
+func cachedMethodFunction(receiverType reflect.Type, index int) (reflect.Value, bool) {
+	key := methodFunctionKey{typ: receiverType, index: index}
+	if method, ok := methodFunctions.load(key); ok {
+		return method, true
+	}
+	if index < 0 || index >= receiverType.NumMethod() || methodFunctionCount.Load() >= methodFunctionMax {
+		return reflect.Value{}, false
+	}
+	method := receiverType.Method(index).Func
+	if _, loaded := methodFunctions.loadOrStore(key, method); !loaded {
+		methodFunctionCount.Add(1)
+	}
+	return method, true
 }
 
 // dispatchPipitErrorsIntrinsic routes errors.As / errors.Is to pipit's own
@@ -714,11 +874,13 @@ func dispatchPipitErrorsIntrinsic(vm *VM, registers *Registers, site *program.Ca
 // Takes registers (*Registers) which holds the source values.
 // Takes site (*CallSite) which describes argument and return locations.
 // Takes boundMethod (reflect.Value) which is the receiver-bound method.
+// Takes sink (nativeAnySink) which classifies the callee's use of interface arguments.
+// Takes callee (nativeCalleeName) which is the native function used for diagnostics.
 //
 // Returns OpResult indicating the next execution step.
 //
 // Panics if boundMethod is a zero reflect.Value.
-func handleCallBoundMethodReflect(vm *VM, registers *Registers, site *program.CallSite, boundMethod reflect.Value) OpResult {
+func handleCallBoundMethodReflect(vm *VM, registers *Registers, site *program.CallSite, boundMethod reflect.Value, sink nativeAnySink, callee nativeCalleeName) OpResult {
 	if !boundMethod.IsValid() {
 		panic(newInvariantError(
 			"handleCallBoundMethodReflect - bound method is zero reflect.Value; "+
@@ -729,19 +891,37 @@ func handleCallBoundMethodReflect(vm *VM, registers *Registers, site *program.Ca
 	methodArgs := site.Arguments[1:]
 	methodType := boundMethod.Type()
 	nArgs := len(methodArgs)
-	arguments := acquireReflectValueBuffer(nArgs)
-	defer releaseReflectValueBuffer(arguments)
+	arguments, argumentsHolder := acquireReflectValueBuffer(nArgs)
+	defer releaseReflectValueBuffer(argumentsHolder)
 	for i, argumentLocation := range methodArgs {
 		arguments[i] = registerToReflectValue(vm.Arena, registers, argumentLocation.Kind, argumentLocation.Register)
 		if i < methodType.NumIn() {
 			arguments[i] = coerceReflectArgument(vm, arguments[i], methodType.In(i), argumentTypeContext{staticTypeName: "", staticTypeString: "", skipInterfaceAdapter: false, keepClosures: false})
 		}
 	}
+	prepareLooseNativeArguments(vm, sink, methodType, arguments[:nArgs], site.IsEllipsisSpread)
+	if copiesNativeStrings(vm.Arena) {
+		copyNativeMethodStringArguments(vm.Arena, boundMethod, arguments[:nArgs])
+	}
+	if vm.Arena.countsHandOffs() {
+		noteNativeMethodArguments(vm.Arena, boundMethod, arguments[:nArgs], site.IsEllipsisSpread)
+	}
+	if reusedWithoutLicence(vm.Arena) {
+		detachNativeMethodStringArguments(vm.Arena, boundMethod, arguments[:nArgs])
+	}
 	if denial := consultCapabilityHookForNativeCall(vm, site, boundMethod, arguments); denial != nil {
 		vm.evalError = denial
 		return opPanicError
 	}
 	if err := checkNativeInterfaceArguments(vm, boundMethod, arguments, false); err != nil {
+		vm.evalError = err
+		return opPanicError
+	}
+	if err := checkNativeFunctionArguments(boundMethod, arguments[:nArgs], site.IsEllipsisSpread); err != nil {
+		vm.evalError = err
+		return opPanicError
+	}
+	if err := checkAnySinkArguments(vm, sink, boundMethod, callee, arguments[:nArgs], site.IsEllipsisSpread); err != nil {
 		vm.evalError = err
 		return opPanicError
 	}
@@ -790,7 +970,7 @@ func safeReflectCallWithPanic(function reflect.Value, arguments []reflect.Value)
 			err = fmt.Errorf("%w: %v", errNativeCallPanic, recovered)
 		}
 	}()
-	results = function.Call(arguments)
+	results = callNativeFunction(function, arguments, false)
 	return results, nil, nil
 }
 
@@ -804,14 +984,15 @@ func cacheParamTypes(site *program.CallSite, reflectedFunction reflect.Value) {
 		return
 	}
 	functionType := reflectedFunction.Type()
-
+	sink := nativeFunctionAnySink(reflectedFunction)
+	scan := sink == anySinkScan
 	site.NativeParamCacheStore(&program.NativeParamCache{
-		Types:             slices.Collect(functionType.Ins()),
-		IsVariadic:        functionType.IsVariadic(),
-		Sleep:             isWallClockSleep(reflectedFunction, functionType),
-		FmtArguments:      isFmtVariadicAny(reflectedFunction, functionType),
-		FmtScan:           isFmtScanFunction(reflectedFunction),
-		EncodingArguments: isEncodingMarshaller(reflectedFunction),
+		Types:        slices.Collect(functionType.Ins()),
+		IsVariadic:   functionType.IsVariadic(),
+		Sleep:        isWallClockSleep(reflectedFunction, functionType),
+		FmtArguments: isFmtVariadicAny(reflectedFunction, functionType) || (sink == anySinkPrint && functionType.IsVariadic()),
+		FmtScan:      scan,
+		AnySink:      uint8(sink),
 	})
 }
 
@@ -835,62 +1016,6 @@ func isWallClockSleep(reflectedFunction reflect.Value, functionType reflect.Type
 	return name == "time.Sleep" || strings.HasSuffix(name, "internal/clock.wallClock.Sleep-fm")
 }
 
-// isEncodingMarshaller reports whether the native is one of the encoding/json or
-// encoding/xml marshal entry points, whose `any` arguments get the marshal shadow walk.
-//
-// Takes reflectedFunction (reflect.Value) which is the native function.
-//
-// Returns true for json.Marshal, json.MarshalIndent, (*json.Encoder).Encode and the xml
-// counterparts.
-func isEncodingMarshaller(reflectedFunction reflect.Value) bool {
-	symbol := runtime.FuncForPC(reflectedFunction.Pointer())
-	if symbol == nil {
-		return false
-	}
-	switch symbol.Name() {
-	case "encoding/json.Marshal", "encoding/json.MarshalIndent", "encoding/json.(*Encoder).Encode",
-		"encoding/xml.Marshal", "encoding/xml.MarshalIndent", "encoding/xml.(*Encoder).Encode":
-		return true
-	default:
-		return false
-	}
-}
-
-// isFmtScanFunction reports whether the native is one of package fmt's scanning functions
-// (Scan, Scanln, Scanf and their S and F forms), whose variadic operands are pointers to
-// fill rather than values to print.
-//
-// Takes reflectedFunction (reflect.Value) which is the native function value.
-//
-// Returns bool which is true for a fmt scanning function.
-func isFmtScanFunction(reflectedFunction reflect.Value) bool {
-	symbol := runtime.FuncForPC(reflectedFunction.Pointer())
-	if symbol == nil {
-		return false
-	}
-	name := symbol.Name()
-	return strings.HasPrefix(name, "fmt.Scan") || strings.HasPrefix(name, "fmt.Sscan") || strings.HasPrefix(name, "fmt.Fscan")
-}
-
-// isFmtVariadicAny reports whether the native is a fmt printing function taking ...any
-// (Println, Printf, Fprintln and the rest), whose operands the intercept must wrap.
-//
-// Takes reflectedFunction (reflect.Value) which is the native function.
-// Takes functionType (reflect.Type) which is its signature.
-//
-// Returns true for fmt's variadic ...any functions.
-func isFmtVariadicAny(reflectedFunction reflect.Value, functionType reflect.Type) bool {
-	if !functionType.IsVariadic() || functionType.NumIn() == 0 {
-		return false
-	}
-	last := functionType.In(functionType.NumIn() - 1)
-	if last.Kind() != reflect.Slice || last.Elem().Kind() != reflect.Interface || last.Elem().NumMethod() != 0 {
-		return false
-	}
-	symbol := runtime.FuncForPC(reflectedFunction.Pointer())
-	return symbol != nil && strings.HasPrefix(symbol.Name(), "fmt.")
-}
-
 // buildReflectArgs marshals call-site arguments from registers into a []reflect.Value
 // slice, coercing types where necessary to match the expected parameter types of the
 // target native function.
@@ -902,216 +1027,29 @@ func isFmtVariadicAny(reflectedFunction reflect.Value, functionType reflect.Type
 // pipit-side reflect.MakeFunc closures whose interface parameters must not trigger
 // stdlib-interface adapter wrapping.
 //
-// Returns []reflect.Value ready for reflect.Value.Call.
-func buildReflectArgs(vm *VM, registers *Registers, site *program.CallSite, reflectedFunction reflect.Value) []reflect.Value {
-	arguments := acquireReflectValueBuffer(len(site.Arguments))
-	shaping := newNativeArgShaping(registers, site, reflectedFunction)
+// Returns []reflect.Value which contains the arguments ready for reflect.Value.Call.
+// Returns *[]reflect.Value which is the pooled holder the caller releases.
+func buildReflectArgs(vm *VM, registers *Registers, site *program.CallSite, reflectedFunction reflect.Value) ([]reflect.Value, *[]reflect.Value) {
+	arguments, holder := acquireReflectValueBuffer(len(site.Arguments))
+	shaping := newNativeArgShaping(vm, registers, site, reflectedFunction)
+	boxShare := newBoxShareCall(vm.Arena, reflectedFunction)
 	for i, argumentLocation := range site.Arguments {
 		raw := registerToReflectValue(vm.Arena, registers, argumentLocation.Kind, argumentLocation.Register)
+
+		shared := false
+		raw, shared = boxShare.share(site, i, argumentLocation.Kind, raw)
 		arguments[i] = shaping.shape(vm, site, i, raw)
+		if shared {
+			boxShare.note(raw)
+		}
+	}
+	if vm.Arena.countsHandOffs() {
+		noteNativeScalarArguments(vm.Arena, site, reflectedFunction, arguments)
 	}
 	if shaping.fmtArguments {
 		rewriteFmtTypeVerbs(site, arguments, shaping.parameterTypes)
 	}
-	return arguments
-}
-
-// rewriteFmtTypeVerbs rewrites %T verbs in the format string so that Printf, Fprintf and
-// Errorf name script types correctly.
-//
-// fmt resolves %T without consulting Formatter, so rewriting the verb before the call is
-// the only way to print a pool-backed named type.
-//
-// Takes site (*program.CallSite) which carries the static argument type strings.
-// Takes arguments ([]reflect.Value) which are the coerced call arguments, edited in
-// place.
-// Takes parameterTypes ([]reflect.Type) which are the native's parameter types.
-func rewriteFmtTypeVerbs(site *program.CallSite, arguments []reflect.Value, parameterTypes []reflect.Type) {
-	parameterCount := len(parameterTypes)
-	formatIndex := parameterCount - 2
-	if formatIndex < 0 || parameterTypes[formatIndex].Kind() != reflect.String || formatIndex >= len(arguments) {
-		return
-	}
-	format := arguments[formatIndex].String()
-	if !strings.ContainsRune(format, 'T') {
-		return
-	}
-	variadicStart := parameterCount - 1
-	if site.IsEllipsisSpread {
-		rewriteFmtTypeVerbsSpread(site, arguments, formatIndex, variadicStart, format)
-		return
-	}
-	varArgs := make([]any, 0, len(arguments)-variadicStart)
-	for _, argument := range arguments[variadicStart:] {
-		varArgs = append(varArgs, interfaceOrNil(argument))
-	}
-	rewrittenFormat, rewrittenArgs, intercepted := interceptFmtFormat(site, variadicStart, format, varArgs)
-	if !intercepted {
-		return
-	}
-	arguments[formatIndex] = reflect.ValueOf(rewrittenFormat)
-	for i, rewritten := range rewrittenArgs {
-		if text, ok := rewritten.(string); ok {
-			arguments[variadicStart+i] = reflect.ValueOf(text)
-		}
-	}
-}
-
-// rewriteFmtTypeVerbsSpread rewrites %T verbs for a call that spreads a slice into the
-// variadic parameter (e.g. fmt.Sprintf(format, args...)).
-//
-// Elements come from the script's slice, so rewrites go into a fresh slice. No static
-// type string describes an element, so every %T resolves from the element's runtime type.
-//
-// Takes site (*program.CallSite) which is the call site.
-// Takes arguments ([]reflect.Value) which are the coerced call arguments, edited in
-// place.
-// Takes formatIndex (int) which is the format string's argument index.
-// Takes sliceIndex (int) which is the spread slice's argument index.
-// Takes format (string) which is the format string.
-func rewriteFmtTypeVerbsSpread(site *program.CallSite, arguments []reflect.Value, formatIndex, sliceIndex int, format string) {
-	if sliceIndex >= len(arguments) {
-		return
-	}
-	slice := arguments[sliceIndex]
-	if !slice.IsValid() || slice.Kind() != reflect.Slice {
-		return
-	}
-	varArgs := make([]any, slice.Len())
-	for i := range varArgs {
-		varArgs[i] = interfaceOrNil(slice.Index(i))
-	}
-	rewrittenFormat, rewrittenArgs, intercepted := interceptFmtFormat(site, len(site.Arguments), format, varArgs)
-	if !intercepted {
-		return
-	}
-	arguments[formatIndex] = reflect.ValueOf(rewrittenFormat)
-	fresh := reflect.MakeSlice(slice.Type(), len(rewrittenArgs), len(rewrittenArgs))
-	for i, rewritten := range rewrittenArgs {
-		if rewritten == nil {
-			continue
-		}
-		fresh.Index(i).Set(reflect.ValueOf(rewritten))
-	}
-	arguments[sliceIndex] = fresh
-}
-
-// interfaceOrNil returns the Go value held by argument, or nil when the value cannot be
-// read as an interface (invalid, or an unexported field).
-//
-// Takes argument (reflect.Value) which is the value to read.
-//
-// Returns any which is the value or nil.
-func interfaceOrNil(argument reflect.Value) any {
-	if !argument.IsValid() || !argument.CanInterface() {
-		return nil
-	}
-	return argument.Interface()
-}
-
-// wrapFmtArgument routes a coerced `...any` argument of a fmt scanning call through
-// wrapPipitSynthesisedFmtArg so fmt sees adapters for synthesised types. Nil interfaces
-// are left untouched, and so is an adapter, which a Scan method needs.
-//
-// Takes vm (*VM) which provides the method registry for adapters.
-// Takes argument (reflect.Value) which is the coerced argument.
-// Takes staticTypeName (string) which is the call site's recorded source-level type name.
-//
-// Returns the argument, wrapped when its dynamic type is pipit-synthesised.
-func wrapFmtArgument(vm *VM, argument reflect.Value, staticTypeName string) reflect.Value {
-	return wrapFmtOperand(argument, func(operand any) any {
-		return wrapPipitSynthesisedFmtArg(vm, operand, staticTypeName)
-	})
-}
-
-// wrapFmtArgumentForVerb is wrapFmtArgument for an operand whose verb is known (see
-// wrapPipitSynthesisedFmtArgForVerb).
-//
-// Takes vm (*VM) which resolves script method tables.
-// Takes argument (reflect.Value) which is the operand.
-// Takes verb (byte) which is the operand's verb.
-// Takes staticTypeName (string) which is the call site's recorded source-level type name.
-//
-// Returns reflect.Value which is the operand to hand to fmt.
-func wrapFmtArgumentForVerb(vm *VM, argument reflect.Value, verb byte, staticTypeName string) reflect.Value {
-	return wrapFmtOperand(argument, func(operand any) any {
-		return wrapPipitSynthesisedFmtArgForVerb(vm, operand, verb, staticTypeName)
-	})
-}
-
-// wrapFmtOperand applies wrap to an operand that fmt can receive, keeping the operand
-// when it is invalid, cannot be turned into an interface, is a nil interface, or wrap
-// returns nil.
-//
-// Takes argument (reflect.Value) which is the operand.
-// Takes wrap (func(any) any) which returns the operand's wrapper, or nil.
-//
-// Returns reflect.Value which is the operand to hand to fmt.
-func wrapFmtOperand(argument reflect.Value, wrap func(operand any) any) reflect.Value {
-	if !argument.IsValid() || !argument.CanInterface() || isNilInterfaceValue(argument) {
-		return argument
-	}
-	wrapped := wrap(argument.Interface())
-	if wrapped == nil {
-		return argument
-	}
-	return reflect.ValueOf(wrapped)
-}
-
-// fmtVerbsForCall scans the format operand of a Printf-style native call (the parameter
-// before the variadic one, when it is a string) and returns the verb of each variadic
-// operand; nil when the call has no format string (Print, Println, Sprint).
-//
-// Takes registers (*Registers) which hold the operands.
-// Takes site (*program.CallSite) which describes the call.
-// Takes parameterTypes ([]reflect.Type) which are the callee's parameter types.
-//
-// Returns []byte which is nil or one verb per variadic operand.
-func fmtVerbsForCall(registers *Registers, site *program.CallSite, parameterTypes []reflect.Type) []byte {
-	format, ok := fmtFormatOperand(registers, site, parameterTypes)
-	if !ok {
-		return nil
-	}
-	variadicCount := len(site.Arguments) - (len(parameterTypes) - 1)
-	if variadicCount <= 0 {
-		return nil
-	}
-	return fmtArgumentVerbs(format, variadicCount)
-}
-
-// fmtFormatOperand reads a string-register format argument immediately before the
-// variadic parameter of a Printf-style call.
-//
-// Takes registers (*Registers) which hold the operands.
-// Takes site (*program.CallSite) which describes the call.
-// Takes parameterTypes ([]reflect.Type) which are the callee's parameter types.
-//
-// Returns string which is the format string.
-// Returns bool which is false when the call has no format operand.
-func fmtFormatOperand(registers *Registers, site *program.CallSite, parameterTypes []reflect.Type) (string, bool) {
-	formatIndex := len(parameterTypes) - 2
-	if formatIndex < 0 || parameterTypes[formatIndex].Kind() != reflect.String || formatIndex >= len(site.Arguments) {
-		return "", false
-	}
-	formatLocation := site.Arguments[formatIndex]
-	if formatLocation.Kind != isa.RegisterString {
-		return "", false
-	}
-	return registers.Strings[formatLocation.Register], true
-}
-
-// fmtVerbAt returns the verb recorded for variadic operand index, or 'v' when the call
-// has no format string or the index is out of range.
-//
-// Takes verbs ([]byte) which may be nil.
-// Takes index (int) which is the variadic operand position.
-//
-// Returns byte which is the verb.
-func fmtVerbAt(verbs []byte, index int) byte {
-	if index < 0 || index >= len(verbs) {
-		return 'v'
-	}
-	return verbs[index]
+	return arguments, holder
 }
 
 // isNilInterfaceValue reports whether value is an interface-kind Value holding nothing.
@@ -1259,12 +1197,32 @@ func coerceReflectArgument(vm *VM, argument reflect.Value, expectedType reflect.
 		if typeCtx.keepClosures && expectedType.Kind() == reflect.Interface {
 			return argument
 		}
-		return coerceClosureArgument(vm, argument, expectedType)
+		return coerceNamedClosureForInterface(vm, coerceClosureArgument(vm, argument, expectedType), expectedType, typeCtx)
 	}
 	if adapted, ok := coerceForInterfaceSlot(vm, argument, expectedType, typeCtx); ok {
 		return adapted
 	}
 	return coerceConcreteArgument(vm, argument, expectedType)
+}
+
+// coerceNamedClosureForInterface gives a closure converted to a named func type, and
+// already wrapped as a function value of that type, the adapter its type's methods supply
+// when the parameter is an interface, as for any other named composite value.
+//
+// Takes vm (*VM) which resolves script method tables.
+// Takes function (reflect.Value) which is the wrapped closure.
+// Takes expectedType (reflect.Type) which is the parameter type.
+// Takes typeCtx (argumentTypeContext) which carries the call-site flags.
+//
+// Returns reflect.Value which is the adapter, or function when none applies.
+func coerceNamedClosureForInterface(vm *VM, function reflect.Value, expectedType reflect.Type, typeCtx argumentTypeContext) reflect.Value {
+	if expectedType.Kind() != reflect.Interface || !function.IsValid() || !typemodel.IsNamedCompositeType(function.Type()) {
+		return function
+	}
+	if adapted, ok := coerceForInterfaceSlot(vm, function, expectedType, typeCtx); ok {
+		return adapted
+	}
+	return function
 }
 
 // coerceInterfaceHeldArgument coerces an interface operand's dynamic value, discarding
@@ -1275,8 +1233,8 @@ func coerceReflectArgument(vm *VM, argument reflect.Value, expectedType reflect.
 // Takes expectedType (reflect.Type) which is the parameter type.
 // Takes typeCtx (argumentTypeContext) which carries the call-site flags.
 //
-// Returns reflect.Value which is the coerced dynamic value, or the parameter type's
-// zero value for a nil interface.
+// Returns reflect.Value which is the coerced dynamic value, or the parameter type's zero
+// value for a nil interface.
 func coerceInterfaceHeldArgument(vm *VM, argument reflect.Value, expectedType reflect.Type, typeCtx argumentTypeContext) reflect.Value {
 	if argument.IsNil() {
 		return reflect.Zero(expectedType)
@@ -1306,8 +1264,10 @@ func coerceForInterfaceSlot(vm *VM, argument reflect.Value, expectedType reflect
 	return restoreNamedScalarForInterface(vm, argument, typeCtx)
 }
 
-// coerceConcreteArgument converts a scalar or pointer operand to the parameter type: an
-// int flag to bool, a convertible value through reflect, or a reinterpreted pointer.
+// coerceConcreteArgument converts a scalar, function or pointer operand to the parameter
+// type. An int flag becomes a bool, a convertible value is converted through reflect, a
+// function value is adapted to the parameter's function type (functionBridge.adapt), and
+// a pointer is reinterpreted.
 //
 // Takes vm (*VM) which validates pointer reinterpretation.
 // Takes argument (reflect.Value) which is the operand.
@@ -1320,6 +1280,9 @@ func coerceConcreteArgument(vm *VM, argument reflect.Value, expectedType reflect
 	}
 	if argument.Type().ConvertibleTo(expectedType) {
 		return argument.Convert(expectedType)
+	}
+	if adapted, ok := newFunctionBridge(vm).adapt(argument, expectedType); ok {
+		return adapted
 	}
 	if coerced, ok := reinterpretPointerArgument(vm, argument, expectedType); ok {
 		return coerced
@@ -1361,7 +1324,6 @@ func restoreNamedScalarForInterface(vm *VM, argument reflect.Value, typeCtx argu
 
 // reinterpretPointerArgument bridges native-backed generic erasure by reinterpreting a
 // pointer via reflect.NewAt when the expected pointee is a registered erasure type.
-// Mismatches outside the erasure boundary are left unchanged.
 //
 // Takes vm (*VM) which provides the symbol registry whose NativeBackedGenericType
 // sentinels delimit the erasure boundary.
@@ -1377,15 +1339,13 @@ func reinterpretPointerArgument(vm *VM, argument reflect.Value, expectedType ref
 	if argument.Type() == expectedType || vm == nil {
 		return reflect.Value{}, false
 	}
-	if vm.nativeBackedErasurePointees == nil {
-		vm.nativeBackedErasurePointees = vm.buildNativeBackedErasurePointees()
-	}
-	if _, ok := vm.nativeBackedErasurePointees[expectedType.Elem()]; !ok {
+	if _, ok := vm.erasurePointees()[expectedType.Elem()]; !ok {
 		return reflect.Value{}, false
 	}
 	if argument.IsNil() {
 		return reflect.Zero(expectedType), true
 	}
+	noteErasedPointer(argument)
 	return reflect.NewAt(expectedType.Elem(), argument.UnsafePointer()), true
 }
 
@@ -1460,13 +1420,13 @@ func storeReflectResults(registers *Registers, returns []program.VarLocation, re
 // Takes value (reflect.Value) which is the value to store.
 func storeOneReflectResult(registers *Registers, retLocation program.VarLocation, value reflect.Value) {
 	switch retLocation.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		if value.Kind() == reflect.Bool {
 			registers.Ints[retLocation.Register] = boolToInt64(value.Bool())
 		} else {
 			registers.Ints[retLocation.Register] = value.Int()
 		}
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.Floats[retLocation.Register] = value.Float()
 	case isa.RegisterString:
 		registers.Strings[retLocation.Register] = value.String()
@@ -1474,9 +1434,9 @@ func storeOneReflectResult(registers *Registers, retLocation program.VarLocation
 		registers.General[retLocation.Register] = value
 	case isa.RegisterBool:
 		registers.Bools[retLocation.Register] = value.Bool()
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[retLocation.Register] = value.Uint()
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.Complex[retLocation.Register] = value.Complex()
 	default:
 	}
@@ -1549,32 +1509,4 @@ func invokeNativeUnderHandoff(
 	}
 	vm.Globals.dispatchDepth.Add(-1)
 	return results, panicValue, err
-}
-
-// dispatchSetFinalizerIntrinsic guards runtime.SetFinalizer calls.
-//
-// The real function requires a pointer to the start of a Go allocation and terminates the
-// process otherwise, so a registration on interpreter-owned storage is dropped. A pointer
-// to Go heap memory goes to the real function.
-//
-// Takes vm (*VM) which owns the arena and snapshot pools.
-// Takes reflectedFunction (reflect.Value) which is the native callee.
-// Takes arguments ([]reflect.Value) which are the coerced operands.
-//
-// Returns opContinue and true when the call was consumed.
-func dispatchSetFinalizerIntrinsic(vm *VM, reflectedFunction reflect.Value, arguments []reflect.Value) (OpResult, bool) {
-	if reflectedFunction.Pointer() != setFinalizerPointer || len(arguments) != 2 {
-		return opContinue, false
-	}
-	object := arguments[0]
-	if object.IsValid() && object.Kind() == reflect.Interface {
-		object = object.Elem()
-	}
-	if !object.IsValid() || object.Kind() != reflect.Pointer || object.IsNil() {
-		return opContinue, false
-	}
-	if vm.ownsInterpreterStorage(object.UnsafePointer()) {
-		return opContinue, true
-	}
-	return opContinue, false
 }

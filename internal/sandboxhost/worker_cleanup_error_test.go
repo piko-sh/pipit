@@ -19,6 +19,7 @@
 package sandboxhost
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -30,7 +31,9 @@ func TestCleanupErrorContract(t *testing.T) {
 	launch := ErrInvalidIsolatedConfig
 	cleanup := errors.New("cleanup failed once")
 	attempts := 0
-	wrapped, _ := errors.AsType[*IsolatedCleanupError](cleanupOrFail(launch, func() error {
+	wrapped, _ := errors.AsType[*IsolatedCleanupError](cleanupOrFail(t.Context(), launch, func(ctx context.Context) error {
+		_, bounded := ctx.Deadline()
+		require.True(t, bounded || attempts > 0, "the first cleanup is bounded")
 		attempts++
 		if attempts < 3 {
 			return cleanup

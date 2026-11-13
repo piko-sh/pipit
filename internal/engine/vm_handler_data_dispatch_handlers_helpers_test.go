@@ -24,6 +24,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/symtab/typemodel"
 )
 
 type assertStringer struct{}
@@ -55,6 +57,41 @@ func TestMatchTypeAssertionFollowsGoAssertionRules(t *testing.T) {
 		{name: "a valid source does not match a nil target", source: reflect.ValueOf(1), targetType: nil, want: false},
 		{name: "an invalid source does not match a concrete target", source: reflect.Value{}, targetType: reflect.TypeFor[int](), want: false},
 		{name: "any type matches the empty interface", source: reflect.ValueOf(42), targetType: reflect.TypeFor[any](), want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, ok := matchTypeAssertion(tt.source, tt.targetType)
+
+			require.Equal(t, tt.want, ok)
+		})
+	}
+}
+
+func TestMatchTypeAssertionTellsNamedCompositeTypesApart(t *testing.T) {
+	t.Parallel()
+
+	ints := reflect.TypeFor[[]int]()
+	celsius := testNamedCompositeType(t, "Celsius", ints)
+	fahrenheit := testNamedCompositeType(t, "Fahrenheit", ints)
+	reading := reflect.MakeSlice(celsius, 1, 1)
+	op := testNamedCompositeType(t, "Op", reflect.TypeFor[func()]())
+	opClosure := reflect.ValueOf(&RuntimeClosure{namedType: typemodel.NamedCompositeID(op)})
+
+	tests := []struct {
+		source     reflect.Value
+		targetType reflect.Type
+		name       string
+		want       bool
+	}{
+		{name: "a named slice matches itself", source: reading, targetType: celsius, want: true},
+		{name: "a named slice does not match another over the same type", source: reading, targetType: fahrenheit, want: false},
+		{name: "a named slice does not match its underlying type", source: reading, targetType: ints, want: false},
+		{name: "an unnamed slice does not match a named one", source: reflect.ValueOf([]int{1}), targetType: celsius, want: false},
+		{name: "a named slice matches the empty interface", source: reading, targetType: reflect.TypeFor[any](), want: true},
+		{name: "a closure converted to a named func type matches it", source: opClosure, targetType: op, want: true},
+		{name: "a closure converted to a named func type is not its signature", source: opClosure, targetType: reflect.TypeFor[func()](), want: false},
 	}
 
 	for _, tt := range tests {

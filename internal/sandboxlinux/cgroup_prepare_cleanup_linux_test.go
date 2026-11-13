@@ -23,10 +23,13 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"syscall"
 	"testing"
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 func TestCgroupNativePreparationOwnership(t *testing.T) {
@@ -69,7 +72,7 @@ func exerciseGroupPreparationOwnership(t *testing.T, mode string) {
 	if err := group.start(exec.Command("/bin/true")); !errors.Is(err, errClosed) {
 		t.Fatal("partial group admitted process:", err)
 	}
-	if _, err := group.newChild(Limits{}); !errors.Is(err, errClosed) {
+	if _, err := group.newChild(t.Context(), Limits{}); !errors.Is(err, errClosed) {
 		t.Fatal("partial group admitted child:", err)
 	}
 	if mode == "blocked-removal" {
@@ -77,7 +80,7 @@ func exerciseGroupPreparationOwnership(t *testing.T, mode string) {
 			t.Fatal(err)
 		}
 	}
-	owner, err := finishGroupPreparation(group, preparationErr)
+	owner, err := finishGroupPreparation(t.Context(), group, preparationErr)
 	if !errors.Is(err, preparationErr) {
 		t.Fatal("preparation error lost:", err)
 	}
@@ -129,5 +132,76 @@ func exerciseGroupPreparationOwnership(t *testing.T, mode string) {
 	}
 	if _, err := parent.Stat(); !errors.Is(err, os.ErrClosed) {
 		t.Fatal("completed owner leaked parent handle:", err)
+	}
+}
+
+func TestCgroupNativePreparationCleanupAfterCancel(t *testing.T) {
+	for _, mode := range []string{"runs", "bounded"} {
+		t.Run(mode, func(t *testing.T) { exercisePreparationCleanupAfterCancel(t, mode) })
+	}
+}
+
+func exercisePreparationCleanupAfterCancel(t *testing.T, mode string) {
+	t.Helper()
+	aggregate, _ := aggregateGroupFixture(t, Limits{})
+	parent, err := openDirectory(int(aggregate.directory.Fd()), ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "partial-" + mode
+	if err := unix.Mkdirat(int(parent.Fd()), name, groupDirectoryMode); err != nil {
+		_ = parent.Close()
+		t.Fatal(err)
+	}
+	group, preparationErr := prepareGroup(parent, name, map[string]string{"unavailable-control": "1"})
+	if preparationErr == nil || group == nil || group.kill != nil {
+		t.Fatalf("partial preparation did not keep an owner without a kill handle: %v: %v", group, preparationErr)
+	}
+	occupant := exec.Command("/bin/sleep", "60")
+	t.Cleanup(func() {
+		if occupant.Process != nil && occupant.ProcessState == nil {
+			_ = occupant.Process.Kill()
+			_ = occupant.Wait()
+		}
+		cleanup, cancel := sandboxwire.CleanupContext(t.Context())
+		defer cancel()
+		if err := group.closeGroup(cleanup); err != nil {
+			t.Error(err)
+		}
+	})
+	if mode == "bounded" {
+		occupant.SysProcAttr = &syscall.SysProcAttr{UseCgroupFD: true, CgroupFD: int(group.directory.Fd())}
+		if err := occupant.Start(); err != nil {
+			t.Fatal("starting a process inside the partial group:", err)
+		}
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	started := time.Now()
+	owner, err := finishGroupPreparation(ctx, group, preparationErr)
+	elapsed := time.Since(started)
+	if !errors.Is(err, preparationErr) {
+		t.Fatal("preparation error lost:", err)
+	}
+	if mode == "runs" {
+		if owner != nil || !group.closed {
+			t.Fatal("rollback did not run after the caller's context ended:", err)
+		}
+		return
+	}
+	if owner != group || group.closed || !errors.Is(err, sandboxwire.ErrCleanupTimedOut) {
+		t.Fatalf("populated rollback did not stop at the cleanup bound: owner=%v error=%v", owner, err)
+	}
+	if elapsed < sandboxwire.CleanupTimeout || elapsed > sandboxwire.CleanupTimeout+2*time.Second {
+		t.Fatal("cleanup bound not kept:", elapsed)
+	}
+	if err := occupant.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	_ = occupant.Wait()
+	retry, release := sandboxwire.CleanupContext(t.Context())
+	defer release()
+	if err := group.closeGroup(retry); err != nil || !group.closed {
+		t.Fatal("retained owner did not clean up once the group emptied:", err)
 	}
 }

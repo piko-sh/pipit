@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +16,11 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -30,10 +29,10 @@ import (
 
 func TestFilesystemBrokerNilOwner(t *testing.T) {
 	var owner *FilesystemBroker
-	if err := owner.Close(); err != nil {
+	if err := owner.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := owner.Execute(context.Background(), nil); !errors.Is(err, sandboxbroker.ErrClosed) {
+	if _, err := owner.Execute(t.Context(), nil); !errors.Is(err, sandboxbroker.ErrClosed) {
 		t.Fatal(err)
 	}
 	if !owner.Released() {
@@ -45,7 +44,7 @@ func TestFilesystemBrokerNilOwner(t *testing.T) {
 }
 
 func TestAggregateLaunchRequiresParent(t *testing.T) {
-	worker, err := LaunchWorkerInGroup(context.Background(), WorkerConfig{Tenant: testTenant}, nil)
+	worker, err := LaunchWorkerInGroup(t.Context(), WorkerConfig{Tenant: testTenant}, nil)
 	if worker != nil || !errors.Is(err, ErrInvalidLimits) {
 		t.Fatal("source launch accepted absent aggregate:", worker, err)
 	}
@@ -54,12 +53,12 @@ func TestAggregateLaunchRequiresParent(t *testing.T) {
 func TestRecoveryLaunchRequiresOriginalOwner(t *testing.T) {
 	var source WorkerProcess
 	for _, original := range []*WorkerProcess{nil, &source} {
-		process, err := LaunchFilesystemRecovery(context.Background(), WorkerConfig{Tenant: testTenant}, original, nil)
+		process, err := LaunchFilesystemRecovery(t.Context(), WorkerConfig{Tenant: testTenant}, original, nil)
 		if process != nil || !errors.Is(err, ErrInvalidLimits) {
 			t.Fatal("unbound recovery launch admitted:", process, err)
 		}
 	}
-	process, err := launchFilesystemRecoveryInGroup(context.Background(), WorkerConfig{Tenant: testTenant}, nil, nil, nil)
+	process, err := launchFilesystemRecoveryInGroup(t.Context(), WorkerConfig{Tenant: testTenant}, nil, nil, nil)
 	if process != nil || !errors.Is(err, ErrInvalidLimits) {
 		t.Fatal("recovery accepted absent aggregate:", process, err)
 	}

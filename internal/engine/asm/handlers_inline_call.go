@@ -28,20 +28,20 @@ import (
 // return opcodes.
 func inlineCallHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		handlerCallInline(),
-		handlerCallInlineScalar(),
-		handlerCallMethodInline(),
+		handlerCall(),
+		handlerCallScalar(),
+		handlerCallMethod(),
 		handlerCallInlineSetupGeneralBank(),
 		handlerCallInlineClearGeneralBank(),
-		handlerReturnInline(),
-		handlerReturnVoidInline(),
-		handlerTailCallInline(),
+		handlerReturn(),
+		handlerReturnVoid(),
+		handlerTailCall(),
 		handlerTailCallInlineSubroutine(),
 	}
 }
 
 // handlerCallInlineSetupGeneralBank returns the handler definition for the general-bank
-// setup trampoline invoked from handlerCallInline when isFastPath == 3.
+// setup trampoline invoked from handlerCall when isFastPath == 3.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
 func handlerCallInlineSetupGeneralBank() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
@@ -72,14 +72,14 @@ func handlerCallInlineClearGeneralBank() asmgen.HandlerDefinition[BytecodeArchit
 	}
 }
 
-// handlerCallInline returns the inline OpCall handler with ASM fast-path dispatch. Guard
+// handlerCall returns the inline isa.SubOpCall handler with ASM fast-path dispatch. Guard
 // failures fall back to EXIT_CALL.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerCallInline() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerCall() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerCallInline",
-		Comment:   "handlerCallInline handles OpCall with ASM-inlined fast path.",
+		Name:      "handlerCall",
+		Comment:   "handlerCall handles OpCall with ASM-inlined fast path.",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		ArchFlags: map[asmgen.Architecture]string{
 			asmgen.ArchitectureARM64: flagNoSplit,
@@ -93,14 +93,14 @@ func handlerCallInline() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// handlerCallInlineScalar returns the isa.SubOpCallScalar handler, which shares the
-// inline-call fast path with handlerCallInline via EmitCallInline.
+// handlerCallScalar returns the isa.SubOpCallScalar handler, which shares the inline-call
+// fast path with handlerCall via EmitCallInline.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerCallInlineScalar() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerCallScalar() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerCallInlineScalar",
-		Comment:   "handlerCallInlineScalar handles opCallScalar; the compile-time gate guarantees scalar-only callees, so it shares handlerCallInline's inline-call body via EmitCallInline.",
+		Name:      "handlerCallScalar",
+		Comment:   "handlerCallScalar handles isa.SubOpCallScalar. The compile-time gate guarantees scalar-only callees, so it shares handlerCall's inline-call body via EmitCallInline.",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		ArchFlags: map[asmgen.Architecture]string{
 			asmgen.ArchitectureARM64: flagNoSplit,
@@ -114,14 +114,14 @@ func handlerCallInlineScalar() asmgen.HandlerDefinition[BytecodeArchitecturePort
 	}
 }
 
-// handlerCallMethodInline returns the inline method-call handler, using a per-site
+// handlerCallMethod returns the inline method-call handler, using a per-site
 // receiver-type cache and the ASM fast path. Cache misses exit with EXIT_TIER2.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerCallMethodInline() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerCallMethod() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerCallMethodInline",
-		Comment:   "handlerCallMethodInline handles opCallMethod with a per-site receiver-type table and the ASM-inlined fast path.",
+		Name:      "handlerCallMethod",
+		Comment:   "handlerCallMethod handles isa.SubOpCallMethod with a per-site receiver-type table and the ASM-inlined fast path.",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		ArchFlags: map[asmgen.Architecture]string{
 			asmgen.ArchitectureARM64: flagNoSplit,
@@ -135,14 +135,14 @@ func handlerCallMethodInline() asmgen.HandlerDefinition[BytecodeArchitecturePort
 	}
 }
 
-// handlerReturnInline returns the inline OpReturn handler. Guard failures fall back to
-// EXIT_RETURN.
+// handlerReturn returns the inline isa.SubOpTier2Return handler. Guard failures fall back
+// to EXIT_RETURN.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerReturnInline() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerReturn() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerReturnInline",
-		Comment:   "handlerReturnInline handles OpReturn with ASM-inlined fast path.",
+		Name:      "handlerReturn",
+		Comment:   "handlerReturn handles OpReturn with ASM-inlined fast path.",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		ArchFlags: map[asmgen.Architecture]string{
 			asmgen.ArchitectureARM64: flagNoSplit,
@@ -156,14 +156,14 @@ func handlerReturnInline() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// handlerReturnVoidInline returns the inline OpReturnVoid handler. Guard failures fall
-// back to EXIT_RETURN_VOID.
+// handlerReturnVoid returns the inline isa.SubOpTier3ReturnVoid handler. Guard failures
+// fall back to EXIT_RETURN_VOID.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerReturnVoidInline() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerReturnVoid() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerReturnVoidInline",
-		Comment:   "handlerReturnVoidInline handles OpReturnVoid with ASM-inlined fast path.",
+		Name:      "handlerReturnVoid",
+		Comment:   "handlerReturnVoid handles OpReturnVoid with ASM-inlined fast path.",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		ArchFlags: map[asmgen.Architecture]string{
 			asmgen.ArchitectureARM64: flagNoSplit,
@@ -177,14 +177,14 @@ func handlerReturnVoidInline() asmgen.HandlerDefinition[BytecodeArchitecturePort
 	}
 }
 
-// handlerTailCallInline returns the handler definition for the tail-call inline handler,
-// which CALLs handlerTailCallInlineSubroutine to perform the tail-call work in-loop.
+// handlerTailCall returns the handler definition for the tail-call inline handler, which
+// CALLs handlerTailCallInlineSubroutine to perform the tail-call work in-loop.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerTailCallInline() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerTailCall() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerTailCallInline",
-		Comment:   "handlerTailCallInline handles OpTailCall in-loop via handlerTailCallInlineSubroutine (no exit-reason round-trip).",
+		Name:      "handlerTailCall",
+		Comment:   "handlerTailCall handles isa.SubOpTailCall in-loop via handlerTailCallInlineSubroutine (no exit-reason round-trip).",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		ArchFlags: map[asmgen.Architecture]string{
@@ -206,7 +206,7 @@ func handlerTailCallInline() asmgen.HandlerDefinition[BytecodeArchitecturePort] 
 func handlerTailCallInlineSubroutine() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		Name:      "handlerTailCallInlineSubroutine",
-		Comment:   "handlerTailCallInlineSubroutine performs the asmTailCallExecute round-trip and reloads dispatcher registers; CALLed from handlerTailCallInline.",
+		Comment:   "handlerTailCallInlineSubroutine performs the asmTailCallExecute round-trip and reloads dispatcher registers. Called from handlerTailCall.",
 		FrameSize: "$24-0",
 		Flags:     flagNoSplit,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {

@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,11 +16,12 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -109,7 +108,7 @@ func TestRecoveryImageStoreBinding(t *testing.T) {
 }
 
 func TestRecoveryImagesAdmission(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	var missing *ServiceRecoveryClaim
 	if err := missing.RecoverImages(ctx, "/unused", nil); !errors.Is(err, errClosed) {
 		t.Fatal("missing owner accepted:", err)

@@ -225,8 +225,8 @@ type DiscoverResult struct {
 	// manual generic: block in the manifest and are flagged so the user can address them.
 	GenericCandidates []string
 
-	// Unresolved lists imports that could not be loaded and their errors, excluding
-	// them from RequiredImports.
+	// Unresolved lists imports that could not be loaded and their errors, excluding them
+	// from RequiredImports.
 	Unresolved []UnresolvedImport
 
 	// Warnings lists non-fatal discovery problems that may leave results incomplete.
@@ -425,8 +425,8 @@ func hasPathPrefix(path string, prefixes []string) bool {
 }
 
 // inspectDirectPackages loads and classifies direct imports without traversing
-// dependencies. Packages with load errors are unresolved, and cgo or generic exports
-// are flagged for callers.
+// dependencies. Packages with load errors are unresolved, and cgo or generic exports are
+// flagged for callers.
 //
 // Takes root (string) which is the absolute project root for package resolution.
 // Takes buildTags ([]string) which is forwarded to packages.Load.
@@ -614,8 +614,10 @@ func walkSourceDirectory(ctx context.Context, projectRoot *os.Root, directoryNam
 		return nil
 	}
 
-	walker := sourceWalker{ctx: ctx, projectRoot: projectRoot, directoryName: directoryName, scanners: scanners, filter: filter, imports: imports}
-	walkErr := fs.WalkDir(projectRoot.FS(), directoryName, walker.visit)
+	walker := sourceWalker{projectRoot: projectRoot, directoryName: directoryName, scanners: scanners, filter: filter, imports: imports}
+	walkErr := fs.WalkDir(projectRoot.FS(), directoryName, func(path string, entry fs.DirEntry, walkErr error) error {
+		return walker.visit(ctx, path, entry, walkErr)
+	})
 	if walkErr != nil {
 		return fmt.Errorf("walking %s: %w", directoryName, walkErr)
 	}
@@ -624,9 +626,6 @@ func walkSourceDirectory(ctx context.Context, projectRoot *os.Root, directoryNam
 
 // sourceWalker holds the state of one source directory walk.
 type sourceWalker struct {
-	// ctx carries cancellation.
-	ctx context.Context
-
 	// projectRoot confines reads to the project root.
 	projectRoot *os.Root
 
@@ -643,19 +642,19 @@ type sourceWalker struct {
 	scanners []SourceScanner
 }
 
-// visit is the fs.WalkDir callback. It skips tool directories and scans every file a
-// scanner matches.
+// visit is the fs.WalkDir callback, called through a closure that passes the walk's
+// context. It skips tool directories and scans every file a scanner matches.
 //
 // Takes path (string) which is the root-relative path of the entry.
 // Takes entry (fs.DirEntry) which describes the entry.
 // Takes walkErr (error) which reports a failure to read the entry.
 //
 // Returns error to stop the walk, or fs.SkipDir to skip a directory.
-func (walker *sourceWalker) visit(path string, entry fs.DirEntry, walkErr error) error {
+func (walker *sourceWalker) visit(ctx context.Context, path string, entry fs.DirEntry, walkErr error) error {
 	if walkErr != nil {
 		return walkErr
 	}
-	if err := walker.ctx.Err(); err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if entry.IsDir() {
@@ -671,7 +670,7 @@ func (walker *sourceWalker) visit(path string, entry fs.DirEntry, walkErr error)
 	if len(walker.imports) >= maxDiscoveredImports {
 		return fmt.Errorf("%w: %d", errTooManyImports, len(walker.imports))
 	}
-	return appendFileImports(walker.ctx, walker.projectRoot, path, scanner, walker.filter, walker.imports)
+	return appendFileImports(ctx, walker.projectRoot, path, scanner, walker.filter, walker.imports)
 }
 
 // isSkippedDirectory reports whether the walk should not descend into a directory.

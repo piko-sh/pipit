@@ -213,6 +213,202 @@ type pipitFSAdapter struct {
 	*AdapterCore
 }
 
+// openView is a script file system seen with Open alone, for the io/fs helpers' paths
+// that do without the optional methods.
+type openView struct {
+	// fsys is the adapter whose methods the view exposes.
+	fsys *pipitFSAdapter
+}
+
+// statView adds Stat, which fs.Lstat falls back to.
+type statView struct {
+	openView
+}
+
+// globView adds ReadDir, which with Stat is what fs.Glob reads through.
+type globView struct {
+	statView
+}
+
+// subView has every optional method but Sub, which the subtree fs.Sub builds calls
+// through.
+type subView struct {
+	globView
+}
+
+// pipitFile supplies the Stat, Read and Close methods common to file adapters.
+type pipitFile struct {
+	*AdapterCore
+
+	// guard bounds the Read, ReadAt and ReadDir calls.
+	guard readGuard
+}
+
+// fileReadDir adds fs.ReadDirFile's ReadDir to a file adapter.
+type fileReadDir struct {
+	// file dispatches the method.
+	file *pipitFile
+}
+
+// fileSeek adds io.Seeker's Seek to a file adapter.
+type fileSeek struct {
+	// file dispatches the method.
+	file *pipitFile
+}
+
+// fileReadAt adds io.ReaderAt's ReadAt to a file adapter.
+type fileReadAt struct {
+	// file dispatches the method.
+	file *pipitFile
+}
+
+// fileWriteTo adds io.WriterTo's WriteTo to a file adapter.
+type fileWriteTo struct {
+	// file dispatches the method.
+	file *pipitFile
+}
+
+// fileMixins holds one of each optional file method for a file adapter to embed.
+type fileMixins struct {
+	// readDir adds ReadDir.
+	readDir fileReadDir
+
+	// seek adds Seek.
+	seek fileSeek
+
+	// readAt adds ReadAt.
+	readAt fileReadAt
+
+	// writeTo adds WriteTo.
+	writeTo fileWriteTo
+}
+
+type (
+	// fileD adds ReadDir.
+	fileD struct {
+		*pipitFile
+		fileReadDir
+	}
+
+	// fileS adds Seek.
+	fileS struct {
+		*pipitFile
+		fileSeek
+	}
+
+	// fileDS adds ReadDir and Seek.
+	fileDS struct {
+		*pipitFile
+		fileReadDir
+		fileSeek
+	}
+
+	// fileA adds ReadAt.
+	fileA struct {
+		*pipitFile
+		fileReadAt
+	}
+
+	// fileDA adds ReadDir and ReadAt.
+	fileDA struct {
+		*pipitFile
+		fileReadDir
+		fileReadAt
+	}
+
+	// fileSA adds Seek and ReadAt.
+	fileSA struct {
+		*pipitFile
+		fileSeek
+		fileReadAt
+	}
+
+	// fileDSA adds ReadDir, Seek and ReadAt.
+	fileDSA struct {
+		*pipitFile
+		fileReadDir
+		fileSeek
+		fileReadAt
+	}
+
+	// fileW adds WriteTo.
+	fileW struct {
+		*pipitFile
+		fileWriteTo
+	}
+
+	// fileDW adds ReadDir and WriteTo.
+	fileDW struct {
+		*pipitFile
+		fileReadDir
+		fileWriteTo
+	}
+
+	// fileSW adds Seek and WriteTo.
+	fileSW struct {
+		*pipitFile
+		fileSeek
+		fileWriteTo
+	}
+
+	// fileDSW adds ReadDir, Seek and WriteTo.
+	fileDSW struct {
+		*pipitFile
+		fileReadDir
+		fileSeek
+		fileWriteTo
+	}
+
+	// fileAW adds ReadAt and WriteTo.
+	fileAW struct {
+		*pipitFile
+		fileReadAt
+		fileWriteTo
+	}
+
+	// fileDAW adds ReadDir, ReadAt and WriteTo.
+	fileDAW struct {
+		*pipitFile
+		fileReadDir
+		fileReadAt
+		fileWriteTo
+	}
+
+	// fileSAW adds Seek, ReadAt and WriteTo.
+	fileSAW struct {
+		*pipitFile
+
+		fileSeek
+
+		fileReadAt
+
+		fileWriteTo
+	}
+
+	// fileDSAW adds every optional method.
+	fileDSAW struct {
+		*pipitFile
+
+		fileReadDir
+
+		fileSeek
+
+		fileReadAt
+
+		fileWriteTo
+	}
+)
+
+// pipitFileInfoAdapter lets a script type satisfy fs.FileInfo.
+type pipitFileInfoAdapter struct {
+	*AdapterCore
+}
+
+// pipitDirEntryAdapter lets a script type satisfy fs.DirEntry.
+type pipitDirEntryAdapter struct {
+	*AdapterCore
+}
+
 // Open invokes the script Open method.
 //
 // Takes name (string) which is the path to open.
@@ -407,13 +603,6 @@ func (a *pipitFSAdapter) allButSub() subView {
 	return subView{globView: a.withReadDirAndStat()}
 }
 
-// openView is a script file system seen with Open alone, for the io/fs helpers' paths
-// that do without the optional methods.
-type openView struct {
-	// fsys is the adapter whose methods the view exposes.
-	fsys *pipitFSAdapter
-}
-
 // Open opens name through the adapter.
 //
 // Takes name (string) which is the path to open.
@@ -421,11 +610,6 @@ type openView struct {
 // Returns fs.File which is the opened file.
 // Returns error which is the method's error.
 func (v openView) Open(name string) (fs.File, error) { return v.fsys.Open(name) }
-
-// statView adds Stat, which fs.Lstat falls back to.
-type statView struct {
-	openView
-}
 
 // Stat describes name through the adapter.
 //
@@ -435,11 +619,6 @@ type statView struct {
 // Returns error which is the method's error.
 func (v statView) Stat(name string) (fs.FileInfo, error) { return v.fsys.Stat(name) }
 
-// globView adds ReadDir, which with Stat is what fs.Glob reads through.
-type globView struct {
-	statView
-}
-
 // ReadDir reads the directory name through the adapter.
 //
 // Takes name (string) which is the directory to read.
@@ -447,12 +626,6 @@ type globView struct {
 // Returns []fs.DirEntry which are the directory's entries.
 // Returns error which is the method's error.
 func (v globView) ReadDir(name string) ([]fs.DirEntry, error) { return v.fsys.ReadDir(name) }
-
-// subView has every optional method but Sub, which the subtree fs.Sub builds calls
-// through.
-type subView struct {
-	globView
-}
 
 // ReadFile reads name through the adapter.
 //
@@ -485,14 +658,6 @@ func (v subView) ReadLink(name string) (string, error) { return v.fsys.ReadLink(
 // Returns fs.FileInfo which describes the file.
 // Returns error which is the method's error.
 func (v subView) Lstat(name string) (fs.FileInfo, error) { return v.fsys.Lstat(name) }
-
-// pipitFile supplies the Stat, Read and Close methods common to file adapters.
-type pipitFile struct {
-	*AdapterCore
-
-	// guard bounds the Read, ReadAt and ReadDir calls.
-	guard readGuard
-}
 
 // Stat invokes the script Stat method.
 //
@@ -604,12 +769,6 @@ func (f *pipitFile) writeTo(w io.Writer) (int64, error) {
 	return max(int64Result(results), 0), f.ResultError(results, 1)
 }
 
-// fileReadDir adds fs.ReadDirFile's ReadDir to a file adapter.
-type fileReadDir struct {
-	// file dispatches the method.
-	file *pipitFile
-}
-
 // ReadDir reads the next n directory entries.
 //
 // Takes n (int) which bounds the number of entries, or is at most zero for all of them.
@@ -617,12 +776,6 @@ type fileReadDir struct {
 // Returns []fs.DirEntry which are the entries.
 // Returns error which is the method's error.
 func (m fileReadDir) ReadDir(n int) ([]fs.DirEntry, error) { return m.file.readDir(n) }
-
-// fileSeek adds io.Seeker's Seek to a file adapter.
-type fileSeek struct {
-	// file dispatches the method.
-	file *pipitFile
-}
 
 // Seek sets the offset for the next Read.
 //
@@ -633,12 +786,6 @@ type fileSeek struct {
 // Returns error which is the method's error.
 func (m fileSeek) Seek(offset int64, whence int) (int64, error) { return m.file.seek(offset, whence) }
 
-// fileReadAt adds io.ReaderAt's ReadAt to a file adapter.
-type fileReadAt struct {
-	// file dispatches the method.
-	file *pipitFile
-}
-
 // ReadAt reads len(p) bytes starting at offset.
 //
 // Takes p ([]byte) which receives the data.
@@ -648,12 +795,6 @@ type fileReadAt struct {
 // Returns error which is the method's error.
 func (m fileReadAt) ReadAt(p []byte, offset int64) (int, error) { return m.file.readAt(p, offset) }
 
-// fileWriteTo adds io.WriterTo's WriteTo to a file adapter.
-type fileWriteTo struct {
-	// file dispatches the method.
-	file *pipitFile
-}
-
 // WriteTo writes the file's remaining data to w.
 //
 // Takes w (io.Writer) which receives the data.
@@ -661,144 +802,6 @@ type fileWriteTo struct {
 // Returns int64 which is the number of bytes written.
 // Returns error which is the method's error.
 func (m fileWriteTo) WriteTo(w io.Writer) (int64, error) { return m.file.writeTo(w) }
-
-// fileMixins holds one of each optional file method for a file adapter to embed.
-type fileMixins struct {
-	// readDir adds ReadDir.
-	readDir fileReadDir
-
-	// seek adds Seek.
-	seek fileSeek
-
-	// readAt adds ReadAt.
-	readAt fileReadAt
-
-	// writeTo adds WriteTo.
-	writeTo fileWriteTo
-}
-
-// The file adapters for each set of optional methods, named by the letters of the methods
-// they add: D for ReadDir, S for Seek, A for ReadAt and W for WriteTo.
-type (
-	// fileD adds ReadDir.
-	fileD struct {
-		*pipitFile
-		fileReadDir
-	}
-
-	// fileS adds Seek.
-	fileS struct {
-		*pipitFile
-		fileSeek
-	}
-
-	// fileDS adds ReadDir and Seek.
-	fileDS struct {
-		*pipitFile
-		fileReadDir
-		fileSeek
-	}
-
-	// fileA adds ReadAt.
-	fileA struct {
-		*pipitFile
-		fileReadAt
-	}
-
-	// fileDA adds ReadDir and ReadAt.
-	fileDA struct {
-		*pipitFile
-		fileReadDir
-		fileReadAt
-	}
-
-	// fileSA adds Seek and ReadAt.
-	fileSA struct {
-		*pipitFile
-		fileSeek
-		fileReadAt
-	}
-
-	// fileDSA adds ReadDir, Seek and ReadAt.
-	fileDSA struct {
-		*pipitFile
-		fileReadDir
-		fileSeek
-		fileReadAt
-	}
-
-	// fileW adds WriteTo.
-	fileW struct {
-		*pipitFile
-		fileWriteTo
-	}
-
-	// fileDW adds ReadDir and WriteTo.
-	fileDW struct {
-		*pipitFile
-		fileReadDir
-		fileWriteTo
-	}
-
-	// fileSW adds Seek and WriteTo.
-	fileSW struct {
-		*pipitFile
-		fileSeek
-		fileWriteTo
-	}
-
-	// fileDSW adds ReadDir, Seek and WriteTo.
-	fileDSW struct {
-		*pipitFile
-		fileReadDir
-		fileSeek
-		fileWriteTo
-	}
-
-	// fileAW adds ReadAt and WriteTo.
-	fileAW struct {
-		*pipitFile
-		fileReadAt
-		fileWriteTo
-	}
-
-	// fileDAW adds ReadDir, ReadAt and WriteTo.
-	fileDAW struct {
-		*pipitFile
-		fileReadDir
-		fileReadAt
-		fileWriteTo
-	}
-
-	// fileSAW adds Seek, ReadAt and WriteTo.
-	fileSAW struct {
-		*pipitFile
-
-		fileSeek
-
-		fileReadAt
-
-		fileWriteTo
-	}
-
-	// fileDSAW adds every optional method.
-	fileDSAW struct {
-		*pipitFile
-
-		fileReadDir
-
-		fileSeek
-
-		fileReadAt
-
-		fileWriteTo
-	}
-)
-
-// pipitFileInfoAdapter lets a script type satisfy fs.FileInfo.
-type pipitFileInfoAdapter struct {
-	*AdapterCore
-}
 
 // Name invokes the script Name method.
 //
@@ -849,11 +852,6 @@ func (a *pipitFileInfoAdapter) Sys() any {
 		return nil
 	}
 	return results[0].Interface()
-}
-
-// pipitDirEntryAdapter lets a script type satisfy fs.DirEntry.
-type pipitDirEntryAdapter struct {
-	*AdapterCore
 }
 
 // Name invokes the script Name method.

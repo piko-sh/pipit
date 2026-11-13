@@ -35,7 +35,7 @@ func newConvertFrame(t *testing.T, target reflect.Type) (*VM, *CallFrame, *Regis
 	builder.numRegisters = wideRegCounts(8)
 	builder.typeTable = []reflect.Type{target}
 	builder.Emit(isa.OpDrillTier1, 0, 0, 0)
-	builder.body = append(builder.body, isa.NewInstruction(isa.OpExt, 0, 0, 0))
+	builder.body = append(builder.body, isa.NewInstruction(isa.OpExtension, 0, 0, 0))
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 
 	vm, frame, registers := newFramedVM(t, builder.build())
@@ -74,7 +74,7 @@ func TestConvertHandlerReachesEveryConversionShape(t *testing.T) {
 			vm, frame, registers := newConvertFrame(t, tt.target)
 			registers.General[1] = tt.source
 
-			require.Equal(t, opContinue, handleConvert(vm, frame, registers, op(0, 1, 0)))
+			require.Equal(t, opContinue, handleConvertGeneral(vm, frame, registers, op(0, 1, 0)))
 			require.Equal(t, 2, frame.ProgramCounter, "the type-index word must be stepped over")
 			require.Equal(t, tt.want, registers.General[0].Interface())
 		})
@@ -86,7 +86,7 @@ func TestConvertHandlerAllocatesWhenTheFlagAsksFor(t *testing.T) {
 
 	vm, frame, registers := newConvertFrame(t, reflect.TypeFor[int]())
 
-	require.Equal(t, opContinue, handleConvert(vm, frame, registers, op(0, 1, 1)))
+	require.Equal(t, opContinue, handleConvertGeneral(vm, frame, registers, op(0, 1, 1)))
 	require.Equal(t, reflect.Pointer, registers.General[0].Kind(),
 		"the allocate form makes a pointer rather than converting an operand")
 	require.Equal(t, 0, registers.General[0].Elem().Interface())
@@ -99,10 +99,10 @@ func TestConvertHandlerRefusesBrokenOperands(t *testing.T) {
 		t.Parallel()
 
 		vm, frame, registers := newConvertFrame(t, reflect.TypeFor[int]())
-		frame.Function.Body[1] = isa.NewInstruction(isa.OpExt, 9, 0, 0)
+		frame.Function.Body[1] = isa.NewInstruction(isa.OpExtension, 9, 0, 0)
 		registers.General[1] = reflect.ValueOf(1)
 
-		require.Equal(t, opPanicError, handleConvert(vm, frame, registers, op(0, 1, 0)))
+		require.Equal(t, opPanicError, handleConvertGeneral(vm, frame, registers, op(0, 1, 0)))
 		require.Error(t, vm.evalError)
 	})
 
@@ -111,7 +111,7 @@ func TestConvertHandlerRefusesBrokenOperands(t *testing.T) {
 
 		vm, frame, registers := newConvertFrame(t, reflect.TypeFor[int]())
 
-		require.Panics(t, func() { handleConvert(vm, frame, registers, op(0, 1, 0)) })
+		require.Panics(t, func() { handleConvertGeneral(vm, frame, registers, op(0, 1, 0)) })
 	})
 
 	t.Run("a slice too short for the array raises the runtime error", func(t *testing.T) {
@@ -120,7 +120,7 @@ func TestConvertHandlerRefusesBrokenOperands(t *testing.T) {
 		vm, frame, registers := newConvertFrame(t, reflect.TypeFor[[4]int]())
 		registers.General[1] = reflect.ValueOf([]int{1, 2})
 
-		got := handleConvert(vm, frame, registers, op(0, 1, 0))
+		got := handleConvertGeneral(vm, frame, registers, op(0, 1, 0))
 		requireRuntimePanic(t, vm, got, "cannot convert slice with length 2 to array or pointer to array with length 4")
 	})
 }
@@ -300,8 +300,35 @@ func TestPointerWordReadsTheMachineWord(t *testing.T) {
 	}
 }
 
+// hostNamedFunc stands for a host package's named func type, such as http.HandlerFunc.
+type hostNamedFunc func()
+
 func TestConvertClosureToFuncTypeOnlyFiresForClosures(t *testing.T) {
 	t.Parallel()
+
+	t.Run("a closure converted to a host named func type becomes a function of it", func(t *testing.T) {
+		t.Parallel()
+
+		vm := newTestVM(t)
+		closure := reflect.ValueOf(&RuntimeClosure{})
+
+		converted, ok := convertClosureToFuncType(vm, closure, reflect.TypeFor[hostNamedFunc]())
+		require.True(t, ok)
+		require.Equal(t, reflect.TypeFor[hostNamedFunc](), converted.Type())
+	})
+
+	t.Run("a closure converted to the program's named func type records it", func(t *testing.T) {
+		t.Parallel()
+
+		vm := newTestVM(t)
+		named := testNamedCompositeType(t, "Converted", reflect.TypeFor[func()]())
+		closure := reflect.ValueOf(&RuntimeClosure{})
+
+		converted, ok := convertClosureToFuncType(vm, closure, named)
+		require.True(t, ok)
+		require.Equal(t, named, closureDynamicType(converted))
+		require.Equal(t, "main.Converted", closureTypeString(closureFromValue(converted)))
+	})
 
 	t.Run("a non-func target declines", func(t *testing.T) {
 		t.Parallel()
@@ -335,10 +362,10 @@ func TestConvertClosureToFuncTypeOnlyFiresForClosures(t *testing.T) {
 		t.Parallel()
 
 		vm := newTestVM(t)
-		closure := reflect.ValueOf(&RuntimeClosure{namedType: "Op"})
+		closure := reflect.ValueOf(&RuntimeClosure{namedType: testNamedFuncTypeID(t, "Op")})
 
 		converted, ok := convertClosureToFuncType(vm, closure, reflect.TypeFor[func()]())
 		require.True(t, ok)
-		require.Empty(t, closureFromValue(converted).namedType)
+		require.Zero(t, closureFromValue(converted).namedType)
 	})
 }

@@ -25,12 +25,12 @@ import (
 	"reflect"
 	"unsafe"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
-	"pipit.sh/pipit/internal/logging"
-
-	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
+	"pipit.sh/pipit/internal/logging"
+	"pipit.sh/pipit/internal/symtab/typemodel"
 )
 
 const (
@@ -56,8 +56,8 @@ var (
 	errorInterfaceType = reflect.TypeFor[error]()
 )
 
-// sliceOpBounds carries the decoded bounds metadata for isa.SubOpSliceOp.
-type sliceOpBounds struct {
+// sliceGeneralBounds carries the decoded bounds metadata for isa.SubOpSliceGeneral.
+type sliceGeneralBounds struct {
 	// flags carries the sliceLowBoundFlag, sliceHighBoundFlag and sliceMaxBitFlag bits set
 	// by the Compiler.
 	flags uint8
@@ -135,6 +135,9 @@ func closureCallableValue(vm *VM, value reflect.Value) reflect.Value {
 		return value
 	}
 	compiledFunction := closure.Function
+	if named := typemodel.NamedCompositeTypeByID(closure.namedType); named != nil {
+		return makeClosureWrapperFunc(vm, closure, named)
+	}
 	if compiledFunction.SignatureReflectType != nil {
 		return makeClosureWrapperFunc(vm, closure, compiledFunction.SignatureReflectType)
 	}
@@ -155,8 +158,8 @@ func closureCallableValue(vm *VM, value reflect.Value) reflect.Value {
 	return makeClosureWrapperFunc(vm, closure, functionType)
 }
 
-// makeClosureWrapperFunc builds a reflect.MakeFunc wrapper that runs closure on the
-// parent's cached callback VM or a fresh one.
+// makeClosureWrapperFunc builds a wrapper that runs closure on the parent's cached
+// callback VM or a fresh one.
 //
 // Takes vm (*VM) which provides the persistent state to capture.
 // Takes closure (*RuntimeClosure) which is the interpreter closure to invoke on each
@@ -164,10 +167,8 @@ func closureCallableValue(vm *VM, value reflect.Value) reflect.Value {
 // Takes functionType (reflect.Type) which is the wrapper's reflect.Func signature.
 //
 // Returns the wrapper reflect.Value of kind Func.
-//
-// Panics with the closure's panicValue when the inner call raised a Go panic from within
-// an active dispatch (re-raised so the host sees the original value).
 func makeClosureWrapperFunc(vm *VM, closure *RuntimeClosure, functionType reflect.Type) reflect.Value {
+	vm.exportGuestCode()
 	spec := newCallbackVMSpec(vm)
 
 	handoff := vm.pendingGilHandoff
@@ -175,30 +176,54 @@ func makeClosureWrapperFunc(vm *VM, closure *RuntimeClosure, functionType reflec
 		handoff.hasClosure = true
 	}
 
-	return reflect.MakeFunc(functionType, func(arguments []reflect.Value) []reflect.Value {
-		callbackVM := spec.acquire(closure)
-		defer spec.finish(callbackVM)
+	w := &closureWrapper{spec: spec, closure: closure, functionType: functionType, handoff: handoff}
+	var wrapper reflect.Value
+	switch functionType {
+	case astInspectCallbackType:
+		wrapper = w.typedInspect()
+	case intCallbackType:
+		wrapper = w.typedInt()
+	case typesVarPredicateType:
+		wrapper = w.typedTypesVarPredicate()
+	default:
+		wrapper = reflect.MakeFunc(functionType, w.reflectCall)
+	}
+	registerClosureWrapper(vm, wrapper, closure)
+	vm.noteFinaliserCandidate(wrapper, w)
+	return wrapper
+}
 
-		acquiredGil := handoff.acquireForCallback()
-		if acquiredGil {
-			callbackVM.holdsInterpreterLock = true
-		}
-		defer func() {
-			if acquiredGil {
-				callbackVM.holdsInterpreterLock = false
-				handoff.releaseAfterCallback(true)
-			}
-		}()
-		result := callbackVM.callClosureReflect(closure, arguments, functionType)
-		if callbackVM.evalError != nil {
-			if callbackVM.panicValue != nil && spec.globals.dispatchDepth.Load() > 0 {
-				panic(wrapCallbackPanic(callbackVM))
-			}
-			failOnCallbackStop(spec.link, functionType, callbackVM.evalError)
-			return buildClosureErrorReturns(spec.link.detached, functionType, callbackVM.evalError)
-		}
-		return result
-	})
+// stoppedCallbackResults handles a callback VM that stopped with an error: a guest panic
+// inside an active dispatch, or a stop that crosses the native frame, is raised again;
+// otherwise the live execution fails if the callback cannot report it, and the callback
+// returns its error results.
+//
+// Takes callbackVM (*VM) which ran the callback.
+// Takes functionType (reflect.Type) which is the callback's signature.
+//
+// Returns []reflect.Value which is the callback's results for the stop.
+//
+// Panics with the callback's panic or stop when either must reach the native caller.
+func (spec *callbackVMSpec) stoppedCallbackResults(callbackVM *VM, functionType reflect.Type) []reflect.Value {
+	if callbackVM.panicValue != nil && spec.globals.dispatchDepth.Load() > 0 {
+		panic(wrapCallbackPanic(callbackVM))
+	}
+	if crossesNativeFrame(callbackVM.evalError, spec.globals) {
+		panic(callbackVM.evalError)
+	}
+	failOnCallbackStop(spec.link, functionType, callbackVM.evalError)
+	return buildClosureErrorReturns(spec.link.detached, functionType, callbackVM.evalError)
+}
+
+// crossesNativeFrame reports whether a VM's stop must propagate through its native
+// caller.
+//
+// Takes err (error) which is why the VM stopped.
+// Takes globals (*GlobalStore) which counts the active native calls.
+//
+// Returns bool which is true when the stop crosses the native frame.
+func crossesNativeFrame(err error, globals *GlobalStore) bool {
+	return unwindsAfter(err) && globals != nil && globals.dispatchDepth.Load() > 0
 }
 
 // failOnCallbackStop fails a live execution when a callback stops without a trailing
@@ -214,8 +239,7 @@ func failOnCallbackStop(link *executionLink, functionType reflect.Type, err erro
 	failOnStop(link, err)
 }
 
-// failOnStop fails a live execution when err reports cancellation or a callback
-// timeout.
+// failOnStop fails a live execution when err reports cancellation or a callback timeout.
 //
 // Takes link (*executionLink) which is the execution the run belonged to.
 // Takes err (error) which is why the run stopped.
@@ -252,7 +276,7 @@ func lastResultIsError(functionType reflect.Type) bool {
 //
 // Returns []reflect.Value matching the target signature's outputs.
 func buildClosureErrorReturns(ctx context.Context, targetType reflect.Type, err error) []reflect.Value {
-	l := logging.LoggerFrom(ctx)
+	_, l := logging.From(ctx)
 	numOut := targetType.NumOut()
 	if numOut == 0 {
 		l.Warn("wrapped closure failed with no error return slot", logging.ErrAttr(err))
@@ -315,24 +339,25 @@ func handleMakeSlice(vm *VM, frame *CallFrame, registers *Registers, instruction
 			fault.ErrAllocationLimit, capacity, vm.Limits.MaxAllocSize)
 		return opPanicError
 	}
-	if extensionWord.C&isa.MakeSliceExtHeapFlag == 0 {
+
+	if extensionWord.C&isa.MakeSliceExtHeapFlag == 0 || optimisticMake(vm.Arena, vm.rootFunction, reflectType.Elem().Kind(), reflectType.Elem().Size(), capacity) {
 		if backing, ok := arenaMakeSliceBacking(vm, reflectType, length, capacity); ok {
 			registers.General[instruction.A] = backing
 			return opContinue
 		}
 	}
-	registers.General[instruction.A] = reflect.MakeSlice(reflectType, length, capacity)
+
+	if backing, ok := krefMakeBacking(vm, reflectType, length, capacity); ok {
+		registers.General[instruction.A] = backing
+		return opContinue
+	}
+	registers.General[instruction.A] = recordFinaliserBacking(vm, reflect.MakeSlice(reflectType, length, capacity))
 	return opContinue
 }
 
 // arenaMakeSliceBacking tries to allocate the slice backing from the arena. It returns
 // (reflect.Value, true) when the element kind has a typed slab or is pointer-free, and
 // (zero, false) otherwise so the caller falls through to reflect.MakeSlice.
-//
-// Only exact-kind matches are used because Go's []int and []int64 are distinct types even
-// when their element sizes match. []byte backing is eagerly cleared to honour Go's zero
-// contract. Other typed-slab kinds leave backing unzeroed because the compiler guarantees
-// every slot is written before it is read.
 //
 // Takes vm (*VM) which provides the arena.
 // Takes reflectType (reflect.Type) which is the requested slice type.
@@ -341,8 +366,6 @@ func handleMakeSlice(vm *VM, frame *CallFrame, registers *Registers, instruction
 //
 // Returns reflect.Value wrapping the arena-backed slice when ok, and bool indicating
 // whether the arena path was taken.
-//
-// revive:disable-next-line:cognitive-complexity // single switch on element kind
 func arenaMakeSliceBacking(vm *VM, reflectType reflect.Type, length, capacity int) (reflect.Value, bool) {
 	if reflectType.Kind() != reflect.Slice {
 		return reflect.Value{}, false
@@ -355,23 +378,18 @@ func arenaMakeSliceBacking(vm *VM, reflectType reflect.Type, length, capacity in
 		return arenaWrapMakeBacking(vm.Arena, backing, length, capacity, reflectType), true
 	case reflect.Int64:
 		backing := vm.Arena.AllocIntBacking(capacity)
-		clear(backing)
 		return arenaWrapMakeBacking(vm.Arena, backing, length, capacity, reflectType), true
 	case reflect.Float64:
 		backing := vm.Arena.AllocFloatBacking(capacity)
-		clear(backing)
 		return arenaWrapMakeBacking(vm.Arena, backing, length, capacity, reflectType), true
 	case reflect.Bool:
 		backing := vm.Arena.AllocBoolBacking(capacity)
-		clear(backing)
 		return arenaWrapMakeBacking(vm.Arena, backing, length, capacity, reflectType), true
 	case reflect.Uint64:
 		backing := vm.Arena.AllocUintBacking(capacity)
-		clear(backing)
 		return arenaWrapMakeBacking(vm.Arena, backing, length, capacity, reflectType), true
 	case reflect.String:
 		backing := vm.Arena.AllocStringBacking(capacity)
-		clear(backing)
 		return arenaWrapMakeBacking(vm.Arena, backing, length, capacity, reflectType), true
 	case reflect.Struct, reflect.Array:
 		if !typeIsPointerFree(elem) {
@@ -421,8 +439,8 @@ func arenaMakeStructSliceBacking(vm *VM, reflectType reflect.Type, length, capac
 	return unsafeNewAt(reflectValueABIType(reflectType), unsafe.Pointer(slot), reflect.Slice)
 }
 
-// handleMakeMap handles the isa.SubOpTier2MakeMap instruction by creating a new map or
-// struct value of the type specified in the type table.
+// handleMakeMapBody handles the isa.SubOpTier2MakeMap instruction by creating a new map
+// or struct value of the type specified in the type table.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which provides the type table index extension.
@@ -430,7 +448,7 @@ func arenaMakeStructSliceBacking(vm *VM, reflectType reflect.Type, length, capac
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMakeMap(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMakeMapBody(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	typeIndex := uint16(extensionWord.A) | uint16(extensionWord.B)<<isa.WideBitShift
@@ -446,7 +464,9 @@ func handleMakeMap(vm *VM, frame *CallFrame, registers *Registers, instruction i
 	if result, refused := refuseMapSizeHint(vm, extensionWord.C); refused {
 		return result
 	}
-	registers.General[instruction.A] = makeMapWithHint(reflectType, extensionWord.C)
+	made := makeMapWithHint(reflectType, extensionWord.C)
+	censusNoteMadeMap(made)
+	registers.General[instruction.A] = made
 	return opContinue
 }
 
@@ -482,14 +502,16 @@ func refuseMapSizeHint(vm *VM, hintLog uint8) (OpResult, bool) {
 // through the boundary-snapshot chunk slab so the GC can scan pointer fields.
 //
 // The arena slab slot must be explicitly zeroed because the byte slab is pool-reused and
-// may carry stale data from a previous allocation.
+// may carry stale data from a previous allocation. A program that calls
+// runtime.SetFinalizer takes acquireStructLiteralSlot, which gives each literal its own
+// Go allocation (allocatesForFinalisers).
 //
 // Takes vm (*VM) which provides the arena.
 // Takes reflectType (reflect.Type) which is the struct type being allocated.
 //
 // Returns the struct-typed reflect.Value.
 func allocateStructLiteralValue(vm *VM, reflectType reflect.Type) reflect.Value {
-	if typeIsPointerFree(reflectType) {
+	if typeIsPointerFree(reflectType) && !vm.allocatesForFinalisers() {
 		align := safeconv.IntToUintptr(reflectType.Align())
 		if align == 0 {
 			align = 1
@@ -503,7 +525,7 @@ func allocateStructLiteralValue(vm *VM, reflectType reflect.Type) reflect.Value 
 			return unsafeNewAt(reflectValueABIType(reflectType), ptr, reflect.Struct)
 		}
 	}
-	return vm.acquireBoundarySnapshot(reflectType)
+	return recordFinaliserSlot(vm, vm.acquireStructLiteralSlot(reflectType))
 }
 
 // makeMapWithHint constructs a map of reflectType, sized from the isa.SubOpTier2MakeMap
@@ -527,25 +549,25 @@ func makeMapWithHint(reflectType reflect.Type, hintLog uint8) reflect.Value {
 	return reflect.MakeMapWithSize(reflectType, 1<<hintLog)
 }
 
-// handleSetZero zeroes the composite value in general[A], setting all fields to their
-// zero values. Used by the assign-through optimisation to clear a slice/array element
-// before writing individual fields.
+// handleSetZeroGeneralBody zeroes the composite value in general[A], setting all fields
+// to their zero values. Used by the assign-through optimisation to clear a slice/array
+// element before writing individual fields.
 //
 // Takes frame (*CallFrame) which is the active call frame.
 // Takes registers (*Registers) which holds the destination value.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleSetZero(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetZeroGeneralBody(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	v := registers.General[instruction.A]
 	if !v.IsValid() {
-		vMPanicInvalidRegister("handleSetZero", "target", instruction.A, instruction, frame, registers)
+		vMPanicInvalidRegister("handleSetZeroGeneralBody", "target", instruction.A, instruction, frame, registers)
 	}
 	v.SetZero()
 	return opContinue
 }
 
-// handleMakeChannel handles the isa.SubOpMakeChannel instruction by creating a new
+// handleMakeChannelBody handles the isa.SubOpMakeChannel instruction by creating a new
 // channel of the specified type and buffer size.
 //
 // Takes vm (*VM) which is the executing VM.
@@ -554,7 +576,7 @@ func handleSetZero(_ *VM, frame *CallFrame, registers *Registers, instruction is
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMakeChannel(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMakeChannelBody(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	typeIndex := uint16(extensionWord.A) | uint16(extensionWord.B)<<isa.WideBitShift
@@ -578,14 +600,14 @@ func handleMakeChannel(vm *VM, frame *CallFrame, registers *Registers, instructi
 	return opContinue
 }
 
-// handleLen handles the isa.SubOpLen instruction by computing the length of a general
-// register value and storing the result in an int register.
+// handleLengthGeneralBody handles the isa.SubOpLengthGeneral instruction by computing the
+// length of a general register value and storing the result in an int register.
 //
 // Takes registers (*Registers) which holds the source and destination.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleLen(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLengthGeneralBody(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = collectionLengthOrCap(registers.General[instruction.B], reflect.Value.Len)
 	return opContinue
 }
@@ -609,8 +631,8 @@ func collectionLengthOrCap(v reflect.Value, measure func(reflect.Value) int) int
 	return int64(measure(v))
 }
 
-// handleSliceOp handles the isa.SubOpSliceOp instruction by performing a slice operation
-// with optional low, high, and max bounds.
+// handleSliceGeneral handles the isa.SubOpSliceGeneral instruction by performing a slice
+// operation with optional low, high, and max bounds.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which provides the bounds extension words.
@@ -618,12 +640,7 @@ func collectionLengthOrCap(v reflect.Value, measure func(reflect.Value) int) int
 // Takes instruction (isa.Instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-//
-// For Slice-kind collections, bypasses reflect.Value.Slice/.Slice3 (each allocates a
-// fresh 24-byte heap slice header) by constructing the result Value via unsafe with the
-// new header in a slab-allocated slot. Array-kind collections (the `arr[:]` pattern) get
-// the same treatment with cap derived from the array's length.
-func handleSliceOp(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSliceGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	bounds := readSliceBoundFlags(frame)
 	collection, indexPanicResult, ok := resolveIndexCollection(vm, registers.General[instruction.C])
 	if !ok {
@@ -645,7 +662,7 @@ func handleSliceOp(vm *VM, frame *CallFrame, registers *Registers, instruction i
 	if collection.Kind() == reflect.Array {
 		capacity = collection.Len()
 	}
-	if result, ok := checkSliceOpBounds(vm, low, high, maxBound, capacity, bounds.hasMax); !ok {
+	if result, ok := checkSliceGeneralBounds(vm, low, high, maxBound, capacity, bounds.hasMax); !ok {
 		return result
 	}
 	if collection.Kind() == reflect.Slice {
@@ -666,14 +683,10 @@ func handleSliceOp(vm *VM, frame *CallFrame, registers *Registers, instruction i
 	return opContinue
 }
 
-// checkSliceOpBounds validates slice-expression bounds against Go runtime rules.
+// checkSliceGeneralBounds validates slice-expression bounds against Go runtime rules.
 //
-// The check covers [low:high] / [low:high:max] forms for slice and array operations,
-// mirroring Go's runtime error messages so interpreted defer/recover() observes parity.
 // On failure, raises an interpreted-side runtime panic and returns the propagated
-// OpResult. Go's runtime emits a different message depending on which bound is violated
-// (low < 0 yields "[low:]", high < low yields "[low:high]", a high or max overshoot
-// includes the capacity suffix), so each branch builds the matching diagnostic.
+// OpResult.
 //
 // Takes vm (*VM) which is used to raise the interpreted panic.
 // Takes low (int) which is the requested lower bound.
@@ -686,7 +699,7 @@ func handleSliceOp(vm *VM, frame *CallFrame, registers *Registers, instruction i
 // bound (Slice3 form).
 //
 // Returns the OpResult to propagate and a boolean flagging valid / invalid bounds.
-func checkSliceOpBounds(vm *VM, low, high, maxBound, capacity int, hasMax bool) (OpResult, bool) {
+func checkSliceGeneralBounds(vm *VM, low, high, maxBound, capacity int, hasMax bool) (OpResult, bool) {
 	switch {
 	case low < 0:
 		return raiseNativePanicAsInterpreted(vm, newRuntimePanicError("runtime error: slice bounds out of range [%d:]", low)), false
@@ -702,15 +715,15 @@ func checkSliceOpBounds(vm *VM, low, high, maxBound, capacity int, hasMax bool) 
 	return opContinue, true
 }
 
-// readSliceBoundFlags reads the bounds extension words for isa.SubOpSliceOp.
+// readSliceBoundFlags reads the bounds extension words for isa.SubOpSliceGeneral.
 //
 // Takes frame (*CallFrame) which provides the extension words.
 //
-// Returns the decoded sliceOpBounds.
-func readSliceBoundFlags(frame *CallFrame) sliceOpBounds {
+// Returns the decoded sliceGeneralBounds.
+func readSliceBoundFlags(frame *CallFrame) sliceGeneralBounds {
 	ext1 := readExtensionWord(frame)
 	frame.ProgramCounter++
-	result := sliceOpBounds{flags: ext1.A,
+	result := sliceGeneralBounds{flags: ext1.A,
 		lowReg:  ext1.B,
 		highReg: ext1.C,
 		hasMax:  ext1.A&isa.SliceMaxBitFlag != 0, maxReg: 0}
@@ -723,8 +736,8 @@ func readSliceBoundFlags(frame *CallFrame) sliceOpBounds {
 }
 
 // sliceFromSliceFast builds the result reflect.Value for the slice- kind branch of
-// handleSliceOp, falling back to reflect.Slice/Slice3 on bounds violation so users see
-// the canonical panic message.
+// handleSliceGeneral, falling back to reflect.Slice/Slice3 on bounds violation so users
+// see the canonical panic message.
 //
 // Takes vm (*VM) which provides the slice-header slab.
 // Takes collection (reflect.Value) which is the source slice.
@@ -807,15 +820,15 @@ func sliceFromArrayFast(vm *VM, collection reflect.Value, low, high, maxBound in
 	return unsafeReadOnlyValue(reflectValueABIType(sliceType), unsafe.Pointer(destination), reflect.Slice), true
 }
 
-// handleCopy handles the isa.OpCopy instruction by copying elements between slices and
-// storing the number of elements copied.
+// handleCopyGeneral handles the isa.OpCopyGeneral instruction by copying elements between
+// slices and storing the number of elements copied.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which holds the destination and source slices.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleCopy(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleCopyGeneral(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	destination := registers.General[instruction.B]
 	source := registers.General[instruction.C]
 	if !destination.IsValid() || destination.Kind() != reflect.Slice {
@@ -830,7 +843,14 @@ func handleCopy(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Inst
 		vm.evalError = newInvariantError("copy source is not a slice, array, or string")
 		return opPanicError
 	}
-	registers.Ints[instruction.A] = int64(reflect.Copy(destination, source))
+	count := reflect.Copy(destination, source)
+	if storeCensusBuilt {
+		censusNoteBuiltinCopy(vm.Arena, destination, count)
+	}
+	if vm.Arena.countsHandOffs() {
+		noteReflectCopy(vm.Arena, destination, count)
+	}
+	registers.Ints[instruction.A] = int64(count)
 	return opContinue
 }
 

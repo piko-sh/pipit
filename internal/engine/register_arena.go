@@ -19,15 +19,17 @@
 package engine
 
 import (
+	"fmt"
 	"reflect"
 	"runtime"
 	"unsafe"
+	"weak"
 
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/hostmem"
 
+	"piko.sh/stablepool"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/stablepool"
 )
 
 const (
@@ -262,17 +264,52 @@ type ArenaSavePoint struct {
 //
 //exhaustruct:ignore
 type RegisterArena struct {
-	// Link is stablepool's intrusive free-list header. MUST be the first field. The pool
-	// writes to it when the arena is on the free stack; user code must not touch it.
+	// Link is stablepool's intrusive free-list header and must be the first field. The pool
+	// writes to it on the free stack. User code must not touch it.
 	stablepool.Link
 
 	// ownerVM is the VM that currently owns this arena. Nil when pooled.
 	ownerVM *VM
 
+	// slabLive points weakly at the arena itself, and every entry the arena records in the
+	// slab and licence registries carries it.
+	slabLive weak.Pointer[RegisterArena]
+
+	// arenaAudit carries the reuse audit's per-run provenance. It is empty, and takes no
+	// space, outside the pipit_reuse_audit build.
+	arenaAudit
+
 	// budgetTracker, when non-nil, receives every change to totalAllocatedBytes so the arena
 	// budget is enforced across all arenas of one execution (the main goroutine's and every
 	// child's) rather than per arena. Attached on acquisition, detached by PutRegisterArena.
 	budgetTracker *ResourceTracker
+
+	// handedOnCharges holds the start address of each retired data slab whose budget charge
+	// went to the slab that replaced it, so the slab carries no charge of its own
+	// (noteChargeHandedOn).
+	handedOnCharges map[uintptr]struct{}
+
+	// callbackRoot is the root a callback VM runs on this arena, set when the VM is bound
+	// for a callback, so a foreign string it clones is reported to that program
+	// (optimisticMake's veto). Reset clears it.
+	callbackRoot *program.CompiledFunction
+
+	// licenceVM is the VM that runs a licensed arena, whose goroutines licenceShared asks
+	// about and whose dispatch safepoints service the arena's pending collection and budget
+	// check (budgetServicer).
+	licenceVM *VM
+
+	// borrowDeclarations holds the host's declared borrow classes for the VM using the arena
+	// (VMLimits.BorrowDeclarations), or nil. Attached on acquisition; read only while the
+	// arena is licensed.
+	borrowDeclarations *BorrowDeclarations
+
+	// closureChunks holds the chunks closures and their cells are placed in by a licensed
+	// arena (register_arena_licence_closures.go).
+	closureChunks closureChunkSlabs
+
+	// kref holds the arena's KRef chunks, implemented in register_arena_kref.go.
+	kref arenaKRef
 
 	// genericBytesSlab backs arena copies of pointer-free reflect.Values. Pointer-containing
 	// types must fall back to reflect.New because writing pointers into a []byte hides them
@@ -339,10 +376,19 @@ type RegisterArena struct {
 	// oldByteSlabs retains previous byte slabs so existing strings remain valid.
 	oldByteSlabs [][]byte
 
+	// mutByteSlab holds writable backing storage for guest []byte values in a licensed
+	// arena.
+	mutByteSlab []byte
+
+	// oldMutByteSlabs retains previous mutable byte slabs so existing []byte values stay
+	// owned by the arena.
+	oldMutByteSlabs [][]byte
+
 	// intBackingSlab holds bump-allocated int64 element storage used by arena-routed
 	// make([]int64, ...) and append-grow handlers. Slices carved out of this slab use the
 	// three-index form slab[index:index+n:index+n] so user append past cap triggers our
-	// arenaAppendInt helper rather than silently spilling into the next allocation's region.
+	// arenaAppendInt64 helper rather than silently spilling into the next allocation's
+	// region.
 	intBackingSlab []int64
 
 	// oldIntBackings retains previous intBackingSlab arrays so user slices still pointing
@@ -421,10 +467,17 @@ type RegisterArena struct {
 	// freeGenericByteChunks is the generic-bytes twin of freeSliceHeaderChunks.
 	freeGenericByteChunks [][]byte
 
-	// arenaIndices is the contiguous block of fifteen per-frame save/restore indices
-	// (intIndex through upvalueReferenceIndex). Embedding it lets SaveInto and Restore copy
-	// the entire block in a single struct assignment instead of fifteen sequential stores,
-	// and Go's field promotion keeps existing a.IntIndex selectors working unchanged.
+	// bytePlacementSites lists the []byte(s) conversion and strings.Split sites whose
+	// results were placed in the arena this epoch, with the slab each went to, so the
+	// release can veto the sites whose slab a hand-off revoked
+	// (register_arena_licence_strings.go).
+	bytePlacementSites []bytePlacementSite
+
+	// licenceState is licensed reuse's record of revoked storage for the current epoch; see
+	// register_arena_licence.go.
+	licenceState arenaLicenceState
+
+	// arenaIndices holds the per-frame save and restore indices.
 	arenaIndices
 
 	// slabRetiredSinceReset accumulates, per slab class, the length of every slab generation
@@ -449,6 +502,10 @@ type RegisterArena struct {
 	// cleared only on arena Reset.
 	byteIndex int
 
+	// mutByteIndex tracks the current allocation position in mutByteSlab; cleared only on
+	// arena Reset.
+	mutByteIndex int
+
 	// slabGeneration increments every time one of the ctx-mirrored register slabs
 	// (int/float/string/general/bool/uint/slicesByte) is reallocated or replaced.
 	// refreshArenaSlabs skips its fourteen stores (a base pointer and a capacity for each of
@@ -459,6 +516,11 @@ type RegisterArena struct {
 	// slabOwner identifies the arena in the arena slab registry; assigned by the first
 	// replaceByteSlab.
 	slabOwner uint64
+
+	// slabCleanup is the cleanup ensureSlabOwner registered, which removes the arena's
+	// registry entries once it is collected. abandonUnpooledRegisterArena removes them
+	// itself and stops it.
+	slabCleanup runtime.Cleanup
 
 	// foreignSlabStart is the start address of the last foreign arena slab inAnArenaSlab
 	// found. It is a plain address, so it keeps nothing alive.
@@ -556,6 +618,10 @@ type RegisterArena struct {
 	// diagnostic for tests that pin how often a run re-climbs the frame stack.
 	frameStackGrowths int
 
+	// optimisticClonedBytes counts the string bytes the epoch's clone budget cloned this
+	// epoch (register_arena_licence_optimistic.go). Reset clears it.
+	optimisticClonedBytes int
+
 	// scalarIdleResets counts consecutive Resets during which each overgrown scalar bank saw
 	// little demand.
 	scalarIdleResets scalarBankIdleCounters
@@ -579,17 +645,74 @@ type RegisterArena struct {
 	// its current Execute. Reset on PutRegisterArena.
 	gcCount uint32
 
+	// presizeChanged is set when ensureCapacity's sizing made a slab, which it then
+	// publishes; the slabs the acquisition already published are not published again.
+	presizeChanged bool
+
 	// recycleChunks enables zero-and-reuse of dead chunks for this arena. Seeded from
 	// ArenaChunkRecyclingEnabled; tests switch it on for a private arena.
 	recycleChunks bool
+
+	// licensed marks an arena reused under a licence.
+	licensed bool
+
+	// reentrantHandedOff marks a callback or bound-method VM's arena whose latest run
+	// returned cleanly with every result, argument and receiver through a classified
+	// hand-off (callback release, register_arena_licence_callbacks.go), so its release needs
+	// no epoch revocation. Cleared when a run starts and by Reset.
+	reentrantHandedOff bool
+
+	// licenceAlwaysShared marks an arena acquired for a goroutine or callback VM, which
+	// shares memory with other goroutines for its whole run, so the licensed walks and mark
+	// never read through it (see licenceShared). Reset clears it.
+	licenceAlwaysShared bool
+
+	// licenceFamilyShared is true while a VM of another execution of the arena's VM's family
+	// has exported guest code that may write the family's globals (refreshFamilyShared), so
+	// the licensed walks and mark read shared.
+	licenceFamilyShared bool
+
+	// unpooled marks an arena of the abandon fallback, built outside the pool, or an arena
+	// reused without a licence whose argument to a keeping native references its storage
+	// (abandonIfArgumentReferencesArena).
+	//
+	// Such an arena never joins the pool. PutRegisterArena abandons it instead.
+	unpooled bool
+
+	// abandonAtRelease marks an arena reused without a licence that a guest closure handed
+	// to a native that may keep it reaches (closureReferencesArena).
+	abandonAtRelease bool
+
+	// aborted marks an arena a limit or a handler panic exited non-locally while code was
+	// part-way through updating it.
+	aborted bool
+
+	// unwindLeaked marks an arena whose VM's abort unwinding was left blocked in native
+	// code.
+	//
+	// The blocked goroutine may still write to it, so it is never released, reset or pooled.
+	// Release only detaches its budget charge, as for an arena whose goroutines leaked.
+	unwindLeaked bool
+
+	// heapData identifies an arena whose guest data allocations are retained on the Go heap.
+	heapData bool
+
+	// heapSliceHeaders makes allocSliceHeader return a Go allocation instead of a slab slot,
+	// for a VM whose program calls runtime.SetFinalizer, since a slab slot keeps the backing
+	// it names reachable until the slab is reset, after the program has dropped the slice
+	// (allocatesForFinalisers).
+	heapSliceHeaders bool
 
 	// disableMinorGC keeps MinorGC() from running for this owner (VMLimits.DisableMinorGC).
 	// Diagnostic: bytesAllocated then grows until MaxArenaBytes is hit.
 	disableMinorGC bool
 
-	// cloneUnownedStrings enables cloning strings that may belong to another VM's
-	// arena.
+	// cloneUnownedStrings enables cloning strings that may belong to another VM's arena.
 	cloneUnownedStrings bool
+
+	// keptBackingsUncharged is true from Reset until setRunBudget charges the next run for
+	// the typed backing slabs Reset kept, so they are charged once per run.
+	keptBackingsUncharged bool
 }
 
 var (
@@ -601,12 +724,16 @@ var (
 
 	// registerArenaPool is the single pool for arena instances. Uses stablepool so internal
 	// slabs survive Go GC cycles and stay warm across collection boundaries.
-	registerArenaPool, _ = stablepool.New[RegisterArena](
+	//
+	// It has no WithOverflow, because a pooled arena keeps its slabs in the slab and licence
+	// registries, and an arena the overflow's sync.Pool dropped would leave them there until
+	// its cleanup ran.
+	registerArenaPool = mustPool(stablepool.New[RegisterArena](
 		initRegisterArenaInPlace,
 		nil,
 		runtime.NumCPU()*2,
 		stablepool.WithGrowth[RegisterArena](runtime.NumCPU()*32),
-	)
+	))
 
 	// zeroSizeAllocBacking is a shared sentinel for zero-size types and zero-capacity make
 	// results. Declared as uint64 for 8-byte alignment.
@@ -616,880 +743,6 @@ var (
 	// the process lifetime.
 	zeroSizeAllocPtr = unsafe.Pointer(&zeroSizeAllocBacking)
 )
-
-// NewRegisterArena creates a fresh arena with default slab sizes.
-//
-// Returns a newly allocated RegisterArena with all slabs at initial capacity.
-func NewRegisterArena() *RegisterArena {
-	arena := &RegisterArena{
-		recycleChunks:        ArenaChunkRecyclingEnabled,
-		intSlab:              make([]int64, initialIntSlabs),
-		floatSlab:            make([]float64, initialFloatSlabs),
-		stringSlab:           make([]string, initialStringSlabs),
-		generalSlab:          make([]reflect.Value, initialGeneralSlabs),
-		boolSlab:             make([]bool, initialBoolSlabs),
-		uintSlab:             make([]uint64, initialUintSlabs),
-		complexSlab:          make([]complex128, initialComplexSlabs),
-		slicesIntSlab:        make([][]int64, initialSlicesIntSlabs),
-		slicesFloatSlab:      make([][]float64, initialSlicesFloatSlabs),
-		slicesStringSlab:     make([][]string, initialSlicesStringSlabs),
-		slicesBoolSlab:       make([][]bool, initialSlicesBoolSlabs),
-		slicesUintSlab:       make([][]uint64, initialSlicesUintSlabs),
-		slicesByteSlab:       make([][]byte, initialSlicesByteSlabs),
-		frameSlab:            make([]CallFrame, initialFrameSlabs),
-		callInfoBasesSlab:    make([]uintptr, initialFrameSlabs),
-		dispatchSavesSlab:    make([]asmDispatchSave, initialFrameSlabs),
-		intBackingSlab:       make([]int64, InitialIntBackingSize),
-		floatBackingSlab:     make([]float64, initialFloatBackingSize),
-		stringBackingSlab:    make([]string, initialStringBackingSize),
-		boolBackingSlab:      make([]bool, initialBoolBackingSize),
-		uintBackingSlab:      make([]uint64, initialUintBackingSize),
-		upvalueCellSlab:      make([]program.UpvalueCell, initialUpvalueCellSlabs),
-		upvalueReferenceSlab: make([]upvalue, initialUpvalueRefSlabs),
-	}
-	arena.replaceByteSlab(make([]byte, InitialByteSlabSize), false)
-	return arena
-}
-
-// AllocRegisters returns a registers struct backed by sub-slices of the arena's
-// contiguous slabs via O(1) index bumping.
-//
-// Integer and float registers are not zeroed here; the compiler emits explicit
-// SubOpLoadZero instructions where zero-initialisation is needed.
-//
-// Takes numRegs ([NumRegisterKinds]uint32) which is the number of registers to allocate
-// for each register kind.
-//
-// Returns a registers struct with each bank pointing into the arena slabs.
-func (a *RegisterArena) AllocRegisters(numRegs [isa.NumRegisterKinds]uint32) Registers {
-	counts := program.ArenaCountsFromNumRegs(numRegs)
-	if a.needsGrow(counts) {
-		a.growSlabs(counts)
-	}
-
-	r := Registers{Ints: a.intSlab[a.IntIndex : a.IntIndex+counts.Ints],
-		Floats:       a.floatSlab[a.FloatIndex : a.FloatIndex+counts.Floats],
-		Strings:      a.stringSlab[a.StringIndex : a.StringIndex+counts.Strings],
-		General:      a.generalSlab[a.GeneralIndex : a.GeneralIndex+counts.Generals],
-		Bools:        a.boolSlab[a.BoolIndex : a.BoolIndex+counts.Bools],
-		Uints:        a.uintSlab[a.UintIndex : a.UintIndex+counts.Uints],
-		Complex:      a.complexSlab[a.ComplexIndex : a.ComplexIndex+counts.Complexes],
-		SlicesInt:    a.slicesIntSlab[a.SlicesIntIndex : a.SlicesIntIndex+counts.SlicesInts],
-		slicesFloat:  a.slicesFloatSlab[a.SlicesFloatIndex : a.SlicesFloatIndex+counts.SlicesFloats],
-		slicesString: a.slicesStringSlab[a.SlicesStringIndex : a.SlicesStringIndex+counts.SlicesStrings],
-		slicesBool:   a.slicesBoolSlab[a.SlicesBoolIndex : a.SlicesBoolIndex+counts.SlicesBools],
-		slicesUint:   a.slicesUintSlab[a.SlicesUintIndex : a.SlicesUintIndex+counts.SlicesUints],
-		slicesByte:   a.slicesByteSlab[a.SlicesByteIndex : a.SlicesByteIndex+counts.SlicesBytes], lastAllocMask: 0}
-
-	a.bumpIndices(counts)
-	return r
-}
-
-// SaveInto writes the current allocation indices directly into the destination
-// ArenaSavePoint.
-//
-// Takes sp (*ArenaSavePoint) which is the destination save point to populate; typically
-// &CallFrame.arenaSave.
-//
-//go:nosplit
-func (a *RegisterArena) SaveInto(sp *ArenaSavePoint) {
-	sp.arenaIndices = a.arenaIndices
-}
-
-// Restore rolls the arena back to a previous save point, reclaiming all register slots
-// allocated since the save point was taken.
-//
-// Only GC-visible slabs (string, general, and typed slice-header banks) are zeroed
-// because they hold pointers the GC must not retain. Primitive slabs are left dirty
-// because the compiler guarantees a register is written before it is read.
-//
-// Takes sp (ArenaSavePoint) which is the save point to restore to.
-func (a *RegisterArena) Restore(sp ArenaSavePoint) {
-	if arenaParanoidEnabled {
-		a.poisonReleasedPrimitives(&sp)
-	}
-	if sp.StringIndex < a.StringIndex {
-		clear(a.stringSlab[sp.StringIndex:a.StringIndex])
-	}
-	if sp.GeneralIndex < a.GeneralIndex {
-		clear(a.generalSlab[sp.GeneralIndex:a.GeneralIndex])
-	}
-	if sp.SlicesIntIndex < a.SlicesIntIndex {
-		clear(a.slicesIntSlab[sp.SlicesIntIndex:a.SlicesIntIndex])
-	}
-	if sp.SlicesFloatIndex < a.SlicesFloatIndex {
-		clear(a.slicesFloatSlab[sp.SlicesFloatIndex:a.SlicesFloatIndex])
-	}
-	if sp.SlicesStringIndex < a.SlicesStringIndex {
-		clear(a.slicesStringSlab[sp.SlicesStringIndex:a.SlicesStringIndex])
-	}
-	if sp.SlicesBoolIndex < a.SlicesBoolIndex {
-		clear(a.slicesBoolSlab[sp.SlicesBoolIndex:a.SlicesBoolIndex])
-	}
-	if sp.SlicesUintIndex < a.SlicesUintIndex {
-		clear(a.slicesUintSlab[sp.SlicesUintIndex:a.SlicesUintIndex])
-	}
-	if sp.SlicesByteIndex < a.SlicesByteIndex {
-		clear(a.slicesByteSlab[sp.SlicesByteIndex:a.SlicesByteIndex])
-	}
-
-	a.arenaIndices = sp.arenaIndices
-}
-
-// Reset zeroes the used portions of each slab, resets indices, and shrinks any slabs
-// exceeding the DoS protection threshold.
-//
-// Slabs are not shrunk unless they exceed the threshold, allowing naturally-grown slabs
-// to be reused without reallocation.
-func (a *RegisterArena) Reset() {
-	a.detachBudgetTracker()
-	a.byteSlabPeakIndexLastReset = a.byteIndex + a.slabRetiredSinceReset.bytes
-	a.slabUsageLastReset = slabUsageSnapshot{genericBytes: a.genericBytesIndex + a.slabRetiredSinceReset.genericBytes,
-		sliceHeaders: a.sliceHeaderIndex + a.slabRetiredSinceReset.sliceHeaders,
-		stringBoxes:  a.stringBoxIndex + a.slabRetiredSinceReset.stringBoxes,
-		intBoxes:     a.intBoxIndex + a.slabRetiredSinceReset.intBoxes,
-		floatBoxes:   a.floatBoxIndex + a.slabRetiredSinceReset.floatBoxes,
-		uintBoxes:    a.uintBoxIndex + a.slabRetiredSinceReset.uintBoxes,
-		complexBoxes: a.complexBoxIndex + a.slabRetiredSinceReset.complexBoxes, bytes: 0}
-	a.slabRetiredSinceReset = slabUsageSnapshot{bytes: 0, genericBytes: 0, sliceHeaders: 0, stringBoxes: 0, intBoxes: 0, floatBoxes: 0, uintBoxes: 0, complexBoxes: 0}
-	a.scalarDemandLastReset = a.scalarDemandSinceReset
-	a.scalarDemandSinceReset = scalarBankDemand{ints: 0, floats: 0, strings: 0, generals: 0, bools: 0, uints: 0, complexes: 0}
-	a.clearAllocatedRegisterRanges()
-	a.clearBoxSlabsAndReset()
-	a.poisonReleasedGenericBytes()
-	a.poisonReleasedStringBytes()
-	a.genericBytesIndex = 0
-	clear(a.sliceHeaderSlab[:a.sliceHeaderIndex])
-	a.sliceHeaderIndex = 0
-	a.framesUsed = a.frameStackPeak()
-	a.frameStackPeakLastReset = a.framesUsed
-	a.resetFrameSlots()
-	a.resetAllocationIndices()
-	a.dropRetainedOldSlabs()
-	a.bytesAllocated = 0
-	a.bytesAtLastGC = 0
-	a.nextGCAt = 0
-	a.gcCount = 0
-	a.framesUsed = 0
-	a.totalAllocatedBytes = 0
-	a.ownerVM = nil
-	a.MaxAllocSize = 0
-	a.MaxArenaBytes = 0
-	a.cloneUnownedStrings = false
-	a.foreignSlabStart, a.foreignSlabLength = 0, 0
-	a.shrinkOvergrownSlabs()
-}
-
-// replaceByteSlab installs slab as the arena's current byte slab and records it in the
-// arena slab registry.
-//
-// Takes slab ([]byte) which becomes the current byte slab.
-// Takes previousRetired (bool) which is true when the previous slab moved to
-// oldByteSlabs.
-func (a *RegisterArena) replaceByteSlab(slab []byte, previousRetired bool) {
-	if a.slabOwner == 0 {
-		a.slabOwner = arenaSlabOwners.Add(1)
-		runtime.AddCleanup(a, forgetArenaSlabOwner, a.slabOwner)
-	}
-	if !previousRetired {
-		forgetArenaSlab(a.byteSlab)
-	}
-	a.byteSlab = slab
-	recordArenaSlab(a.slabOwner, slab)
-}
-
-// callInfoBases returns the arena's pre-allocated slab for ASM call-info base pointers,
-// parallel to the frame stack.
-//
-// Returns the callInfoBasesSlab slice.
-func (a *RegisterArena) callInfoBases() []uintptr {
-	return a.callInfoBasesSlab
-}
-
-// ensureCapacity pre-sizes the arena slabs so that AllocRegisters never triggers a grow
-// during execution.
-//
-// Called once after compilation with hints derived from the compiled function table.
-//
-// Takes counts (typedSlabCounts) which carries the minimum required capacity for every
-// slab kind. Bundling avoids a long argument list that grows every time a new typed
-// register bank is added.
-func (a *RegisterArena) ensureCapacity(counts program.TypedSlabCounts) {
-	a.ensureScalarBankCapacity(counts)
-	a.ensureSliceBankCapacity(counts)
-	a.ensureBackingCapacity(counts)
-	a.ensureFrameStackCapacity(counts.FrameStack)
-	a.ensureBoxSlabCapacity(counts)
-	a.ensureUpvalueCapacity(counts)
-}
-
-// allocRegistersInto writes arena-backed sub-slices directly into the target registers
-// pointer, avoiding a by-value copy.
-//
-// Takes r (*Registers) which is the target registers to populate in place.
-// Takes numRegs ([NumRegisterKinds]uint32) which is the number of registers to allocate
-// for each register kind.
-func (a *RegisterArena) allocRegistersInto(r *Registers, numRegs [isa.NumRegisterKinds]uint32) {
-	counts := program.ArenaCountsFromNumRegs(numRegs)
-	a.allocRegistersIntoFromCounts(r, counts)
-}
-
-// allocRegistersIntoCached is the hot-path register-bank allocator.
-//
-// Consumes the function's precomputed typedSlabCounts so the conversion from
-// [NumRegisterKinds]uint32 is paid once per function instead of once per call. The
-// nonZeroMask short-circuits banks the callee does not use.
-//
-// Takes r (*Registers) which is the destination register file to populate.
-// Takes counts (typedSlabCounts) which is the precomputed slab request derived from
-// callee.numRegisters.
-// Takes nonZeroMask (uint16) which is the bitmask of banks the callee actually uses; bits
-// map to isa.RegisterKind values and empty banks short-circuit their slice-header write.
-func (a *RegisterArena) allocRegistersIntoCached(r *Registers, counts program.TypedSlabCounts, nonZeroMask uint16) {
-	if a.needsGrow(counts) {
-		a.growSlabs(counts)
-	}
-	a.assignCachedScalarBanks(r, counts, nonZeroMask)
-	a.assignCachedSliceBanks(r, counts, nonZeroMask)
-	r.lastAllocMask = nonZeroMask
-	a.bumpIndices(counts)
-}
-
-// save returns a save point capturing the current allocation indices.
-//
-// Returns an ArenaSavePoint recording all current slab positions.
-func (a *RegisterArena) save() ArenaSavePoint {
-	var sp ArenaSavePoint
-	a.SaveInto(&sp)
-	return sp
-}
-
-// ensureScalarBankCapacity grows the scalar register banks to fit counts.
-//
-// Takes counts (typedSlabCounts) which are the required per-kind counts for
-// int/float/string/general/bool/uint/complex banks.
-func (a *RegisterArena) ensureScalarBankCapacity(counts program.TypedSlabCounts) {
-	a.scalarDemandSinceReset.noteRequest(counts)
-	if counts.Ints > len(a.intSlab) {
-		a.intSlab = make([]int64, counts.Ints)
-		a.slabGeneration++
-	}
-	if counts.Floats > len(a.floatSlab) {
-		a.floatSlab = make([]float64, counts.Floats)
-		a.slabGeneration++
-	}
-	if counts.Strings > len(a.stringSlab) {
-		a.stringSlab = make([]string, counts.Strings)
-		a.slabGeneration++
-	}
-	if counts.Generals > len(a.generalSlab) {
-		a.generalSlab = make([]reflect.Value, counts.Generals)
-		a.slabGeneration++
-	}
-	if counts.Bools > len(a.boolSlab) {
-		a.boolSlab = make([]bool, counts.Bools)
-		a.slabGeneration++
-	}
-	if counts.Uints > len(a.uintSlab) {
-		a.uintSlab = make([]uint64, counts.Uints)
-		a.slabGeneration++
-	}
-	if counts.Complexes > len(a.complexSlab) {
-		a.complexSlab = make([]complex128, counts.Complexes)
-	}
-}
-
-// frameStack returns the arena's pre-allocated call frame slab.
-//
-// Returns the frameSlab slice.
-func (a *RegisterArena) frameStack() []CallFrame {
-	return a.frameSlab
-}
-
-// dispatchSaves returns the arena's pre-allocated slab for ASM dispatch register saves,
-// parallel to the frame stack.
-//
-// Returns the dispatchSavesSlab slice.
-func (a *RegisterArena) dispatchSaves() []asmDispatchSave {
-	return a.dispatchSavesSlab
-}
-
-// allocUpvalueCells bump-allocates n UpvalueCell slots from the arena.
-//
-// Takes n (int) which is the number of upvalue cells to allocate.
-//
-// Returns a zeroed slice of UpvalueCell of length n.
-func (a *RegisterArena) allocUpvalueCells(n int) []program.UpvalueCell {
-	if a.UpvalueCellIndex+n > len(a.upvalueCellSlab) {
-		a.growUpvalueCellSlab(a.UpvalueCellIndex + n)
-	}
-	start := a.UpvalueCellIndex
-	a.UpvalueCellIndex += n
-	cells := a.upvalueCellSlab[start:a.UpvalueCellIndex]
-	clear(cells)
-	return cells
-}
-
-// allocUpvalueRefs bump-allocates n upvalue slots from the arena.
-//
-// Takes n (int) which is the number of upvalue references to allocate.
-//
-// Returns a zeroed slice of upvalue of length n.
-func (a *RegisterArena) allocUpvalueRefs(n int) []upvalue {
-	if a.UpvalueReferenceIndex+n > len(a.upvalueReferenceSlab) {
-		a.growUpvalueRefSlab(a.UpvalueReferenceIndex + n)
-	}
-	start := a.UpvalueReferenceIndex
-	a.UpvalueReferenceIndex += n
-	refs := a.upvalueReferenceSlab[start:a.UpvalueReferenceIndex]
-	clear(refs)
-	return refs
-}
-
-// ensureFrameStackCapacity grows the parallel frame slabs (frameSlab + callInfoBasesSlab
-// + dispatchSavesSlab) when the compile-time depth estimate exceeds the current capacity.
-// Idempotent and grow-only; calling with zero or a value already covered is a no-op so
-// multiple Execute calls amortise correctly.
-//
-// Takes minDepth (int) which is the minimum frame-stack depth the arena must support
-// without paying a growCallStack allocation.
-func (a *RegisterArena) ensureFrameStackCapacity(minDepth int) {
-	if minDepth <= len(a.frameSlab) {
-		return
-	}
-	a.growFrameStack(minDepth)
-}
-
-// ensureBoxSlabCapacity grows each of the five per-kind box slabs (int / uint / float /
-// string / complex) when the supplied counts exceed the current capacity. Each box slab
-// is independent so a workload that packs only one kind does not over-provision the other
-// four.
-//
-// Takes counts (typedSlabCounts) which carries the per-kind box slot budget computed by
-// sizeArenaFromFunctions.
-func (a *RegisterArena) ensureBoxSlabCapacity(counts program.TypedSlabCounts) {
-	if counts.IntBoxes > len(a.intBoxSlab) {
-		a.intBoxSlab = make([]int64, counts.IntBoxes)
-		a.intBoxIndex = 0
-	}
-	if counts.UintBoxes > len(a.uintBoxSlab) {
-		a.uintBoxSlab = make([]uint64, counts.UintBoxes)
-		a.uintBoxIndex = 0
-	}
-	if counts.FloatBoxes > len(a.floatBoxSlab) {
-		a.floatBoxSlab = make([]float64, counts.FloatBoxes)
-		a.floatBoxIndex = 0
-	}
-	if counts.StringBoxes > len(a.stringBoxSlab) {
-		a.stringBoxSlab = make([]string, counts.StringBoxes)
-		a.stringBoxIndex = 0
-	}
-	if counts.ComplexBoxes > len(a.complexBoxSlab) {
-		a.complexBoxSlab = make([]complex128, counts.ComplexBoxes)
-		a.complexBoxIndex = 0
-	}
-}
-
-// ensureUpvalueCapacity grows the upvalue cell and reference slabs when the supplied
-// counts exceed the current capacity. Sized from the per-program isa.OpMakeClosure
-// descriptor count.
-//
-// Takes counts (typedSlabCounts) which carries the budget for both upvalue slabs.
-func (a *RegisterArena) ensureUpvalueCapacity(counts program.TypedSlabCounts) {
-	if counts.UpvalueCells > len(a.upvalueCellSlab) {
-		a.upvalueCellSlab = make([]program.UpvalueCell, counts.UpvalueCells)
-	}
-	if counts.UpvalueReferences > len(a.upvalueReferenceSlab) {
-		a.upvalueReferenceSlab = make([]upvalue, counts.UpvalueReferences)
-	}
-}
-
-// clearAllocatedRegisterRanges zeroes the in-use prefix of every register and upvalue
-// slab so the next allocation hands out freshly zeroed sub-slices.
-func (a *RegisterArena) clearAllocatedRegisterRanges() {
-	clear(a.intSlab[:a.IntIndex])
-	clear(a.floatSlab[:a.FloatIndex])
-	clear(a.stringSlab[:a.StringIndex])
-	clear(a.generalSlab[:a.GeneralIndex])
-	clear(a.boolSlab[:a.BoolIndex])
-	clear(a.uintSlab[:a.UintIndex])
-	clear(a.complexSlab[:a.ComplexIndex])
-	clear(a.slicesIntSlab[:a.SlicesIntIndex])
-	clear(a.slicesFloatSlab[:a.SlicesFloatIndex])
-	clear(a.slicesStringSlab[:a.SlicesStringIndex])
-	clear(a.slicesBoolSlab[:a.SlicesBoolIndex])
-	clear(a.slicesUintSlab[:a.SlicesUintIndex])
-	clear(a.slicesByteSlab[:a.SlicesByteIndex])
-	clear(a.upvalueCellSlab[:a.UpvalueCellIndex])
-	clear(a.upvalueReferenceSlab[:a.UpvalueReferenceIndex])
-}
-
-// clearBoxSlabsAndReset zeroes the four per-type box slabs (string, int, float, uint) and
-// resets their bump indices.
-func (a *RegisterArena) clearBoxSlabsAndReset() {
-	clear(a.stringBoxSlab[:a.stringBoxIndex])
-	a.stringBoxIndex = 0
-	clear(a.intBoxSlab[:a.intBoxIndex])
-	a.intBoxIndex = 0
-	clear(a.floatBoxSlab[:a.floatBoxIndex])
-	a.floatBoxIndex = 0
-	clear(a.uintBoxSlab[:a.uintBoxIndex])
-	a.uintBoxIndex = 0
-	clear(a.complexBoxSlab[:a.complexBoxIndex])
-	a.complexBoxIndex = 0
-}
-
-// resetFrameSlots zeroes per-frame register slices, function pointers, and shared-cell
-// references. Iterates only [0:framesUsed]; frames past the high-water mark are
-// guaranteed nil.
-func (a *RegisterArena) resetFrameSlots() {
-	for i := range a.framesUsed {
-		f := &a.frameSlab[i]
-		f.Registers.Strings = nil
-		f.Registers.General = nil
-		f.Registers.SlicesInt = nil
-		f.Registers.slicesFloat = nil
-		f.Registers.slicesString = nil
-		f.Registers.slicesBool = nil
-		f.Registers.slicesUint = nil
-		f.Registers.slicesByte = nil
-		f.Function = nil
-		releaseSharedCellMap(f.sharedCells)
-		f.sharedCells = nil
-		f.upvalues = nil
-		f.returnDestination = nil
-	}
-}
-
-// resetAllocationIndices zeroes every per-slab bump index so the next AllocRegisters call
-// hands out sub-slices starting at position 0 in each slab.
-func (a *RegisterArena) resetAllocationIndices() {
-	a.IntIndex = 0
-	a.FloatIndex = 0
-	a.StringIndex = 0
-	a.GeneralIndex = 0
-	a.BoolIndex = 0
-	a.UintIndex = 0
-	a.ComplexIndex = 0
-	a.SlicesIntIndex = 0
-	a.SlicesFloatIndex = 0
-	a.SlicesStringIndex = 0
-	a.SlicesBoolIndex = 0
-	a.SlicesUintIndex = 0
-	a.SlicesByteIndex = 0
-	a.byteIndex = 0
-	a.intBackingIndex = 0
-	a.floatBackingIndex = 0
-	a.stringBackingIndex = 0
-	a.boolBackingIndex = 0
-	a.uintBackingIndex = 0
-	a.UpvalueCellIndex = 0
-	a.UpvalueReferenceIndex = 0
-}
-
-// dropRetainedOldSlabs truncates the retention lists for retired slabs. Each list is
-// cleared before truncating so GC can reclaim the dropped slabs once any remaining user
-// references are themselves collected.
-func (a *RegisterArena) dropRetainedOldSlabs() {
-	a.dropFreeChunks()
-	for _, slab := range a.oldByteSlabs {
-		forgetArenaSlab(slab)
-	}
-	a.oldByteSlabs = a.oldByteSlabs[:0]
-	clear(a.oldGenericByteSlabs)
-	a.oldGenericByteSlabs = a.oldGenericByteSlabs[:0]
-	clear(a.oldSliceHeaderSlabs)
-	a.oldSliceHeaderSlabs = a.oldSliceHeaderSlabs[:0]
-	clear(a.oldIntBackings)
-	a.oldIntBackings = a.oldIntBackings[:0]
-	clear(a.oldFloatBackings)
-	a.oldFloatBackings = a.oldFloatBackings[:0]
-	clear(a.oldStringBackings)
-	a.oldStringBackings = a.oldStringBackings[:0]
-	clear(a.oldBoolBackings)
-	a.oldBoolBackings = a.oldBoolBackings[:0]
-	clear(a.oldUintBackings)
-	a.oldUintBackings = a.oldUintBackings[:0]
-}
-
-// allocRegistersIntoFromCounts is the fallback used by allocRegistersInto when the caller
-// has not precomputed counts. Same shape as allocRegistersIntoCached but derives the
-// non-zero mask from the counts struct directly, paying one extra load per bank.
-//
-// Takes r (*Registers) which is the destination register file to populate.
-// Takes counts (typedSlabCounts) which is the per-bank request size.
-func (a *RegisterArena) allocRegistersIntoFromCounts(r *Registers, counts program.TypedSlabCounts) {
-	if a.needsGrow(counts) {
-		a.growSlabs(counts)
-	}
-	r.Ints = a.intSlab[a.IntIndex : a.IntIndex+counts.Ints]
-	r.General = a.generalSlab[a.GeneralIndex : a.GeneralIndex+counts.Generals]
-	r.Uints = a.uintSlab[a.UintIndex : a.UintIndex+counts.Uints]
-	a.assignScalarBanksFromCounts(r, counts)
-	a.assignSliceBanksFromCounts(r, counts)
-	a.bumpIndices(counts)
-}
-
-// ensureSliceBankCapacity grows the typed slice-header banks to fit counts.
-//
-// Takes counts (typedSlabCounts) which are the required per-kind counts for
-// int/float/string/bool/uint/byte slice-header banks.
-func (a *RegisterArena) ensureSliceBankCapacity(counts program.TypedSlabCounts) {
-	if counts.SlicesInts > len(a.slicesIntSlab) {
-		a.slicesIntSlab = make([][]int64, counts.SlicesInts)
-	}
-	if counts.SlicesFloats > len(a.slicesFloatSlab) {
-		a.slicesFloatSlab = make([][]float64, counts.SlicesFloats)
-	}
-	if counts.SlicesStrings > len(a.slicesStringSlab) {
-		a.slicesStringSlab = make([][]string, counts.SlicesStrings)
-	}
-	if counts.SlicesBools > len(a.slicesBoolSlab) {
-		a.slicesBoolSlab = make([][]bool, counts.SlicesBools)
-	}
-	if counts.SlicesUints > len(a.slicesUintSlab) {
-		a.slicesUintSlab = make([][]uint64, counts.SlicesUints)
-	}
-	if counts.SlicesBytes > len(a.slicesByteSlab) {
-		a.slicesByteSlab = make([][]byte, counts.SlicesBytes)
-		a.slabGeneration++
-	}
-}
-
-// ensureBackingCapacity grows the byte slab and per-type backing slabs used by
-// arena-routed make and append-grow.
-//
-// Takes counts (typedSlabCounts) which are the required per-kind backing capacities.
-func (a *RegisterArena) ensureBackingCapacity(counts program.TypedSlabCounts) {
-	if counts.Bytes > len(a.byteSlab) {
-		a.replaceByteSlab(make([]byte, counts.Bytes), false)
-	}
-	if counts.IntBacking > len(a.intBackingSlab) {
-		a.intBackingSlab = make([]int64, counts.IntBacking)
-	}
-	if counts.FloatBacking > len(a.floatBackingSlab) {
-		a.floatBackingSlab = make([]float64, counts.FloatBacking)
-	}
-	if counts.StringBacking > len(a.stringBackingSlab) {
-		a.stringBackingSlab = make([]string, counts.StringBacking)
-	}
-	if counts.BoolBacking > len(a.boolBackingSlab) {
-		a.boolBackingSlab = make([]bool, counts.BoolBacking)
-	}
-	if counts.UintBacking > len(a.uintBackingSlab) {
-		a.uintBackingSlab = make([]uint64, counts.UintBacking)
-	}
-	if counts.GenericBytes > len(a.genericBytesSlab) {
-		a.genericBytesSlab = make([]byte, counts.GenericBytes)
-	}
-	if counts.SliceHeaders > len(a.sliceHeaderSlab) {
-		a.sliceHeaderSlab = make([]arenaSliceHeader, counts.SliceHeaders)
-	}
-}
-
-// assignCachedScalarBanks writes the scalar bank slice headers onto r using the
-// precomputed mask.
-//
-// Banks whose bit in nonZeroMask is clear are reset to nil.
-//
-// Takes r (*Registers) which is the register set receiving the assignments.
-// Takes counts (typedSlabCounts) which are the per-kind slot counts to expose on r.
-// Takes nonZeroMask (uint16) which is the bitmask selecting which scalar banks receive
-// non-nil slices.
-func (a *RegisterArena) assignCachedScalarBanks(r *Registers, counts program.TypedSlabCounts, nonZeroMask uint16) {
-	if nonZeroMask&allocMaskInt != 0 {
-		r.Ints = a.intSlab[a.IntIndex : a.IntIndex+counts.Ints]
-	} else if r.lastAllocMask&allocMaskInt != 0 {
-		r.Ints = nil
-	}
-	if nonZeroMask&allocMaskGeneral != 0 {
-		r.General = a.generalSlab[a.GeneralIndex : a.GeneralIndex+counts.Generals]
-	} else if r.lastAllocMask&allocMaskGeneral != 0 {
-		r.General = nil
-	}
-	if nonZeroMask&allocMaskUint != 0 {
-		r.Uints = a.uintSlab[a.UintIndex : a.UintIndex+counts.Uints]
-	} else if r.lastAllocMask&allocMaskUint != 0 {
-		r.Uints = nil
-	}
-	if nonZeroMask&allocMaskFloat != 0 {
-		r.Floats = a.floatSlab[a.FloatIndex : a.FloatIndex+counts.Floats]
-	} else if r.lastAllocMask&allocMaskFloat != 0 {
-		r.Floats = nil
-	}
-	if nonZeroMask&allocMaskString != 0 {
-		r.Strings = a.stringSlab[a.StringIndex : a.StringIndex+counts.Strings]
-	} else if r.lastAllocMask&allocMaskString != 0 {
-		r.Strings = nil
-	}
-	if nonZeroMask&allocMaskBool != 0 {
-		r.Bools = a.boolSlab[a.BoolIndex : a.BoolIndex+counts.Bools]
-	} else if r.lastAllocMask&allocMaskBool != 0 {
-		r.Bools = nil
-	}
-	if nonZeroMask&allocMaskComplex != 0 {
-		r.Complex = a.complexSlab[a.ComplexIndex : a.ComplexIndex+counts.Complexes]
-	} else if r.lastAllocMask&allocMaskComplex != 0 {
-		r.Complex = nil
-	}
-}
-
-// assignCachedSliceBanks writes the typed-slice bank slice headers onto r using the
-// precomputed mask.
-//
-// Banks whose bit in nonZeroMask is clear are left untouched; every reader of another
-// frame's banks is gated on that frame's own nonZeroBankMask.
-//
-// Takes r (*Registers) which is the register set receiving the assignments.
-// Takes counts (typedSlabCounts) which are the per-kind slice-header counts to expose on
-// r.
-// Takes nonZeroMask (uint16) which is the bitmask selecting which typed-slice banks
-// receive non-nil slices.
-func (a *RegisterArena) assignCachedSliceBanks(r *Registers, counts program.TypedSlabCounts, nonZeroMask uint16) {
-	if nonZeroMask&allocMaskSliceInt != 0 {
-		r.SlicesInt = a.slicesIntSlab[a.SlicesIntIndex : a.SlicesIntIndex+counts.SlicesInts]
-	} else if r.lastAllocMask&allocMaskSliceInt != 0 {
-		r.SlicesInt = nil
-	}
-	if nonZeroMask&allocMaskSliceFloat != 0 {
-		r.slicesFloat = a.slicesFloatSlab[a.SlicesFloatIndex : a.SlicesFloatIndex+counts.SlicesFloats]
-	} else if r.lastAllocMask&allocMaskSliceFloat != 0 {
-		r.slicesFloat = nil
-	}
-	if nonZeroMask&allocMaskSliceString != 0 {
-		r.slicesString = a.slicesStringSlab[a.SlicesStringIndex : a.SlicesStringIndex+counts.SlicesStrings]
-	} else if r.lastAllocMask&allocMaskSliceString != 0 {
-		r.slicesString = nil
-	}
-	if nonZeroMask&allocMaskSliceBool != 0 {
-		r.slicesBool = a.slicesBoolSlab[a.SlicesBoolIndex : a.SlicesBoolIndex+counts.SlicesBools]
-	} else if r.lastAllocMask&allocMaskSliceBool != 0 {
-		r.slicesBool = nil
-	}
-	if nonZeroMask&allocMaskSliceUint != 0 {
-		r.slicesUint = a.slicesUintSlab[a.SlicesUintIndex : a.SlicesUintIndex+counts.SlicesUints]
-	} else if r.lastAllocMask&allocMaskSliceUint != 0 {
-		r.slicesUint = nil
-	}
-	if nonZeroMask&allocMaskSliceByte != 0 {
-		r.slicesByte = a.slicesByteSlab[a.SlicesByteIndex : a.SlicesByteIndex+counts.SlicesBytes]
-	} else if r.lastAllocMask&allocMaskSliceByte != 0 {
-		r.slicesByte = nil
-	}
-}
-
-// assignScalarBanksFromCounts writes the optional scalar register banks onto r derived
-// from counts.
-//
-// Banks with a zero count receive nil slices.
-//
-// Takes r (*Registers) which is the register set receiving the assignments.
-// Takes counts (typedSlabCounts) which are the per-kind slot counts
-// (float/string/bool/complex banks).
-func (a *RegisterArena) assignScalarBanksFromCounts(r *Registers, counts program.TypedSlabCounts) {
-	if counts.Floats > 0 {
-		r.Floats = a.floatSlab[a.FloatIndex : a.FloatIndex+counts.Floats]
-	} else {
-		r.Floats = nil
-	}
-	if counts.Strings > 0 {
-		r.Strings = a.stringSlab[a.StringIndex : a.StringIndex+counts.Strings]
-	} else {
-		r.Strings = nil
-	}
-	if counts.Bools > 0 {
-		r.Bools = a.boolSlab[a.BoolIndex : a.BoolIndex+counts.Bools]
-	} else {
-		r.Bools = nil
-	}
-	if counts.Complexes > 0 {
-		r.Complex = a.complexSlab[a.ComplexIndex : a.ComplexIndex+counts.Complexes]
-	} else {
-		r.Complex = nil
-	}
-}
-
-// assignSliceBanksFromCounts writes the typed-slice register banks onto r derived from
-// counts.
-//
-// Banks with a zero count receive nil slices.
-//
-// Takes r (*Registers) which is the register set receiving the assignments.
-// Takes counts (typedSlabCounts) which are the per-kind slice-header counts
-// (int/float/string/bool/uint/byte banks).
-func (a *RegisterArena) assignSliceBanksFromCounts(r *Registers, counts program.TypedSlabCounts) {
-	if counts.SlicesInts > 0 {
-		r.SlicesInt = a.slicesIntSlab[a.SlicesIntIndex : a.SlicesIntIndex+counts.SlicesInts]
-	} else {
-		r.SlicesInt = nil
-	}
-	if counts.SlicesFloats > 0 {
-		r.slicesFloat = a.slicesFloatSlab[a.SlicesFloatIndex : a.SlicesFloatIndex+counts.SlicesFloats]
-	} else {
-		r.slicesFloat = nil
-	}
-	if counts.SlicesStrings > 0 {
-		r.slicesString = a.slicesStringSlab[a.SlicesStringIndex : a.SlicesStringIndex+counts.SlicesStrings]
-	} else {
-		r.slicesString = nil
-	}
-	if counts.SlicesBools > 0 {
-		r.slicesBool = a.slicesBoolSlab[a.SlicesBoolIndex : a.SlicesBoolIndex+counts.SlicesBools]
-	} else {
-		r.slicesBool = nil
-	}
-	if counts.SlicesUints > 0 {
-		r.slicesUint = a.slicesUintSlab[a.SlicesUintIndex : a.SlicesUintIndex+counts.SlicesUints]
-	} else {
-		r.slicesUint = nil
-	}
-	if counts.SlicesBytes > 0 {
-		r.slicesByte = a.slicesByteSlab[a.SlicesByteIndex : a.SlicesByteIndex+counts.SlicesBytes]
-	} else {
-		r.slicesByte = nil
-	}
-}
-
-// needsGrow reports whether at least one slab is too small to satisfy the requested
-// counts at its current allocation index.
-//
-// Takes counts (typedSlabCounts) which is the per-bank request size.
-//
-// Returns true when any slab requires growth before AllocRegisters can hand out a
-// sub-slice.
-func (a *RegisterArena) needsGrow(counts program.TypedSlabCounts) bool {
-	return a.IntIndex+counts.Ints > len(a.intSlab) ||
-		a.FloatIndex+counts.Floats > len(a.floatSlab) ||
-		a.StringIndex+counts.Strings > len(a.stringSlab) ||
-		a.GeneralIndex+counts.Generals > len(a.generalSlab) ||
-		a.BoolIndex+counts.Bools > len(a.boolSlab) ||
-		a.UintIndex+counts.Uints > len(a.uintSlab) ||
-		a.ComplexIndex+counts.Complexes > len(a.complexSlab) ||
-		a.SlicesIntIndex+counts.SlicesInts > len(a.slicesIntSlab) ||
-		a.SlicesFloatIndex+counts.SlicesFloats > len(a.slicesFloatSlab) ||
-		a.SlicesStringIndex+counts.SlicesStrings > len(a.slicesStringSlab) ||
-		a.SlicesBoolIndex+counts.SlicesBools > len(a.slicesBoolSlab) ||
-		a.SlicesUintIndex+counts.SlicesUints > len(a.slicesUintSlab) ||
-		a.SlicesByteIndex+counts.SlicesBytes > len(a.slicesByteSlab)
-}
-
-// bumpIndices advances the arena's per-bank allocation indices by the per-bank request
-// size after sub-slices have been handed out.
-//
-// Takes counts (typedSlabCounts) which is the per-bank request size just satisfied.
-func (a *RegisterArena) bumpIndices(counts program.TypedSlabCounts) {
-	a.IntIndex += counts.Ints
-	a.FloatIndex += counts.Floats
-	a.StringIndex += counts.Strings
-	a.GeneralIndex += counts.Generals
-	a.BoolIndex += counts.Bools
-	a.UintIndex += counts.Uints
-	a.ComplexIndex += counts.Complexes
-	a.SlicesIntIndex += counts.SlicesInts
-	a.SlicesFloatIndex += counts.SlicesFloats
-	a.SlicesStringIndex += counts.SlicesStrings
-	a.SlicesBoolIndex += counts.SlicesBools
-	a.SlicesUintIndex += counts.SlicesUints
-	a.SlicesByteIndex += counts.SlicesBytes
-}
-
-// shrinkOvergrownSlabs replaces any slab that has grown beyond the DoS protection
-// threshold with a fresh default-sized allocation.
-func (a *RegisterArena) shrinkOvergrownSlabs() {
-	a.shrinkOvergrownScalarSlabs()
-	a.shrinkOvergrownSliceSlabs()
-	a.shrinkOvergrownFrameSlabs()
-	a.shrinkOvergrownBackingSlabs()
-}
-
-// shrinkOvergrownSliceSlabs replaces typed-slice banks (int/float/ string/bool/uint/byte)
-// that grew past the threshold with fresh default-sized allocations.
-func (a *RegisterArena) shrinkOvergrownSliceSlabs() {
-	if len(a.slicesIntSlab) > initialSlicesIntSlabs*maxArenaMultiplier {
-		a.slicesIntSlab = make([][]int64, initialSlicesIntSlabs)
-	}
-	if len(a.slicesFloatSlab) > initialSlicesFloatSlabs*maxArenaMultiplier {
-		a.slicesFloatSlab = make([][]float64, initialSlicesFloatSlabs)
-	}
-	if len(a.slicesStringSlab) > initialSlicesStringSlabs*maxArenaMultiplier {
-		a.slicesStringSlab = make([][]string, initialSlicesStringSlabs)
-	}
-	if len(a.slicesBoolSlab) > initialSlicesBoolSlabs*maxArenaMultiplier {
-		a.slicesBoolSlab = make([][]bool, initialSlicesBoolSlabs)
-	}
-	if len(a.slicesUintSlab) > initialSlicesUintSlabs*maxArenaMultiplier {
-		a.slicesUintSlab = make([][]uint64, initialSlicesUintSlabs)
-	}
-	if len(a.slicesByteSlab) > initialSlicesByteSlabs*maxArenaMultiplier {
-		a.slicesByteSlab = make([][]byte, initialSlicesByteSlabs)
-		a.slabGeneration++
-	}
-}
-
-// shrinkOvergrownFrameSlabs replaces frame-adjacent slabs (frames, call-info bases,
-// dispatch saves, upvalue cells and refs) that grew past the threshold.
-func (a *RegisterArena) shrinkOvergrownFrameSlabs() {
-	a.shrinkFrameStackWithHysteresis()
-	if len(a.upvalueCellSlab) > initialUpvalueCellSlabs*maxArenaMultiplier {
-		a.upvalueCellSlab = make([]program.UpvalueCell, initialUpvalueCellSlabs)
-	}
-	if len(a.upvalueReferenceSlab) > initialUpvalueRefSlabs*maxArenaMultiplier {
-		a.upvalueReferenceSlab = make([]upvalue, initialUpvalueRefSlabs)
-	}
-}
-
-// shrinkOvergrownBackingSlabs replaces the byte slab and the typed backing slabs (used by
-// arena-routed make() and append-grow) that grew past the threshold.
-func (a *RegisterArena) shrinkOvergrownBackingSlabs() {
-	if shrunk := shrinkSlabWithHysteresis(a.byteSlab, InitialByteSlabSize, a.byteSlabPeakIndexLastReset, &a.byteSlabIdleResetCount); unsafe.SliceData(shrunk) != unsafe.SliceData(a.byteSlab) {
-		a.replaceByteSlab(shrunk, false)
-	}
-	if len(a.intBackingSlab) > InitialIntBackingSize*maxArenaMultiplier {
-		a.intBackingSlab = make([]int64, InitialIntBackingSize)
-	}
-	if len(a.floatBackingSlab) > initialFloatBackingSize*maxArenaMultiplier {
-		a.floatBackingSlab = make([]float64, initialFloatBackingSize)
-	}
-	if len(a.stringBackingSlab) > initialStringBackingSize*maxArenaMultiplier {
-		a.stringBackingSlab = make([]string, initialStringBackingSize)
-	}
-	if len(a.boolBackingSlab) > initialBoolBackingSize*maxArenaMultiplier {
-		a.boolBackingSlab = make([]bool, initialBoolBackingSize)
-	}
-	if len(a.uintBackingSlab) > initialUintBackingSize*maxArenaMultiplier {
-		a.uintBackingSlab = make([]uint64, initialUintBackingSize)
-	}
-	a.shrinkOvergrownBoxSlabs()
-	a.genericBytesSlab = shrinkSlabWithHysteresis(a.genericBytesSlab, initialGenericBytesCapacity, a.slabUsageLastReset.genericBytes, &a.slabIdleResets.genericBytes)
-	a.sliceHeaderSlab = shrinkSlabWithHysteresis(a.sliceHeaderSlab, initialSliceHeaderCapacity, a.slabUsageLastReset.sliceHeaders, &a.slabIdleResets.sliceHeaders)
-}
-
-// shrinkOvergrownBoxSlabs shrinks any per-type box slab that has grown past its DoS
-// threshold and then sat idle across several Resets.
-func (a *RegisterArena) shrinkOvergrownBoxSlabs() {
-	a.stringBoxSlab = shrinkSlabWithHysteresis(a.stringBoxSlab, initialBoxSlabCapacity, a.slabUsageLastReset.stringBoxes, &a.slabIdleResets.stringBoxes)
-	a.intBoxSlab = shrinkSlabWithHysteresis(a.intBoxSlab, initialBoxSlabCapacity, a.slabUsageLastReset.intBoxes, &a.slabIdleResets.intBoxes)
-	a.floatBoxSlab = shrinkSlabWithHysteresis(a.floatBoxSlab, initialBoxSlabCapacity, a.slabUsageLastReset.floatBoxes, &a.slabIdleResets.floatBoxes)
-	a.uintBoxSlab = shrinkSlabWithHysteresis(a.uintBoxSlab, initialBoxSlabCapacity, a.slabUsageLastReset.uintBoxes, &a.slabIdleResets.uintBoxes)
-	a.complexBoxSlab = shrinkSlabWithHysteresis(a.complexBoxSlab, initialBoxSlabCapacity, a.slabUsageLastReset.complexBoxes, &a.slabIdleResets.complexBoxes)
-}
-
-// holdsEscapableData reports whether the arena allocated anything a value outside it
-// could still reference: string bytes, generic bytes (pointer-free cells), slice headers,
-// typed backing arrays, scalar boxes or upvalue cells. Register banks are excluded; a
-// frame's registers are copied out before the frame is released.
-//
-// Returns bool which is true when any data slab was used since the last reset.
-func (a *RegisterArena) holdsEscapableData() bool {
-	return a.byteIndex != 0 || len(a.oldByteSlabs) != 0 ||
-		a.slabRetiredSinceReset != noSlabUsage ||
-		a.genericBytesIndex != 0 || a.sliceHeaderIndex != 0 || len(a.oldSliceHeaderSlabs) != 0 ||
-		a.intBackingIndex != 0 || a.floatBackingIndex != 0 || a.stringBackingIndex != 0 ||
-		a.boolBackingIndex != 0 || a.uintBackingIndex != 0 ||
-		a.stringBoxIndex != 0 || a.intBoxIndex != 0 || a.floatBoxIndex != 0 ||
-		a.uintBoxIndex != 0 || a.complexBoxIndex != 0 ||
-		a.UpvalueCellIndex != 0 || a.UpvalueReferenceIndex != 0
-}
 
 // arenaIndices is the contiguous block of arena allocation indices saved and restored per
 // frame. Field order is load-bearing: byte offsets must match the ASM hard-coded
@@ -1585,6 +838,24 @@ type slabUsageSnapshot struct {
 
 	// complexBoxes is the complex128 box-slab volume in box slots.
 	complexBoxes int
+
+	// mutBytes is the mutable byte slab volume (a licensed arena's []byte data).
+	mutBytes int
+
+	// intBackings is the int64 backing-slab volume in elements handed out.
+	intBackings int
+
+	// floatBackings is the float64 backing-slab volume in elements.
+	floatBackings int
+
+	// stringBackings is the string backing-slab volume in elements.
+	stringBackings int
+
+	// boolBackings is the bool backing-slab volume in elements.
+	boolBackings int
+
+	// uintBackings is the uint64 backing-slab volume in elements.
+	uintBackings int
 }
 
 // noSlabUsage is the snapshot of an arena that has allocated nothing since its reset.
@@ -1614,6 +885,884 @@ type slabIdleCounters struct {
 
 	// complexBoxes counts idle resets for the complex128 box slab.
 	complexBoxes uint32
+
+	// mutBytes counts idle resets for the mutable byte slab.
+	mutBytes uint32
+}
+
+// NewRegisterArena creates a fresh arena with default slab sizes.
+//
+// Returns a newly allocated RegisterArena with all slabs at initial capacity.
+func NewRegisterArena() *RegisterArena {
+	arena := &RegisterArena{
+		recycleChunks:        ArenaChunkRecyclingEnabled,
+		intSlab:              make([]int64, initialIntSlabs),
+		floatSlab:            make([]float64, initialFloatSlabs),
+		stringSlab:           make([]string, initialStringSlabs),
+		generalSlab:          make([]reflect.Value, initialGeneralSlabs),
+		boolSlab:             make([]bool, initialBoolSlabs),
+		uintSlab:             make([]uint64, initialUintSlabs),
+		complexSlab:          make([]complex128, initialComplexSlabs),
+		slicesIntSlab:        make([][]int64, initialSlicesIntSlabs),
+		slicesFloatSlab:      make([][]float64, initialSlicesFloatSlabs),
+		slicesStringSlab:     make([][]string, initialSlicesStringSlabs),
+		slicesBoolSlab:       make([][]bool, initialSlicesBoolSlabs),
+		slicesUintSlab:       make([][]uint64, initialSlicesUintSlabs),
+		slicesByteSlab:       make([][]byte, initialSlicesByteSlabs),
+		frameSlab:            make([]CallFrame, initialFrameSlabs),
+		callInfoBasesSlab:    make([]uintptr, initialFrameSlabs),
+		dispatchSavesSlab:    make([]asmDispatchSave, initialFrameSlabs),
+		intBackingSlab:       make([]int64, InitialIntBackingSize),
+		floatBackingSlab:     make([]float64, initialFloatBackingSize),
+		stringBackingSlab:    make([]string, initialStringBackingSize),
+		boolBackingSlab:      make([]bool, initialBoolBackingSize),
+		uintBackingSlab:      make([]uint64, initialUintBackingSize),
+		upvalueCellSlab:      make([]program.UpvalueCell, initialUpvalueCellSlabs),
+		upvalueReferenceSlab: make([]upvalue, initialUpvalueRefSlabs),
+	}
+	arena.replaceByteSlab(make([]byte, InitialByteSlabSize), false)
+	return arena
+}
+
+// AllocRegisters returns registers backed by the arena's slabs.
+//
+// Integer and float registers are not zeroed here. The compiler emits explicit
+// SubOpLoadZero instructions where zero-initialisation is needed.
+//
+// Takes numRegs ([NumRegisterKinds]uint32) which is the number of registers to allocate
+// for each register kind.
+//
+// Returns a registers struct with each bank pointing into the arena slabs.
+func (a *RegisterArena) AllocRegisters(numRegs [isa.NumRegisterKinds]uint32) Registers {
+	counts := program.ArenaCountsFromNumRegs(numRegs)
+	if a.needsGrow(&counts) {
+		a.growSlabs(counts)
+	}
+
+	r := Registers{Ints: a.intSlab[a.IntIndex : a.IntIndex+counts.Ints],
+		Floats:       a.floatSlab[a.FloatIndex : a.FloatIndex+counts.Floats],
+		Strings:      a.stringSlab[a.StringIndex : a.StringIndex+counts.Strings],
+		General:      a.generalSlab[a.GeneralIndex : a.GeneralIndex+counts.Generals],
+		Bools:        a.boolSlab[a.BoolIndex : a.BoolIndex+counts.Bools],
+		Uints:        a.uintSlab[a.UintIndex : a.UintIndex+counts.Uints],
+		Complex:      a.complexSlab[a.ComplexIndex : a.ComplexIndex+counts.Complexes],
+		SlicesInt:    a.slicesIntSlab[a.SlicesIntIndex : a.SlicesIntIndex+counts.SlicesInts],
+		slicesFloat:  a.slicesFloatSlab[a.SlicesFloatIndex : a.SlicesFloatIndex+counts.SlicesFloats],
+		slicesString: a.slicesStringSlab[a.SlicesStringIndex : a.SlicesStringIndex+counts.SlicesStrings],
+		slicesBool:   a.slicesBoolSlab[a.SlicesBoolIndex : a.SlicesBoolIndex+counts.SlicesBools],
+		slicesUint:   a.slicesUintSlab[a.SlicesUintIndex : a.SlicesUintIndex+counts.SlicesUints],
+		slicesByte:   a.slicesByteSlab[a.SlicesByteIndex : a.SlicesByteIndex+counts.SlicesBytes], lastAllocMask: 0}
+
+	a.bumpIndices(&counts)
+	return r
+}
+
+// SaveInto writes the current allocation indices directly into the destination
+// ArenaSavePoint.
+//
+// Takes savePoint (*ArenaSavePoint) which is the destination save point to populate.
+//
+//go:nosplit
+func (a *RegisterArena) SaveInto(savePoint *ArenaSavePoint) {
+	savePoint.arenaIndices = a.arenaIndices
+}
+
+// Restore rolls the arena back to a previous save point, reclaiming all register slots
+// allocated since the save point was taken.
+//
+// Only GC-visible slabs (string, general, and typed slice-header banks) are zeroed
+// because they hold pointers the GC must not retain. Primitive slabs are left dirty
+// because the compiler guarantees a register is written before it is read.
+//
+// Takes savePoint (ArenaSavePoint) which is the save point to restore to.
+func (a *RegisterArena) Restore(savePoint ArenaSavePoint) {
+	a.restoreFrom(&savePoint)
+}
+
+// Reset zeroes the used portions of each slab, resets indices, and shrinks any slabs
+// exceeding the DoS protection threshold.
+//
+// Slabs are not shrunk unless they exceed the threshold, allowing naturally-grown slabs
+// to be reused without reallocation.
+func (a *RegisterArena) Reset() {
+	if a.licensed {
+		a.releaseLicence()
+		licenceReleasePause(a, licencePhaseDetached)
+		if a.sealLicenceRelease() {
+			if a.sealHoldsThroughReset() {
+				defer a.unlockForeign()
+			} else {
+				a.unlockForeign()
+			}
+		}
+	}
+	a.detachBudgetTracker()
+	bankPeak := a.recordUsageAtReset()
+	a.clearAllocatedRegisterRanges()
+	a.resetClosureChunks()
+	a.clearBoxSlabsAndReset()
+	a.poisonReleasedGenericBytes()
+	a.poisonReleasedStringBytes()
+	a.genericBytesIndex = 0
+	clear(a.sliceHeaderSlab[:a.sliceHeaderIndex])
+	a.sliceHeaderIndex = 0
+	a.resetFrameSlots()
+	a.clearUsedBackingSlabs()
+	a.resetAllocationIndices()
+	a.dropRetainedOldSlabs()
+	a.bytesAllocated = 0
+	a.bytesAtLastGC = 0
+	a.nextGCAt = 0
+	a.gcCount = 0
+	a.framesUsed = 0
+	a.totalAllocatedBytes = 0
+	a.forgetHandedOnCharges()
+	a.setOwnerVM(nil)
+	a.heapSliceHeaders = false
+	a.MaxAllocSize = 0
+	a.MaxArenaBytes = 0
+	a.cloneUnownedStrings = false
+	a.foreignSlabStart, a.foreignSlabLength = 0, 0
+	a.optimisticClonedBytes = 0
+	a.callbackRoot = nil
+	a.reentrantHandedOff = false
+	a.krefReset()
+	a.shrinkOvergrownSlabs(&bankPeak)
+	a.keptBackingsUncharged = true
+	if a.licensed {
+		a.publishLicenceSlabs()
+	}
+	a.resetLicencePolicy()
+}
+
+// restoreFrom restores a save point held outside the arena.
+//
+// Takes savePoint (*ArenaSavePoint) which is the save point to roll back to. It is only
+// read.
+func (a *RegisterArena) restoreFrom(savePoint *ArenaSavePoint) {
+	if arenaParanoidEnabled {
+		a.poisonReleasedPrimitives(savePoint)
+	}
+	if savePoint.StringIndex < a.StringIndex {
+		clear(a.stringSlab[savePoint.StringIndex:a.StringIndex])
+	}
+	if savePoint.GeneralIndex < a.GeneralIndex {
+		clear(a.generalSlab[savePoint.GeneralIndex:a.GeneralIndex])
+	}
+	if savePoint.SlicesIntIndex < a.SlicesIntIndex {
+		clear(a.slicesIntSlab[savePoint.SlicesIntIndex:a.SlicesIntIndex])
+	}
+	if savePoint.SlicesFloatIndex < a.SlicesFloatIndex {
+		clear(a.slicesFloatSlab[savePoint.SlicesFloatIndex:a.SlicesFloatIndex])
+	}
+	if savePoint.SlicesStringIndex < a.SlicesStringIndex {
+		clear(a.slicesStringSlab[savePoint.SlicesStringIndex:a.SlicesStringIndex])
+	}
+	if savePoint.SlicesBoolIndex < a.SlicesBoolIndex {
+		clear(a.slicesBoolSlab[savePoint.SlicesBoolIndex:a.SlicesBoolIndex])
+	}
+	if savePoint.SlicesUintIndex < a.SlicesUintIndex {
+		clear(a.slicesUintSlab[savePoint.SlicesUintIndex:a.SlicesUintIndex])
+	}
+	if savePoint.SlicesByteIndex < a.SlicesByteIndex {
+		clear(a.slicesByteSlab[savePoint.SlicesByteIndex:a.SlicesByteIndex])
+	}
+
+	a.arenaIndices = savePoint.arenaIndices
+}
+
+// replaceByteSlab installs slab as the arena's current byte slab and records it in the
+// arena slab registry.
+//
+// Takes slab ([]byte) which becomes the current byte slab.
+// Takes previousRetired (bool) which is true when the previous slab moved to
+// oldByteSlabs.
+func (a *RegisterArena) replaceByteSlab(slab []byte, previousRetired bool) {
+	if a.heapData {
+		a.byteSlab = slab
+		return
+	}
+	a.ensureSlabOwner()
+	if !previousRetired {
+		swapArenaSlab(a.slabOwner, a.slabLive, a.byteSlab, slab)
+		a.byteSlab = slab
+		return
+	}
+	a.byteSlab = slab
+	recordArenaSlab(a.slabOwner, a.slabLive, slab)
+}
+
+// ensureSlabOwner gives the arena its registry identity on first use, including
+// slabOwner, the weak pointer slabLive that registry lookups check, and the cleanup that
+// removes the arena's entries once it is collected.
+//
+// The cleanup is a backstop for an arena dropped while it still holds entries, such as
+// one whose goroutines leaked, and only reclaims them, since lookups already ignore a
+// collected arena's entries. An arena released without being pooled removes its entries
+// itself and stops the cleanup (abandonUnpooledRegisterArena).
+//
+// Returns uint64 which is the arena's registry identity.
+func (a *RegisterArena) ensureSlabOwner() uint64 {
+	if a.slabOwner == 0 {
+		a.slabOwner = arenaSlabOwners.Add(1)
+		a.slabLive = weak.Make(a)
+		a.slabCleanup = runtime.AddCleanup(a, forgetArenaSlabOwner, a.slabOwner)
+	}
+	return a.slabOwner
+}
+
+// callInfoBases returns the arena's pre-allocated slab for ASM call-info base pointers,
+// parallel to the frame stack.
+//
+// Returns the callInfoBasesSlab slice.
+func (a *RegisterArena) callInfoBases() []uintptr {
+	return a.callInfoBasesSlab
+}
+
+// ensureCapacity pre-sizes the arena slabs so that AllocRegisters never triggers a grow
+// during execution.
+//
+// It is called once after compilation, with hints derived from the compiled function
+// table.
+//
+// Takes counts (program.TypedSlabCounts) which carries the minimum required capacity for
+// every slab kind. Bundling avoids a long argument list that grows every time a new typed
+// register bank is added.
+func (a *RegisterArena) ensureCapacity(counts program.TypedSlabCounts) {
+	if regrow := &a.licenceState.regrow; regrow.pending || a.licensed {
+		if state := &a.licenceState; state.memoHint != 0 {
+			if counts == state.memoHintFor {
+				state.memo.hint = state.memoHint
+			}
+			state.memoHint = 0
+		}
+		counts = regrow.apply(counts)
+	}
+	a.ensureScalarBankCapacity(counts)
+	a.ensureSliceBankCapacity(counts)
+	if !a.heapData {
+		a.ensureBackingCapacity(counts)
+	}
+	a.ensureFrameStackCapacity(counts.FrameStack)
+	if !a.heapData {
+		a.ensureBoxSlabCapacity(counts)
+	}
+	a.ensureUpvalueCapacity(counts)
+
+	if a.presizeChanged {
+		a.presizeChanged = false
+		a.publishLicenceSlabs()
+	}
+}
+
+// allocRegistersInto writes arena-backed sub-slices directly into the target registers
+// pointer, avoiding a by-value copy.
+//
+// Takes r (*Registers) which is the target registers to populate in place.
+// Takes numRegs ([NumRegisterKinds]uint32) which is the number of registers to allocate
+// for each register kind.
+func (a *RegisterArena) allocRegistersInto(r *Registers, numRegs [isa.NumRegisterKinds]uint32) {
+	counts := program.ArenaCountsFromNumRegs(numRegs)
+	a.allocRegistersIntoFromCounts(r, counts)
+}
+
+// allocRegistersIntoCached allocates register banks using precomputed counts.
+//
+// Takes r (*Registers) which is the destination register file to populate.
+// Takes counts (*program.TypedSlabCounts) which supplies read-only precomputed slab
+// counts.
+// Takes nonZeroMask (uint16) which marks the isa.RegisterKind banks the callee uses.
+func (a *RegisterArena) allocRegistersIntoCached(r *Registers, counts *program.TypedSlabCounts, nonZeroMask uint16) {
+	if a.needsGrow(counts) {
+		a.growSlabs(*counts)
+	}
+	a.assignCachedScalarBanks(r, counts, nonZeroMask)
+	a.assignCachedSliceBanks(r, counts, nonZeroMask)
+	r.lastAllocMask = nonZeroMask
+	a.bumpIndices(counts)
+}
+
+// save returns a save point capturing the current allocation indices.
+//
+// Returns an ArenaSavePoint recording all current slab positions.
+func (a *RegisterArena) save() ArenaSavePoint {
+	var sp ArenaSavePoint
+	a.SaveInto(&sp)
+	return sp
+}
+
+// ensureScalarBankCapacity grows the scalar register banks to fit counts.
+//
+// Takes counts (program.TypedSlabCounts) which are the required per-kind counts for
+// int/float/string/general/bool/uint/complex banks.
+func (a *RegisterArena) ensureScalarBankCapacity(counts program.TypedSlabCounts) {
+	a.scalarDemandSinceReset.noteRequest(counts)
+	if counts.Ints > len(a.intSlab) {
+		a.intSlab = make([]int64, counts.Ints)
+		a.presizeChanged = true
+		a.slabGeneration++
+	}
+	if counts.Floats > len(a.floatSlab) {
+		a.floatSlab = make([]float64, counts.Floats)
+		a.presizeChanged = true
+		a.slabGeneration++
+	}
+	if counts.Strings > len(a.stringSlab) {
+		a.stringSlab = make([]string, counts.Strings)
+		a.presizeChanged = true
+		a.slabGeneration++
+	}
+	if counts.Generals > len(a.generalSlab) {
+		a.generalSlab = make([]reflect.Value, counts.Generals)
+		a.presizeChanged = true
+		a.slabGeneration++
+	}
+	if counts.Bools > len(a.boolSlab) {
+		a.boolSlab = make([]bool, counts.Bools)
+		a.presizeChanged = true
+		a.slabGeneration++
+	}
+	if counts.Uints > len(a.uintSlab) {
+		a.uintSlab = make([]uint64, counts.Uints)
+		a.presizeChanged = true
+		a.slabGeneration++
+	}
+	if counts.Complexes > len(a.complexSlab) {
+		a.complexSlab = make([]complex128, counts.Complexes)
+		a.presizeChanged = true
+	}
+}
+
+// frameStack returns the arena's pre-allocated call frame slab.
+//
+// Returns the frameSlab slice.
+func (a *RegisterArena) frameStack() []CallFrame {
+	return a.frameSlab
+}
+
+// dispatchSaves returns the arena's pre-allocated slab for ASM dispatch register saves,
+// parallel to the frame stack.
+//
+// Returns the dispatchSavesSlab slice.
+func (a *RegisterArena) dispatchSaves() []asmDispatchSave {
+	return a.dispatchSavesSlab
+}
+
+// allocUpvalueCells bump-allocates n UpvalueCell slots from the arena.
+//
+// Takes n (int) which is the number of upvalue cells to allocate.
+//
+// Returns a zeroed slice of UpvalueCell of length n.
+func (a *RegisterArena) allocUpvalueCells(n int) []program.UpvalueCell {
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
+	if a.UpvalueCellIndex+n > len(a.upvalueCellSlab) {
+		a.growUpvalueCellSlab(a.UpvalueCellIndex + n)
+	}
+	start := a.UpvalueCellIndex
+	a.UpvalueCellIndex += n
+	cells := a.upvalueCellSlab[start:a.UpvalueCellIndex]
+	clear(cells)
+	return cells
+}
+
+// allocUpvalueRefs bump-allocates n upvalue slots from the arena.
+//
+// Takes n (int) which is the number of upvalue references to allocate.
+//
+// Returns a zeroed slice of upvalue of length n.
+func (a *RegisterArena) allocUpvalueRefs(n int) []upvalue {
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
+	if a.UpvalueReferenceIndex+n > len(a.upvalueReferenceSlab) {
+		a.growUpvalueRefSlab(a.UpvalueReferenceIndex + n)
+	}
+	start := a.UpvalueReferenceIndex
+	a.UpvalueReferenceIndex += n
+	refs := a.upvalueReferenceSlab[start:a.UpvalueReferenceIndex]
+	clear(refs)
+	return refs
+}
+
+// ensureFrameStackCapacity grows the parallel frame slabs (frameSlab + callInfoBasesSlab
+// + dispatchSavesSlab) when the compile-time depth estimate exceeds the current capacity.
+// Idempotent and grow-only; calling with zero or a value already covered is a no-op so
+// multiple Execute calls amortise correctly.
+//
+// Takes minDepth (int) which is the minimum frame-stack depth the arena must support
+// without paying a growCallStack allocation.
+func (a *RegisterArena) ensureFrameStackCapacity(minDepth int) {
+	if minDepth <= len(a.frameSlab) {
+		return
+	}
+	a.growFrameStack(minDepth)
+}
+
+// ensureBoxSlabCapacity grows each of the five per-kind box slabs (int / uint / float /
+// string / complex) when the supplied counts exceed the current capacity.
+//
+// Takes counts (program.TypedSlabCounts) which carries the per-kind box slot budget
+// computed by sizeArenaFromFunctions.
+func (a *RegisterArena) ensureBoxSlabCapacity(counts program.TypedSlabCounts) {
+	if counts.IntBoxes > len(a.intBoxSlab) {
+		a.intBoxSlab = make([]int64, counts.IntBoxes)
+		a.presizeChanged = true
+		a.intBoxIndex = 0
+	}
+	if counts.UintBoxes > len(a.uintBoxSlab) {
+		a.uintBoxSlab = make([]uint64, counts.UintBoxes)
+		a.presizeChanged = true
+		a.uintBoxIndex = 0
+	}
+	if counts.FloatBoxes > len(a.floatBoxSlab) {
+		a.floatBoxSlab = make([]float64, counts.FloatBoxes)
+		a.presizeChanged = true
+		a.floatBoxIndex = 0
+	}
+	if counts.StringBoxes > len(a.stringBoxSlab) {
+		a.stringBoxSlab = make([]string, counts.StringBoxes)
+		a.presizeChanged = true
+		a.stringBoxIndex = 0
+	}
+	if counts.ComplexBoxes > len(a.complexBoxSlab) {
+		a.complexBoxSlab = make([]complex128, counts.ComplexBoxes)
+		a.presizeChanged = true
+		a.complexBoxIndex = 0
+	}
+}
+
+// ensureUpvalueCapacity grows the upvalue cell and reference slabs when the supplied
+// counts exceed the current capacity.
+//
+// Takes counts (program.TypedSlabCounts) which carries the budget for both upvalue slabs.
+func (a *RegisterArena) ensureUpvalueCapacity(counts program.TypedSlabCounts) {
+	if counts.UpvalueCells > len(a.upvalueCellSlab) {
+		a.upvalueCellSlab = make([]program.UpvalueCell, counts.UpvalueCells)
+		a.presizeChanged = true
+	}
+	if counts.UpvalueReferences > len(a.upvalueReferenceSlab) {
+		a.upvalueReferenceSlab = make([]upvalue, counts.UpvalueReferences)
+		a.presizeChanged = true
+	}
+}
+
+// clearAllocatedRegisterRanges zeroes the in-use prefix of every register and upvalue
+// slab so the next allocation hands out freshly zeroed sub-slices.
+func (a *RegisterArena) clearAllocatedRegisterRanges() {
+	clear(a.intSlab[:a.IntIndex])
+	clear(a.floatSlab[:a.FloatIndex])
+	clear(a.stringSlab[:a.StringIndex])
+	clear(a.generalSlab[:a.GeneralIndex])
+	clear(a.boolSlab[:a.BoolIndex])
+	clear(a.uintSlab[:a.UintIndex])
+	clear(a.complexSlab[:a.ComplexIndex])
+	clear(a.slicesIntSlab[:a.SlicesIntIndex])
+	clear(a.slicesFloatSlab[:a.SlicesFloatIndex])
+	clear(a.slicesStringSlab[:a.SlicesStringIndex])
+	clear(a.slicesBoolSlab[:a.SlicesBoolIndex])
+	clear(a.slicesUintSlab[:a.SlicesUintIndex])
+	clear(a.slicesByteSlab[:a.SlicesByteIndex])
+	clear(a.upvalueCellSlab[:a.UpvalueCellIndex])
+	clear(a.upvalueReferenceSlab[:a.UpvalueReferenceIndex])
+}
+
+// clearBoxSlabsAndReset zeroes the four per-type box slabs (string, int, float, uint) and
+// resets their bump indices.
+func (a *RegisterArena) clearBoxSlabsAndReset() {
+	clear(a.stringBoxSlab[:a.stringBoxIndex])
+	a.stringBoxIndex = 0
+	clear(a.intBoxSlab[:a.intBoxIndex])
+	a.intBoxIndex = 0
+	clear(a.floatBoxSlab[:a.floatBoxIndex])
+	a.floatBoxIndex = 0
+	clear(a.uintBoxSlab[:a.uintBoxIndex])
+	a.uintBoxIndex = 0
+	clear(a.complexBoxSlab[:a.complexBoxIndex])
+	a.complexBoxIndex = 0
+}
+
+// resetFrameSlots zeroes per-frame register slices, function pointers, and shared-cell
+// references. Iterates only [0:framesUsed]; frames past the high-water mark are
+// guaranteed nil.
+func (a *RegisterArena) resetFrameSlots() {
+	for i := range a.framesUsed {
+		f := &a.frameSlab[i]
+		f.Registers.Strings = nil
+		f.Registers.General = nil
+		f.Registers.SlicesInt = nil
+		f.Registers.slicesFloat = nil
+		f.Registers.slicesString = nil
+		f.Registers.slicesBool = nil
+		f.Registers.slicesUint = nil
+		f.Registers.slicesByte = nil
+		f.Function = nil
+		releaseSharedCellMap(f.sharedCells)
+		f.sharedCells = nil
+		f.upvalues = nil
+		f.returnDestination = nil
+	}
+}
+
+// resetAllocationIndices zeroes every per-slab bump index so the next AllocRegisters call
+// hands out sub-slices starting at position 0 in each slab.
+func (a *RegisterArena) resetAllocationIndices() {
+	a.IntIndex = 0
+	a.FloatIndex = 0
+	a.StringIndex = 0
+	a.GeneralIndex = 0
+	a.BoolIndex = 0
+	a.UintIndex = 0
+	a.ComplexIndex = 0
+	a.SlicesIntIndex = 0
+	a.SlicesFloatIndex = 0
+	a.SlicesStringIndex = 0
+	a.SlicesBoolIndex = 0
+	a.SlicesUintIndex = 0
+	a.SlicesByteIndex = 0
+	a.byteIndex = 0
+	a.mutByteIndex = 0
+	a.intBackingIndex = 0
+	a.floatBackingIndex = 0
+	a.stringBackingIndex = 0
+	a.boolBackingIndex = 0
+	a.uintBackingIndex = 0
+	a.UpvalueCellIndex = 0
+	a.UpvalueReferenceIndex = 0
+}
+
+// dropRetainedOldSlabs truncates the retention lists for retired slabs. Each list is
+// cleared before truncating so GC can reclaim the dropped slabs once any remaining user
+// references are themselves collected.
+func (a *RegisterArena) dropRetainedOldSlabs() {
+	a.forgetHandedOnCharges()
+	a.dropFreeChunks()
+	for _, slab := range a.oldByteSlabs {
+		forgetArenaSlab(slab)
+	}
+	a.oldByteSlabs = a.oldByteSlabs[:0]
+	clear(a.oldMutByteSlabs)
+	a.oldMutByteSlabs = a.oldMutByteSlabs[:0]
+	clear(a.oldGenericByteSlabs)
+	a.oldGenericByteSlabs = a.oldGenericByteSlabs[:0]
+	clear(a.oldSliceHeaderSlabs)
+	a.oldSliceHeaderSlabs = a.oldSliceHeaderSlabs[:0]
+	clear(a.oldIntBackings)
+	a.oldIntBackings = a.oldIntBackings[:0]
+	clear(a.oldFloatBackings)
+	a.oldFloatBackings = a.oldFloatBackings[:0]
+	clear(a.oldStringBackings)
+	a.oldStringBackings = a.oldStringBackings[:0]
+	clear(a.oldBoolBackings)
+	a.oldBoolBackings = a.oldBoolBackings[:0]
+	clear(a.oldUintBackings)
+	a.oldUintBackings = a.oldUintBackings[:0]
+}
+
+// allocRegistersIntoFromCounts allocates register banks from the supplied counts.
+//
+// Takes r (*Registers) which is the destination register file to populate.
+// Takes counts (program.TypedSlabCounts) which is the per-bank request size.
+func (a *RegisterArena) allocRegistersIntoFromCounts(r *Registers, counts program.TypedSlabCounts) {
+	if a.needsGrow(&counts) {
+		a.growSlabs(counts)
+	}
+	r.Ints = a.intSlab[a.IntIndex : a.IntIndex+counts.Ints]
+	r.General = a.generalSlab[a.GeneralIndex : a.GeneralIndex+counts.Generals]
+	r.Uints = a.uintSlab[a.UintIndex : a.UintIndex+counts.Uints]
+	a.assignScalarBanksFromCounts(r, counts)
+	a.assignSliceBanksFromCounts(r, counts)
+	a.bumpIndices(&counts)
+}
+
+// ensureSliceBankCapacity grows the typed slice-header banks to fit counts.
+//
+// Takes counts (program.TypedSlabCounts) which are the required per-kind counts for
+// int/float/string/bool/uint/byte slice-header banks.
+func (a *RegisterArena) ensureSliceBankCapacity(counts program.TypedSlabCounts) {
+	if counts.SlicesInts > len(a.slicesIntSlab) {
+		a.slicesIntSlab = make([][]int64, counts.SlicesInts)
+		a.presizeChanged = true
+	}
+	if counts.SlicesFloats > len(a.slicesFloatSlab) {
+		a.slicesFloatSlab = make([][]float64, counts.SlicesFloats)
+		a.presizeChanged = true
+	}
+	if counts.SlicesStrings > len(a.slicesStringSlab) {
+		a.slicesStringSlab = make([][]string, counts.SlicesStrings)
+		a.presizeChanged = true
+	}
+	if counts.SlicesBools > len(a.slicesBoolSlab) {
+		a.slicesBoolSlab = make([][]bool, counts.SlicesBools)
+		a.presizeChanged = true
+	}
+	if counts.SlicesUints > len(a.slicesUintSlab) {
+		a.slicesUintSlab = make([][]uint64, counts.SlicesUints)
+		a.presizeChanged = true
+	}
+	if counts.SlicesBytes > len(a.slicesByteSlab) {
+		a.slicesByteSlab = make([][]byte, counts.SlicesBytes)
+		a.presizeChanged = true
+		a.slabGeneration++
+	}
+}
+
+// ensureBackingCapacity grows the byte slab and per-type backing slabs used by
+// arena-routed make and append-grow.
+//
+// Takes counts (program.TypedSlabCounts) which are the required per-kind backing
+// capacities.
+func (a *RegisterArena) ensureBackingCapacity(counts program.TypedSlabCounts) {
+	if counts.Bytes > len(a.byteSlab) {
+		a.replaceByteSlab(make([]byte, counts.Bytes), false)
+		a.presizeChanged = true
+	}
+	if counts.IntBacking > len(a.intBackingSlab) {
+		a.intBackingSlab = make([]int64, counts.IntBacking)
+		a.presizeChanged = true
+	}
+	if counts.FloatBacking > len(a.floatBackingSlab) {
+		a.floatBackingSlab = make([]float64, counts.FloatBacking)
+		a.presizeChanged = true
+	}
+	if counts.StringBacking > len(a.stringBackingSlab) {
+		a.stringBackingSlab = make([]string, counts.StringBacking)
+		a.presizeChanged = true
+	}
+	if counts.BoolBacking > len(a.boolBackingSlab) {
+		a.boolBackingSlab = make([]bool, counts.BoolBacking)
+		a.presizeChanged = true
+	}
+	if counts.UintBacking > len(a.uintBackingSlab) {
+		a.uintBackingSlab = make([]uint64, counts.UintBacking)
+		a.presizeChanged = true
+	}
+	if counts.GenericBytes > len(a.genericBytesSlab) {
+		a.genericBytesSlab = make([]byte, counts.GenericBytes)
+		a.presizeChanged = true
+	}
+	if counts.SliceHeaders > len(a.sliceHeaderSlab) {
+		a.sliceHeaderSlab = make([]arenaSliceHeader, counts.SliceHeaders)
+		a.presizeChanged = true
+	}
+}
+
+// assignCachedScalarBanks writes the scalar bank slice headers onto r using the
+// precomputed mask.
+//
+// Banks whose bit in nonZeroMask is clear are reset to nil.
+//
+// Takes r (*Registers) which is the register set receiving the assignments.
+// Takes counts (*program.TypedSlabCounts) which are the per-kind slot counts to expose on
+// r.
+// Takes nonZeroMask (uint16) which is the bitmask selecting which scalar banks receive
+// non-nil slices.
+func (a *RegisterArena) assignCachedScalarBanks(r *Registers, counts *program.TypedSlabCounts, nonZeroMask uint16) {
+	if nonZeroMask&allocMaskInt != 0 {
+		r.Ints = a.intSlab[a.IntIndex : a.IntIndex+counts.Ints]
+	} else if r.lastAllocMask&allocMaskInt != 0 {
+		r.Ints = nil
+	}
+	if nonZeroMask&allocMaskGeneral != 0 {
+		r.General = a.generalSlab[a.GeneralIndex : a.GeneralIndex+counts.Generals]
+	} else if r.lastAllocMask&allocMaskGeneral != 0 {
+		r.General = nil
+	}
+	if nonZeroMask&allocMaskUint != 0 {
+		r.Uints = a.uintSlab[a.UintIndex : a.UintIndex+counts.Uints]
+	} else if r.lastAllocMask&allocMaskUint != 0 {
+		r.Uints = nil
+	}
+	if nonZeroMask&allocMaskFloat != 0 {
+		r.Floats = a.floatSlab[a.FloatIndex : a.FloatIndex+counts.Floats]
+	} else if r.lastAllocMask&allocMaskFloat != 0 {
+		r.Floats = nil
+	}
+	if nonZeroMask&allocMaskString != 0 {
+		r.Strings = a.stringSlab[a.StringIndex : a.StringIndex+counts.Strings]
+	} else if r.lastAllocMask&allocMaskString != 0 {
+		r.Strings = nil
+	}
+	if nonZeroMask&allocMaskBool != 0 {
+		r.Bools = a.boolSlab[a.BoolIndex : a.BoolIndex+counts.Bools]
+	} else if r.lastAllocMask&allocMaskBool != 0 {
+		r.Bools = nil
+	}
+	if nonZeroMask&allocMaskComplex != 0 {
+		r.Complex = a.complexSlab[a.ComplexIndex : a.ComplexIndex+counts.Complexes]
+	} else if r.lastAllocMask&allocMaskComplex != 0 {
+		r.Complex = nil
+	}
+}
+
+// assignCachedSliceBanks writes the typed-slice bank slice headers onto r using the
+// precomputed mask.
+//
+// Banks whose bit in nonZeroMask is clear are left untouched. Every reader of another
+// frame's banks is gated on that frame's own nonZeroBankMask.
+//
+// Takes r (*Registers) which is the register set receiving the assignments.
+// Takes counts (*program.TypedSlabCounts) which are the per-kind slice-header counts to
+// expose on r.
+// Takes nonZeroMask (uint16) which is the bitmask selecting which typed-slice banks
+// receive non-nil slices.
+func (a *RegisterArena) assignCachedSliceBanks(r *Registers, counts *program.TypedSlabCounts, nonZeroMask uint16) {
+	if nonZeroMask&allocMaskSliceInt != 0 {
+		r.SlicesInt = a.slicesIntSlab[a.SlicesIntIndex : a.SlicesIntIndex+counts.SlicesInts]
+	} else if r.lastAllocMask&allocMaskSliceInt != 0 {
+		r.SlicesInt = nil
+	}
+	if nonZeroMask&allocMaskSliceFloat != 0 {
+		r.slicesFloat = a.slicesFloatSlab[a.SlicesFloatIndex : a.SlicesFloatIndex+counts.SlicesFloats]
+	} else if r.lastAllocMask&allocMaskSliceFloat != 0 {
+		r.slicesFloat = nil
+	}
+	if nonZeroMask&allocMaskSliceString != 0 {
+		r.slicesString = a.slicesStringSlab[a.SlicesStringIndex : a.SlicesStringIndex+counts.SlicesStrings]
+	} else if r.lastAllocMask&allocMaskSliceString != 0 {
+		r.slicesString = nil
+	}
+	if nonZeroMask&allocMaskSliceBool != 0 {
+		r.slicesBool = a.slicesBoolSlab[a.SlicesBoolIndex : a.SlicesBoolIndex+counts.SlicesBools]
+	} else if r.lastAllocMask&allocMaskSliceBool != 0 {
+		r.slicesBool = nil
+	}
+	if nonZeroMask&allocMaskSliceUint != 0 {
+		r.slicesUint = a.slicesUintSlab[a.SlicesUintIndex : a.SlicesUintIndex+counts.SlicesUints]
+	} else if r.lastAllocMask&allocMaskSliceUint != 0 {
+		r.slicesUint = nil
+	}
+	if nonZeroMask&allocMaskSliceByte != 0 {
+		r.slicesByte = a.slicesByteSlab[a.SlicesByteIndex : a.SlicesByteIndex+counts.SlicesBytes]
+	} else if r.lastAllocMask&allocMaskSliceByte != 0 {
+		r.slicesByte = nil
+	}
+}
+
+// assignScalarBanksFromCounts writes the optional scalar register banks onto r derived
+// from counts.
+//
+// Banks with a zero count receive nil slices.
+//
+// Takes r (*Registers) which is the register set receiving the assignments.
+// Takes counts (program.TypedSlabCounts) which are the per-kind slot counts
+// (float/string/bool/complex banks).
+func (a *RegisterArena) assignScalarBanksFromCounts(r *Registers, counts program.TypedSlabCounts) {
+	if counts.Floats > 0 {
+		r.Floats = a.floatSlab[a.FloatIndex : a.FloatIndex+counts.Floats]
+	} else {
+		r.Floats = nil
+	}
+	if counts.Strings > 0 {
+		r.Strings = a.stringSlab[a.StringIndex : a.StringIndex+counts.Strings]
+	} else {
+		r.Strings = nil
+	}
+	if counts.Bools > 0 {
+		r.Bools = a.boolSlab[a.BoolIndex : a.BoolIndex+counts.Bools]
+	} else {
+		r.Bools = nil
+	}
+	if counts.Complexes > 0 {
+		r.Complex = a.complexSlab[a.ComplexIndex : a.ComplexIndex+counts.Complexes]
+	} else {
+		r.Complex = nil
+	}
+}
+
+// assignSliceBanksFromCounts writes the typed-slice register banks onto r derived from
+// counts.
+//
+// Banks with a zero count receive nil slices.
+//
+// Takes r (*Registers) which is the register set receiving the assignments.
+// Takes counts (program.TypedSlabCounts) which are the per-kind slice-header counts
+// (int/float/string/bool/uint/byte banks).
+func (a *RegisterArena) assignSliceBanksFromCounts(r *Registers, counts program.TypedSlabCounts) {
+	if counts.SlicesInts > 0 {
+		r.SlicesInt = a.slicesIntSlab[a.SlicesIntIndex : a.SlicesIntIndex+counts.SlicesInts]
+	} else {
+		r.SlicesInt = nil
+	}
+	if counts.SlicesFloats > 0 {
+		r.slicesFloat = a.slicesFloatSlab[a.SlicesFloatIndex : a.SlicesFloatIndex+counts.SlicesFloats]
+	} else {
+		r.slicesFloat = nil
+	}
+	if counts.SlicesStrings > 0 {
+		r.slicesString = a.slicesStringSlab[a.SlicesStringIndex : a.SlicesStringIndex+counts.SlicesStrings]
+	} else {
+		r.slicesString = nil
+	}
+	if counts.SlicesBools > 0 {
+		r.slicesBool = a.slicesBoolSlab[a.SlicesBoolIndex : a.SlicesBoolIndex+counts.SlicesBools]
+	} else {
+		r.slicesBool = nil
+	}
+	if counts.SlicesUints > 0 {
+		r.slicesUint = a.slicesUintSlab[a.SlicesUintIndex : a.SlicesUintIndex+counts.SlicesUints]
+	} else {
+		r.slicesUint = nil
+	}
+	if counts.SlicesBytes > 0 {
+		r.slicesByte = a.slicesByteSlab[a.SlicesByteIndex : a.SlicesByteIndex+counts.SlicesBytes]
+	} else {
+		r.slicesByte = nil
+	}
+}
+
+// needsGrow reports whether at least one slab is too small to satisfy the requested
+// counts at its current allocation index.
+//
+// Takes counts (*program.TypedSlabCounts) which is the per-bank request size.
+//
+// Returns true when any slab requires growth before AllocRegisters can hand out a
+// sub-slice.
+func (a *RegisterArena) needsGrow(counts *program.TypedSlabCounts) bool {
+	return a.IntIndex+counts.Ints > len(a.intSlab) ||
+		a.FloatIndex+counts.Floats > len(a.floatSlab) ||
+		a.StringIndex+counts.Strings > len(a.stringSlab) ||
+		a.GeneralIndex+counts.Generals > len(a.generalSlab) ||
+		a.BoolIndex+counts.Bools > len(a.boolSlab) ||
+		a.UintIndex+counts.Uints > len(a.uintSlab) ||
+		a.ComplexIndex+counts.Complexes > len(a.complexSlab) ||
+		a.SlicesIntIndex+counts.SlicesInts > len(a.slicesIntSlab) ||
+		a.SlicesFloatIndex+counts.SlicesFloats > len(a.slicesFloatSlab) ||
+		a.SlicesStringIndex+counts.SlicesStrings > len(a.slicesStringSlab) ||
+		a.SlicesBoolIndex+counts.SlicesBools > len(a.slicesBoolSlab) ||
+		a.SlicesUintIndex+counts.SlicesUints > len(a.slicesUintSlab) ||
+		a.SlicesByteIndex+counts.SlicesBytes > len(a.slicesByteSlab)
+}
+
+// bumpIndices advances each bank's allocation index by its requested size.
+//
+// Takes counts (*program.TypedSlabCounts) which is the per-bank request size just
+// satisfied.
+func (a *RegisterArena) bumpIndices(counts *program.TypedSlabCounts) {
+	a.IntIndex += counts.Ints
+	a.FloatIndex += counts.Floats
+	a.StringIndex += counts.Strings
+	a.GeneralIndex += counts.Generals
+	a.BoolIndex += counts.Bools
+	a.UintIndex += counts.Uints
+	a.ComplexIndex += counts.Complexes
+	a.SlicesIntIndex += counts.SlicesInts
+	a.SlicesFloatIndex += counts.SlicesFloats
+	a.SlicesStringIndex += counts.SlicesStrings
+	a.SlicesBoolIndex += counts.SlicesBools
+	a.SlicesUintIndex += counts.SlicesUints
+	a.SlicesByteIndex += counts.SlicesBytes
+}
+
+// holdsEscapableData reports whether the arena allocated anything a value outside it
+// could still reference: string bytes, generic bytes (pointer-free cells), slice headers,
+// typed backing arrays, scalar boxes or upvalue cells. Register banks are excluded; a
+// frame's registers are copied out before the frame is released.
+//
+// Returns bool which is true when any data slab was used since the last reset.
+func (a *RegisterArena) holdsEscapableData() bool {
+	return a.holdsEscapableBytes() || a.holdsEscapableBackings() || a.kref.used || a.closureChunksInUse()
 }
 
 // GetRegisterArena retrieves a RegisterArena from the pool.
@@ -1621,51 +1770,59 @@ type slabIdleCounters struct {
 // Returns a reset RegisterArena ready for use. Allocates a fresh arena via
 // initRegisterArenaInPlace if the pool is exhausted past its growth ceiling.
 func GetRegisterArena() *RegisterArena {
-	return registerArenaPool.MustGet()
+	return registerArenaPool.GetPreferParked()
 }
 
-// PutRegisterArena returns a RegisterArena to the pool after resetting.
+// PutRegisterArena returns a RegisterArena to the pool after resetting, or tears it down
+// when the pool already holds as many arenas as its growth ceiling allows.
 //
 // Takes a (*RegisterArena) which is the arena to return to the pool.
 func PutRegisterArena(a *RegisterArena) {
-	if a == nil {
+	if !releaseRegisterArenaForPool(a) {
 		return
+	}
+	if !registerArenaPool.TryPut(a) {
+		abandonUnpooledRegisterArena(a)
+	}
+}
+
+// releaseRegisterArenaForPool ends an arena's run so that it may be pooled.
+//
+// For an arena that must not be pooled, a leaked arena only gives up its budget charge,
+// an unpooled one is abandoned and an aborted one is released and abandoned.
+//
+// Takes a (*RegisterArena) which may be nil.
+//
+// Returns bool which is true when the arena is reset and may be pooled.
+func releaseRegisterArenaForPool(a *RegisterArena) bool {
+	if a == nil {
+		return false
+	}
+	if a.unwindLeaked {
+		a.detachBudgetTracker()
+		return false
+	}
+	if a.unpooled || a.abandonAtRelease {
+		abandonUnpooledRegisterArena(a)
+		return false
+	}
+	if a.aborted {
+		releaseAbortedRegisterArena(a)
+		return false
+	}
+	if a.licensed {
+		a.releaseLicence()
+		state := &a.licenceState
+		if dropped := state.memo.release(); dropped != 0 {
+			state.memoHint, state.memoHintFor = dropped, state.regrow.sized
+		}
+	}
+	if arenaAuditEnabled {
+		a.auditRelease()
 	}
 	a.detachBudgetTracker()
 	a.Reset()
-	registerArenaPool.Put(a)
-}
-
-// shrinkSlabWithHysteresis returns a fresh default-capacity slab when the current one is
-// overgrown and idle.
-//
-// A slab that has grown past initial * maxArenaMultiplier and remained mostly idle for
-// backingSlabIdleResetsBeforeShrink consecutive Resets is replaced. An Execute that
-// touches more than len/backingSlabLowUseRatioDenominator of the slab counts as hot and
-// clears the idle streak.
-//
-// Takes slab ([]T) which is the slab to consider.
-// Takes initial (int) which is its default capacity.
-// Takes usedLastExecute (int) which is the previous Execute's allocation volume in the
-// slab's native units.
-// Takes idleResets (*uint32) which is the class's consecutive idle counter.
-//
-// Returns the shrunk slab, or slab unchanged.
-func shrinkSlabWithHysteresis[T any](slab []T, initial int, usedLastExecute int, idleResets *uint32) []T {
-	if len(slab) <= initial*maxArenaMultiplier {
-		*idleResets = 0
-		return slab
-	}
-	if usedLastExecute > len(slab)/backingSlabLowUseRatioDenominator {
-		*idleResets = 0
-		return slab
-	}
-	*idleResets++
-	if *idleResets < backingSlabIdleResetsBeforeShrink {
-		return slab
-	}
-	*idleResets = 0
-	return make([]T, initial)
+	return true
 }
 
 // resolveDefaultMaxArenaBytes returns the host-aware arena budget.
@@ -1730,4 +1887,22 @@ func initRegisterArenaInPlace(a *RegisterArena) {
 	a.uintBackingSlab = make([]uint64, initialUintBackingSize)
 	a.upvalueCellSlab = make([]program.UpvalueCell, initialUpvalueCellSlabs)
 	a.upvalueReferenceSlab = make([]upvalue, initialUpvalueRefSlabs)
+}
+
+// mustPool returns the pool stablepool.New built for one of the package's pools, whose
+// configuration is fixed in the source. A rejected configuration is a programming error
+// that would otherwise leave a nil pool to fail at its first use, so it stops the
+// package's initialisation with the reason.
+//
+// Takes pool (*stablepool.Pool[T]) which is the pool New returned.
+// Takes err (error) which is the error New returned.
+//
+// Returns *stablepool.Pool[T] which is the pool.
+//
+// Panics when err is non-nil.
+func mustPool[T any](pool *stablepool.Pool[T], err error) *stablepool.Pool[T] {
+	if err != nil {
+		panic(fmt.Sprintf("engine: the %s pool's configuration is rejected: %v", reflect.TypeFor[T](), err))
+	}
+	return pool
 }

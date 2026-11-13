@@ -60,6 +60,20 @@ func (d *scalarBankDemand) noteRequest(counts program.TypedSlabCounts) {
 	d.complexes = max(d.complexes, counts.Complexes)
 }
 
+// noteIndices raises each bank's recorded demand to the peak index a run's frames reached
+// (frameBankPeak).
+//
+// Takes peak (*arenaIndices) which is the run's peak per bank.
+func (d *scalarBankDemand) noteIndices(peak *arenaIndices) {
+	d.ints = max(d.ints, peak.IntIndex)
+	d.floats = max(d.floats, peak.FloatIndex)
+	d.strings = max(d.strings, peak.StringIndex)
+	d.generals = max(d.generals, peak.GeneralIndex)
+	d.bools = max(d.bools, peak.BoolIndex)
+	d.uints = max(d.uints, peak.UintIndex)
+	d.complexes = max(d.complexes, peak.ComplexIndex)
+}
+
 // scalarBankIdleCounters holds the consecutive-idle-Reset counters for the scalar banks.
 type scalarBankIdleCounters struct {
 	// ints is the consecutive-idle counter for the int64 bank.

@@ -19,6 +19,7 @@
 package compile
 
 import (
+	"go/types"
 	"reflect"
 	"testing"
 
@@ -34,7 +35,7 @@ const linkedPackagePath = "example.com/linked"
 func registryWithLinked(t *testing.T, exports map[string]reflect.Value) *symtab.SymbolRegistry {
 	t.Helper()
 	symbols := symtab.NewSymbolRegistry(symtab.SymbolExports{linkedPackagePath: exports})
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 	return symbols
 }
 
@@ -101,7 +102,7 @@ func TestCallingALinkedGenericLoadsItsSiblingAsAConstant(t *testing.T) {
 			root := compileSnippetWithSymbols(t, source, symbols)
 			compiled := findCompiledFunction(t, root, "f")
 
-			require.True(t, bodyContainsOpcode(compiled, isa.OpLoadGeneralConst),
+			require.True(t, bodyContainsOpcode(compiled, isa.OpLoadGeneralConstant),
 				"the sibling is resolved at compile time and loaded as a constant, not looked up again at run time")
 			require.True(t, bodyContainsTier1SubOp(compiled, isa.SubOpCallNative),
 				"the sibling is host code, so the call leaves the interpreter through the native path")
@@ -124,4 +125,41 @@ func TestAPlainHostFunctionIsNotTreatedAsALinkedGeneric(t *testing.T) {
 	require.True(t, bodyContainsTier1SubOp(compiled, isa.SubOpCallNative),
 		"an ordinary host function still leaves the interpreter, just without a type-argument prefix")
 	require.NotEmpty(t, compiled.Body)
+}
+
+type linkedHolder struct{}
+
+func (linkedHolder) GetItem(label string) string { return label }
+
+func TestAMethodNamedLikeALinkedGenericIsCalledAsTheMethod(t *testing.T) {
+	t.Parallel()
+
+	oneTypeArgument := func(elementType reflect.Type, label string) reflect.Value {
+		_ = label
+		return reflect.New(elementType).Elem()
+	}
+	symbols := registryWithLinked(t, map[string]reflect.Value{
+		"GetItem": reflect.ValueOf(link.Wrap(1, oneTypeArgument)),
+		"Holder":  reflect.ValueOf((*linkedHolder)(nil)),
+	})
+	source := "package main\n\nimport \"" + linkedPackagePath + "\"\n\nfunc f(h linked.Holder) string { return h.GetItem(\"hello\") }\n"
+
+	root := compileSnippetWithSymbols(t, source, symbols)
+	compiled := findCompiledFunction(t, root, "f")
+	for _, site := range compiled.CallSites {
+		require.Empty(t, site.LinkedTypeArgs, "h.GetItem is the method, not the package's linked GetItem")
+	}
+}
+
+func TestALinkedTypeArgumentThatLosesItsInterfaceMethodsIsDetected(t *testing.T) {
+	t.Parallel()
+
+	method := types.NewFunc(0, nil, "Area", types.NewSignatureType(nil, nil, nil, nil, types.NewTuple(types.NewParam(0, nil, "", types.Typ[types.Float64])), false))
+	shape := types.NewInterfaceType([]*types.Func{method}, nil)
+	shape.Complete()
+	require.True(t, interfaceLosesItsMethods(shape, reflect.TypeFor[any]()),
+		"a script interface becomes any at run time, where an assertion to it would hold for every value")
+	require.False(t, interfaceLosesItsMethods(types.Universe.Lookup("error").Type(), reflect.TypeFor[error]()))
+	require.False(t, interfaceLosesItsMethods(types.Typ[types.Int], reflect.TypeFor[int]()))
+	require.False(t, interfaceLosesItsMethods(types.NewInterfaceType(nil, nil), reflect.TypeFor[any]()))
 }

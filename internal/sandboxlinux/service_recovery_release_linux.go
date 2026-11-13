@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,11 +16,15 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
 	"context"
 	"errors"
+
+	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 // Release removes the original service reservation after successful filesystem recovery.
@@ -40,7 +42,7 @@ func (owner *ServiceRecoveryClaim) Release(ctx context.Context) error {
 	if ctx == nil {
 		return ErrInvalidLimits
 	}
-	ctx, cancel := context.WithTimeout(ctx, workerCleanupTimeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, workerCleanupTimeout, sandboxwire.ErrCleanupTimedOut)
 	defer cancel()
 	owner.mutex.Lock()
 	defer owner.mutex.Unlock()

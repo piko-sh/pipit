@@ -62,7 +62,7 @@ func compilePollProgram(b *testing.B, source string, symbols *symtab.SymbolRegis
 	if symbols != nil {
 		service.UseSymbols(symbols)
 	}
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	cfs, err := service.CompileFileSet(b.Context(), map[string]string{"main.go": source})
 	require.NoError(b, err)
 	return service, func(ctx context.Context) error {
 		_, err := service.ExecuteEntrypoint(ctx, cfs, "run")
@@ -74,7 +74,7 @@ func BenchmarkPollSpinLoop(b *testing.B) {
 	_, run := compilePollProgram(b, pollSpinSource, nil)
 	b.ReportAllocs()
 	for b.Loop() {
-		if err := run(context.Background()); err != nil {
+		if err := run(b.Context()); err != nil {
 			require.NoError(b, err)
 		}
 	}
@@ -97,7 +97,7 @@ func run() int {
 `, nativeSymbols())
 	b.ReportAllocs()
 	for b.Loop() {
-		if err := run(context.Background()); err != nil {
+		if err := run(b.Context()); err != nil {
 			require.NoError(b, err)
 		}
 	}
@@ -137,7 +137,7 @@ func run() int {
 			_, run := compilePollProgram(b, source, symbols, app.WithCallbackTimeout(timeout.value))
 			b.ReportAllocs()
 			for b.Loop() {
-				if err := run(context.Background()); err != nil {
+				if err := run(b.Context()); err != nil {
 					require.NoError(b, err)
 				}
 			}
@@ -150,7 +150,7 @@ func BenchmarkParallelSpinVMs(b *testing.B) {
 	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			if err := run(context.Background()); err != nil {
+			if err := run(b.Context()); err != nil {
 				require.NoError(b, err)
 			}
 		}
@@ -159,7 +159,7 @@ func BenchmarkParallelSpinVMs(b *testing.B) {
 
 func BenchmarkGCWhileVMsSpin(b *testing.B) {
 	_, run := compilePollProgram(b, pollForeverSource, nil)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(b.Context())
 	var group sync.WaitGroup
 	for range runtime.GOMAXPROCS(0) {
 		group.Go(func() {
@@ -178,7 +178,7 @@ func BenchmarkGCWhileVMsSpin(b *testing.B) {
 }
 
 func BenchmarkGCWhileGoSpins(b *testing.B) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(b.Context())
 	var group sync.WaitGroup
 	for range runtime.GOMAXPROCS(0) {
 		group.Go(func() {

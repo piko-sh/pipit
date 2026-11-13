@@ -33,11 +33,11 @@ func TestOpcodeString(t *testing.T) {
 		opcode   Opcode
 	}{
 		{name: "drill_tier1", opcode: OpDrillTier1, expected: "DRILL_TIER1"},
-		{name: "add_int", opcode: OpAddInt, expected: "ADD_INT"},
+		{name: "add_int", opcode: OpAddInt64, expected: "ADD_INT64"},
 		{name: "jump_if_false", opcode: OpJumpIfFalse, expected: "JUMP_IF_FALSE"},
 
-		{name: "eq_int", opcode: OpEqInt, expected: "EQ_INT"},
-		{name: "load_int_const", opcode: OpLoadIntConst, expected: "LOAD_INT_CONST"},
+		{name: "eq_int", opcode: OpEqualInt64, expected: "EQUAL_INT64"},
+		{name: "load_int_const", opcode: OpLoadInt64Constant, expected: "LOAD_INT64_CONSTANT"},
 	}
 
 	for _, tt := range tests {
@@ -56,8 +56,8 @@ func TestRegisterKindString(t *testing.T) {
 		expected string
 		kind     RegisterKind
 	}{
-		{name: "int", kind: RegisterInt, expected: "int"},
-		{name: "float", kind: RegisterFloat, expected: "float"},
+		{name: "int64", kind: RegisterInt64, expected: "int64"},
+		{name: "float64", kind: RegisterFloat64, expected: "float64"},
 		{name: "string", kind: RegisterString, expected: "string"},
 		{name: "general", kind: RegisterGeneral, expected: "general"},
 		{name: "unknown", kind: RegisterKind(99), expected: "unknown"},
@@ -74,9 +74,9 @@ func TestRegisterKindString(t *testing.T) {
 func TestInstructionString(t *testing.T) {
 	t.Parallel()
 
-	instr := NewInstruction(OpAddInt, 0, 1, 2)
+	instr := NewInstruction(OpAddInt64, 0, 1, 2)
 	got := instr.String()
-	require.Contains(t, got, "ADD_INT")
+	require.Contains(t, got, "ADD_INT64")
 }
 
 func TestInstructionSignedOffset(t *testing.T) {
@@ -119,7 +119,7 @@ func TestInstructionWideIndex(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			instr := NewInstruction(OpLoadIntConst, 0, tt.b, tt.c)
+			instr := NewInstruction(OpLoadInt64Constant, 0, tt.b, tt.c)
 			require.Equal(t, tt.expected, instr.WideIndex())
 		})
 	}

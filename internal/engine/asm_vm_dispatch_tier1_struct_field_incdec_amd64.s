@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerSubOpIncStructFieldInt increments the int field on the struct at ints[B] by one via asmCallIncStructFieldInt.
-TEXT ·handlerSubOpIncStructFieldInt(SB), NOSPLIT|NOFRAME, $0
+// handlerIncrementStructFieldInt64 increments the int field on the struct at ints[B] by one via asmCallIncrementStructFieldInt64.
+TEXT ·handlerIncrementStructFieldInt64(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -38,7 +38,7 @@ TEXT ·handlerSubOpIncStructFieldInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    R15, 0(SP)
 	MOVQ    BX, 8(SP)
 	MOVQ    CX, 16(SP)
-	CALL    ·asmCallIncStructFieldInt(SB)
+	CALL    ·asmCallIncrementStructFieldInt64(SB)
 	MOVQ    24(SP), R15
 	ADJSP   $-32
 	MOVQ    CTX_SAVED_PC(R15), R14
@@ -50,8 +50,8 @@ TEXT ·handlerSubOpIncStructFieldInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpDecStructFieldInt decrements the int field on the struct at ints[B] by one via asmCallDecStructFieldInt.
-TEXT ·handlerSubOpDecStructFieldInt(SB), NOSPLIT|NOFRAME, $0
+// handlerDecrementStructFieldInt64 decrements the int field on the struct at ints[B] by one via asmCallDecrementStructFieldInt64.
+TEXT ·handlerDecrementStructFieldInt64(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -63,7 +63,7 @@ TEXT ·handlerSubOpDecStructFieldInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    R15, 0(SP)
 	MOVQ    BX, 8(SP)
 	MOVQ    CX, 16(SP)
-	CALL    ·asmCallDecStructFieldInt(SB)
+	CALL    ·asmCallDecrementStructFieldInt64(SB)
 	MOVQ    24(SP), R15
 	ADJSP   $-32
 	MOVQ    CTX_SAVED_PC(R15), R14
@@ -75,8 +75,8 @@ TEXT ·handlerSubOpDecStructFieldInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpIncStructFieldUint increments the uint field on the struct at ints[B] by one via asmCallIncStructFieldUint.
-TEXT ·handlerSubOpIncStructFieldUint(SB), NOSPLIT|NOFRAME, $0
+// handlerIncrementStructFieldUint64 increments the uint field on the struct at ints[B] by one via asmCallIncrementStructFieldUint64.
+TEXT ·handlerIncrementStructFieldUint64(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -88,7 +88,7 @@ TEXT ·handlerSubOpIncStructFieldUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    R15, 0(SP)
 	MOVQ    BX, 8(SP)
 	MOVQ    CX, 16(SP)
-	CALL    ·asmCallIncStructFieldUint(SB)
+	CALL    ·asmCallIncrementStructFieldUint64(SB)
 	MOVQ    24(SP), R15
 	ADJSP   $-32
 	MOVQ    CTX_SAVED_PC(R15), R14
@@ -100,8 +100,8 @@ TEXT ·handlerSubOpIncStructFieldUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpDecStructFieldUint single-level shim wrapping asmCallDecStructFieldUint.
-TEXT ·handlerSubOpDecStructFieldUint(SB), NOSPLIT|NOFRAME, $0
+// handlerDecrementStructFieldUint64 single-level shim wrapping asmCallDecrementStructFieldUint64.
+TEXT ·handlerDecrementStructFieldUint64(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -113,7 +113,7 @@ TEXT ·handlerSubOpDecStructFieldUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    R15, 0(SP)
 	MOVQ    BX, 8(SP)
 	MOVQ    CX, 16(SP)
-	CALL    ·asmCallDecStructFieldUint(SB)
+	CALL    ·asmCallDecrementStructFieldUint64(SB)
 	MOVQ    24(SP), R15
 	ADJSP   $-32
 	MOVQ    CTX_SAVED_PC(R15), R14

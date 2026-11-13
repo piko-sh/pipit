@@ -19,11 +19,13 @@
 package pipit
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"time"
 
 	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/logging"
 )
 
 // WithSymbolProvider registers native symbol tables interpreted code may import. Calls
@@ -36,15 +38,29 @@ func WithSymbolProvider(providers ...SymbolProviderPort) Option {
 	return app.WithSymbolProvider(providers...)
 }
 
-// WithLogger installs the logger that receives interpreter diagnostics and, for the
-// isolated tiers, the boundary's audit events. Passing nil resolves the process default
-// logger at each call site.
+// WithLogger installs the fallback logger for interpreter diagnostics and, for the
+// isolated tiers, the boundary's audit events.
+//
+// A logger already in a call's context wins. Nil leaves the process default as the
+// fallback.
 //
 // Takes logger (*slog.Logger) which receives diagnostics and audit events.
 //
 // Returns Option which applies the logger override.
 func WithLogger(logger *slog.Logger) Option {
 	return app.WithLogger(logger)
+}
+
+// ContextWithLogger returns a copy of ctx carrying logger.
+//
+// Passing nil returns ctx unchanged.
+//
+// Takes logger (*slog.Logger) which receives the diagnostics of calls made with the
+// returned context.
+//
+// Returns context.Context which carries logger.
+func ContextWithLogger(ctx context.Context, logger *slog.Logger) context.Context {
+	return logging.WithLogger(ctx, logger)
 }
 
 // WithSafeMode disables the unsafe fast paths, keeping only the memory-safe interpreter.
@@ -199,15 +215,28 @@ func WithYieldInterval(interval uint32) Option {
 }
 
 // WithCallbackTimeout bounds each run of an interpreted closure that native code calls,
-// including time spent in channel operations, select or sleep. A run past the bound
-// fails with ErrCallbackTimeout, which also matches ErrExecutionCancelled; zero or
-// negative disables the bound.
+// including time spent in channel operations, select or sleep. A run past the bound fails
+// with ErrCallbackTimeout, which also matches ErrExecutionCancelled; zero or negative
+// disables the bound.
 //
 // Takes timeout (time.Duration) which is the bound.
 //
 // Returns Option which applies the bound.
 func WithCallbackTimeout(timeout time.Duration) Option {
 	return app.WithCallbackTimeout(timeout)
+}
+
+// WithFinaliserTimeout bounds each run of a finaliser or cleanup a program registered
+// with runtime.SetFinalizer or runtime.AddCleanup.
+//
+// A run past the bound is stopped and the next finaliser runs. The default is 30 seconds.
+// A shorter WithCallbackTimeout applies instead.
+//
+// Takes timeout (time.Duration) which is the bound. It must be positive.
+//
+// Returns Option which applies the bound.
+func WithFinaliserTimeout(timeout time.Duration) Option {
+	return app.WithFinaliserTimeout(timeout)
 }
 
 // WithDeadlockGrace sets the grace period before parked goroutines trigger ErrDeadlock.
@@ -218,6 +247,87 @@ func WithCallbackTimeout(timeout time.Duration) Option {
 // Returns Option which applies the grace period.
 func WithDeadlockGrace(grace time.Duration) Option {
 	return app.WithDeadlockGrace(grace)
+}
+
+// WithAbortUnwindCost sets the total cost, in cost-table units, that the pending defers
+// of a stopped evaluation may spend between them while it unwinds. The default is
+// 100,000.
+//
+// Takes cost (int64) which is the allowance; a value that is not positive makes every
+// compile and evaluation fail with ErrInvalidOption.
+//
+// Returns Option which applies the allowance.
+func WithAbortUnwindCost(cost int64) Option {
+	return app.WithAbortUnwindCost(cost)
+}
+
+// WithAbortUnwindWall sets the total wall time that the pending defers of a stopped
+// evaluation may spend waiting while it unwinds. The default is one second.
+//
+// Takes wall (time.Duration) which is the allowance; a value that is not positive makes
+// every compile and evaluation fail with ErrInvalidOption.
+//
+// Returns Option which applies the allowance.
+func WithAbortUnwindWall(wall time.Duration) Option {
+	return app.WithAbortUnwindWall(wall)
+}
+
+// WithAbortUnwindDeferWallMax caps the wall time one deferred call may spend while a
+// stopped evaluation unwinds. The default is 500 ms.
+//
+// Takes wall (time.Duration) which is the cap; a value that is not positive makes every
+// compile and evaluation fail with ErrInvalidOption.
+//
+// Returns Option which applies the cap.
+func WithAbortUnwindDeferWallMax(wall time.Duration) Option {
+	return app.WithAbortUnwindDeferWallMax(wall)
+}
+
+// WithAbortUnwindNativeGrace sets how long past its wall deadline a deferred call of an
+// unwinding may stay inside a native call before the evaluation returns ErrUnwindBlocked
+// and leaves the call's goroutine and memory behind. The default is 200 ms.
+//
+// Takes grace (time.Duration) which is the grace; a value that is not positive makes
+// every compile and evaluation fail with ErrInvalidOption.
+//
+// Returns Option which applies the grace.
+func WithAbortUnwindNativeGrace(grace time.Duration) Option {
+	return app.WithAbortUnwindNativeGrace(grace)
+}
+
+// WithGoroutineJoinUnwindCap bounds how long, from its start, the wait for an
+// evaluation's goroutines keeps going while some of them run their deferred calls after a
+// stop. The default is ten seconds.
+//
+// Takes bound (time.Duration) which is the bound; a value that is not positive makes
+// every compile and evaluation fail with ErrInvalidOption.
+//
+// Returns Option which applies the bound.
+func WithGoroutineJoinUnwindCap(bound time.Duration) Option {
+	return app.WithGoroutineJoinUnwindCap(bound)
+}
+
+// WithLeakedUnwinderCap sets how many deferred calls left blocked in native code (each
+// reported with ErrUnwindBlocked) the interpreter allows before every later evaluation
+// fails with ErrUnwindLeakLimit. The default is 64.
+//
+// Takes limit (int64) which is the cap; a value that is not positive makes every compile
+// and evaluation fail with ErrInvalidOption.
+//
+// Returns Option which applies the cap.
+func WithLeakedUnwinderCap(limit int64) Option {
+	return app.WithLeakedUnwinderCap(limit)
+}
+
+// WithLockWalkMaxValues caps the values the abandoned-lock check visits from the package
+// variables after a stopped evaluation.
+//
+// Takes values (int) which is the cap; a value that is not positive makes every compile
+// and evaluation fail with ErrInvalidOption.
+//
+// Returns Option which applies the cap.
+func WithLockWalkMaxValues(values int) Option {
+	return app.WithLockWalkMaxValues(values)
 }
 
 // WithBuildTags adds build tags for constraint evaluation.
@@ -291,6 +401,45 @@ func WithDebugger(debugger *Debugger) Option {
 // Returns Option applying the setting.
 func WithBytecodeStore(store BytecodeStorePort) Option {
 	return app.WithBytecodeStore(store)
+}
+
+// WithMaxLoadedNamedInterfaces caps how many distinct interface names loaded bytecode may
+// add to the interpreter.
+//
+// A load that would pass the cap fails with ErrNamedInterfaceLimit. The default is
+// 65,536.
+//
+// Takes count (int) which must be positive.
+//
+// Returns Option applying the setting.
+func WithMaxLoadedNamedInterfaces(count int) Option {
+	return app.WithMaxLoadedNamedInterfaces(count)
+}
+
+// WithMaxNamedCompositeTypes caps how many new named array, slice, map, channel and
+// function types the programs one interpreter compiles or loads may add.
+//
+// Identical declarations share one type and are charged once. A program that would pass
+// the cap fails with ErrNamedCompositeQuota. The default is 4,096.
+//
+// Takes count (int) which must be positive.
+//
+// Returns Option applying the setting.
+func WithMaxNamedCompositeTypes(count int) Option {
+	return app.WithMaxNamedCompositeTypes(count)
+}
+
+// WithNamedCompositeProcessLimit sets the cap on named array, slice, map, channel and
+// function types across the whole process.
+//
+// The last interpreter built with this option sets it for all of them. Types already
+// built stay, and a cap below their count refuses every new one. The default is 65,536.
+//
+// Takes count (int) which must be positive.
+//
+// Returns Option applying the setting.
+func WithNamedCompositeProcessLimit(count int) Option {
+	return app.WithNamedCompositeProcessLimit(count)
 }
 
 // WithCapabilityHook installs the hook consulted before gated native operations.

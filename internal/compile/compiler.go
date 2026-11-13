@@ -20,11 +20,13 @@ package compile
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
 	"maps"
+	"math"
 	"reflect"
 
 	"pipit.sh/pipit/internal/compile/appendlower"
@@ -48,6 +50,11 @@ const (
 	// rangeOverFunctionReturnPendingFlag is the state-flag value that signals a return
 	// statement was encountered inside the yield body.
 	rangeOverFunctionReturnPendingFlag int64 = 2
+
+	// rangeOverFunctionBareReturnFlag is the state-flag value that signals a bare return
+	// from a range-over-func body in a function with named results, which returns the
+	// results' current values rather than stashed ones.
+	rangeOverFunctionBareReturnFlag int64 = -1
 
 	// rangeOverFunctionFirstLabelFlag is the first state-flag value assigned to labelled
 	// outer-loop targets in range-over-func bodies. Values 0-2 are reserved
@@ -159,9 +166,6 @@ type Compiler struct {
 	upvalueMap map[string]upvalueReference
 
 	// heapPromotedNames lists local names that must be heap-promoted at declaration.
-	// Populated by a pre-pass at function entry so each declareVar site emits
-	// opAllocIndirect immediately, giving the variable a stable addressable cell that
-	// closures and goroutines can read and write by pointer.
 	heapPromotedNames map[string]bool
 
 	// typedSliceLocals maps qualifying typed-slice local names to their registerKind. Only
@@ -183,6 +187,20 @@ type Compiler struct {
 	// closureCapturedNames is the set of names captured by any inner closure, gating
 	// opResetSharedCell so each loop iteration gets a fresh cell.
 	closureCapturedNames map[string]bool
+
+	// byteViews holds the []byte(s) conversions and locals compiled as read-only views of s
+	// (compiler_byte_view.go).
+	byteViews readOnlyByteViews
+
+	// namedRetypes maps the operands of the current body that Go converts implicitly to a
+	// named array, slice, map, channel or function type to that type
+	// (compiler_named_retypes.go).
+	namedRetypes map[ast.Expr]types.Type
+
+	// byteViewCall is the native call whose arguments compileNativeArguments may mark as
+	// byte-view arguments, set by compileNativeCallFromLocation only; byteViewMarked is the
+	// mark it made.
+	byteViewCall *ast.CallExpr
 
 	// flowingSliceNames is the set of names whose slice header the body stores beyond the
 	// variable's register (escape.CollectFlowingSliceNames), so their literal or make
@@ -210,15 +228,15 @@ type Compiler struct {
 	// indexed by label name and patched once the label is visited.
 	forwardGotos map[string][]int
 
-	// appendAliases records when locals may share their slice headers. Nil disables
-	// in-place append lowering.
+	// appendAliases records when locals may share their slice headers. Nil disables in-place
+	// append lowering.
 	inPlaceAppendAliases *appendlower.Aliases
 
 	// debugSourceMap is the source map being built during compilation. Nil when debug info
 	// is disabled.
 	debugSourceMap *program.SourceMap
 
-	// escapeAllocSitePCs maps each heap-promoted local to the PC of its opAllocIndirect.
+	// escapeAllocSitePCs maps each heap-promoted local to the PC of its opAllocateIndirect.
 	escapeAllocSitePCs map[string]int
 
 	// escapeMakeSitePCs maps each heap-promoted local initialised with make() to the PC of
@@ -257,6 +275,9 @@ type Compiler struct {
 	// stmtScratch is the per-statement scratch state, reset as compilation descends into and
 	// returns from nested statements.
 	stmtScratch
+
+	// byteViewMarked is the ByteViewArguments mask of byteViewCall.
+	byteViewMarked uint64
 
 	// pressure is what this attempt at the body learns about its registers.
 	pressure registerPressure
@@ -318,6 +339,139 @@ type Compiler struct {
 	hasRecover bool
 }
 
+// identTargetKind says where an assignable identifier lives.
+type identTargetKind uint8
+
+// rangeOverFunctionContext holds state for compiling the yield callback body of a
+// range-over-func loop.
+type rangeOverFunctionContext struct {
+	// bodyLabels are the labels declared inside the loop body.
+	bodyLabels map[string]bool
+
+	// gotoExits collects the gotos that leave the body, each with its state flag value.
+	gotoExits *rangeOverFunctionGotoExits
+
+	// ownLabel is the label of the range statement whose body this is, or "".
+	ownLabel string
+
+	// returnStashUpvalueIndices are the upvalue indices for stashing return values when a
+	// return statement is encountered inside the range-over-func body.
+	returnStashUpvalueIndices []int
+
+	// returnKinds are the register kinds of the enclosing function's return values, used to
+	// Emit the correct opGetCapturedVariable after the iterator call.
+	returnKinds []isa.RegisterKind
+
+	// outerLabels are labelled break/continue targets from enclosing loops. Enables
+	// cross-closure labelled break/continue by encoding the target as a state flag value.
+	outerLabels []outerLabelTarget
+
+	// resultTypes are the declared result types of the function the loop is written in,
+	// which a return statement in the body returns from, rather than those of the yield
+	// closure it is compiled into.
+	resultTypes []types.Type
+
+	// stateFlagUpvalueIndex is the upvalue index for the state flag register in the yield
+	// closure. 0=normal, 1=break, 2=return-pending, -1=bare return, 3+=labelled
+	// break/continue to outer loops, then gotos leaving the body.
+	stateFlagUpvalueIndex int
+}
+
+// rangeOverFunctionGotoExits collects the goto statements that leave a range-over-func
+// body for a label outside it.
+type rangeOverFunctionGotoExits struct {
+	// targets are the labels jumped to, in first-use order, each with its flag value.
+	targets []rangeOverFunctionGotoExit
+
+	// firstFlag is the state flag value given to the first label.
+	firstFlag int64
+}
+
+// rangeOverFunctionGotoExit is one label a range-over-func body jumps to with goto.
+type rangeOverFunctionGotoExit struct {
+	// statement is the first goto naming the label, whose position the dispatch reuses.
+	statement *ast.BranchStmt
+
+	// flag is the state flag value the body sets before returning false.
+	flag int64
+}
+
+// outerLabelTarget describes a labelled loop in an enclosing scope that can be targeted
+// by break/continue from within a range-over-func yield body.
+type outerLabelTarget struct {
+	// label is the name of the labelled loop target in the enclosing scope.
+	label string
+
+	// breakFlag is the state flag value for labelled break.
+	breakFlag int64
+
+	// continueFlag is the state flag value for labelled continue (0 if not a loop).
+	continueFlag int64
+
+	// breakableIndex is the index into the outer Compiler's breakables slice. It is unused
+	// for a forwarded target.
+	breakableIndex int
+
+	// forwardBreakFlag is the break flag value of the enclosing range-over-func body's own
+	// target for the same label. It is set when the label lies outside that body too
+	// (forwarded is true), and the dispatch then passes a break on to it rather than
+	// jumping.
+	forwardBreakFlag int64
+
+	// forwardContinueFlag is the continue flag value of the enclosing range-over-func body's
+	// own target for the same label, set and used as forwardBreakFlag is.
+	forwardContinueFlag int64
+
+	// forwarded is true for a label outside the enclosing range-over-func body.
+	forwarded bool
+
+	// continuesEnclosingBody is true for the label of the enclosing range-over-func loop
+	// itself (forwarded, with forwardBreakFlag the plain break flag). A continue to it
+	// returns true from the enclosing body's yield closure rather than passing a flag on.
+	continuesEnclosingBody bool
+}
+
+// upvalueReference tracks a captured variable's upvalue index and kind within a closure
+// being compiled.
+type upvalueReference struct {
+	// index is the upvalue slot index within the closure's upvalue table.
+	index int
+
+	// kind is the register kind the closure body sees the upvalue as. Equals originalKind
+	// for heap-promoted captures.
+	kind isa.RegisterKind
+
+	// isIndirect is true when the captured variable is heap-promoted.
+	isIndirect bool
+
+	// originalKind preserves the typed bank the variable had pre-promotion, meaningful only
+	// when isIndirect is true.
+	originalKind isa.RegisterKind
+}
+
+// breakableContext tracks pending break and continue jumps for a loop or switch
+// statement.
+//
+//exhaustruct:ignore
+type breakableContext struct {
+	// label is the optional label name for labelled break/continue.
+	label string
+
+	// breakJumps holds instruction offsets of break jumps to patch.
+	breakJumps []int
+
+	// continueJumps holds instruction offsets of continue jumps to patch. Only meaningful
+	// for loops.
+	continueJumps []int
+
+	// fallthroughJumps holds instruction offsets of fallthrough jumps to patch. Only
+	// meaningful for switch statements.
+	fallthroughJumps []int
+
+	// isLoop is true for for-loops, false for switch statements.
+	isLoop bool
+}
+
 // GlobalVariables returns the compiler's global-variable table.
 //
 // Returns map[string]GlobalVariableInfo which is the live table; callers must not mutate
@@ -348,10 +502,15 @@ func (c *Compiler) FunctionTable() map[string]uint16 { return c.functionTable }
 // Returns the reflect.Type matching t after generic substitution.
 func (c *Compiler) TypeToReflect(ctx context.Context, t types.Type) reflect.Type {
 	if c.reflectTypeCache == nil {
-		c.reflectTypeCache = make(map[types.Type]reflect.Type)
+		c.reflectTypeCache = typemap.NewTypeCache()
 	}
 	t = c.substitutedType(t)
-	return typemap.TypeToReflectCached(ctx, t, c.symbols, c.reflectTypeCache, c.globals)
+	c.noteReceiverInstances(t)
+	reflectType, err := typemap.TypeToReflectCached(ctx, t, c.symbols, c.reflectTypeCache, c.globals)
+	if err != nil {
+		c.recordStickyError(fmt.Errorf("%w: %w", fault.ErrCompileNamedTypeIdentity, err))
+	}
+	return reflectType
 }
 
 // recordStickyError stores the first non-recoverable Emit error.
@@ -364,6 +523,21 @@ func (c *Compiler) recordStickyError(err error) {
 		return
 	}
 	c.stickyError = err
+}
+
+// withStickyCause puts the first sticky error ahead of err. A sticky error, such as a
+// type that could not be given its runtime type, leaves a stand-in behind that later
+// steps then reject, so the sticky error is the cause the caller should see.
+//
+// Takes err (error) which is the error that stopped the compile.
+//
+// Returns error which joins the sticky error and err, or err alone when none was
+// recorded.
+func (c *Compiler) withStickyCause(err error) error {
+	if c.stickyError == nil || errors.Is(err, c.stickyError) {
+		return err
+	}
+	return errors.Join(c.stickyError, err)
 }
 
 // resourceError returns the first sticky error recorded during Emit.
@@ -509,21 +683,19 @@ func (c *Compiler) checkFeature(feature policy.InterpFeature, pos token.Pos) err
 	return fmt.Errorf("%w: %s at %s", fault.ErrFeatureNotAllowed, feature, c.FileSet.Position(pos))
 }
 
-// coerceEvalBoolResult converts a isa.RegisterInt result to isa.RegisterBool when the
+// coerceEvalBoolResult converts a isa.RegisterInt64 result to isa.RegisterBool when the
 // expression's static type is bool.
 //
-// Eval returns a bool regardless of whether the value was constant-folded or computed at
-// runtime.
-//
-// Takes info (*types.Info): type information used to read the expression's static type.
-// Takes expression (ast.Expr): the AST node whose result is being coerced.
-// Takes location (program.VarLocation): the source register holding the comparison or
-// logical result.
+// Takes info (*types.Info) which is type information used to read the expression's static
+// type.
+// Takes expression (ast.Expr) which is the AST node whose result is being coerced.
+// Takes location (program.VarLocation) which is the source register holding the
+// comparison or logical result.
 //
 // Returns the coerced VarLocation in isa.RegisterBool, or the original location when no
 // coercion is required.
 func (c *Compiler) coerceEvalBoolResult(_ context.Context, info *types.Info, expression ast.Expr, location program.VarLocation) program.VarLocation {
-	if location.Kind != isa.RegisterInt {
+	if location.Kind != isa.RegisterInt64 {
 		return location
 	}
 	tv, ok := info.Types[expression]
@@ -535,7 +707,7 @@ func (c *Compiler) coerceEvalBoolResult(_ context.Context, info *types.Info, exp
 		return location
 	}
 	booleanRegister := c.Scopes.Alloc.Alloc(isa.RegisterBool)
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpIntToBool), booleanRegister, location.Register)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertInt64ToBool), booleanRegister, location.Register)
 	return program.VarLocation{Register: booleanRegister, Kind: isa.RegisterBool}
 }
 
@@ -588,6 +760,7 @@ func (c *Compiler) compileStmt(ctx context.Context, statement ast.Stmt) (program
 		return program.VarLocation{}, fmt.Errorf("%w: statement nesting exceeded %d at %s", fault.ErrCompileDepthLimit, maxStatementDepth, c.positionString(statement.Pos()))
 	}
 	c.statementDepth++
+	c.noteNamedRetypes(statement)
 	mark := c.Scopes.BeginStatement()
 	sites := c.pressure.overflowSites
 	defer func() {
@@ -881,7 +1054,7 @@ func (c *Compiler) tryEmitNamedTypeZero(ctx context.Context, typeObject types.Ob
 		c.recordStickyError(err)
 		return true
 	}
-	program.EmitWide(c.Function, isa.OpLoadGeneralConst, location.Register, constIndex)
+	program.EmitWide(c.Function, isa.OpLoadGeneralConstant, location.Register, constIndex)
 	return true
 }
 
@@ -904,7 +1077,7 @@ func (c *Compiler) tryEmitCompositeTypeZero(ctx context.Context, typeObject type
 		c.recordStickyError(err)
 		return true
 	}
-	program.EmitWide(c.Function, isa.OpLoadGeneralConst, location.Register, constIndex)
+	program.EmitWide(c.Function, isa.OpLoadGeneralConstant, location.Register, constIndex)
 	return true
 }
 
@@ -930,7 +1103,7 @@ func (c *Compiler) tryEmitReflectZero(ctx context.Context, typeObject types.Obje
 		c.recordStickyError(err)
 		return true
 	}
-	program.EmitWide(c.Function, isa.OpLoadGeneralConst, location.Register, constIndex)
+	program.EmitWide(c.Function, isa.OpLoadGeneralConstant, location.Register, constIndex)
 	return true
 }
 
@@ -1182,7 +1355,7 @@ func (c *Compiler) emitIdentAssign(ctx context.Context, target *ast.Ident, value
 	case identTargetUpvalue:
 		reference := c.upvalueMap[target.Name]
 		coerced := c.coerceToKind(ctx, valueLocation, reference.kind)
-		program.Emit(c.Function, isa.OpSetUpvalue, coerced.Register, safeconv.MustIntToUint8(reference.index), uint8(reference.kind))
+		program.Emit(c.Function, isa.OpSetCapturedVariable, coerced.Register, safeconv.MustIntToUint8(reference.index), uint8(reference.kind))
 		if coerced.Register != valueLocation.Register || coerced.Kind != valueLocation.Kind {
 			c.Scopes.Alloc.FreeTemp(coerced.Kind, coerced.Register)
 		}
@@ -1203,7 +1376,7 @@ func (c *Compiler) emitIdentAssign(ctx context.Context, target *ast.Ident, value
 		}
 	}
 	c.emitMoveTyped(ctx, destLocation, valueLocation, destType)
-	c.emitWriteSharedCellIfCaptured(ctx, destLocation)
+	c.emitSetSharedCellIfCaptured(ctx, destLocation)
 	return destLocation, nil
 }
 
@@ -1219,6 +1392,23 @@ func (c *Compiler) positionString(pos token.Pos) string {
 	}
 	position := c.FileSet.Position(pos)
 	return position.String()
+}
+
+// uint8Operand narrows a count or index the program drives to an instruction's 8-bit
+// operand, refusing one that does not fit with an error at the source position rather
+// than a panic.
+//
+// Takes value (int) which is the count or index.
+// Takes what (string) which names it for the error.
+// Takes position (token.Pos) which is the construct it belongs to.
+//
+// Returns uint8 which is the operand.
+// Returns error which wraps fault.ErrCompilation when value is outside 0 to 255.
+func (c *Compiler) uint8Operand(value int, what string, position token.Pos) (uint8, error) {
+	if value < 0 || value > math.MaxUint8 {
+		return 0, fmt.Errorf("%w: %s %d does not fit an instruction operand at %s", fault.ErrCompilation, what, value, c.positionString(position))
+	}
+	return uint8(value), nil
 }
 
 // setDebugPosition records pos as the current source position for debug source mapping.
@@ -1363,88 +1553,6 @@ func (c *Compiler) markCallPosition() {
 	}
 }
 
-// identTargetKind says where an assignable identifier lives.
-type identTargetKind uint8
-
-// rangeOverFunctionContext holds state for compiling the yield callback body of a
-// range-over-func loop. It transforms break/continue/return into yield return values and
-// state flag mutations.
-type rangeOverFunctionContext struct {
-	// returnStashUpvalueIndices are the upvalue indices for stashing return values when a
-	// return statement is encountered inside the range-over-func body.
-	returnStashUpvalueIndices []int
-
-	// returnKinds are the register kinds of the enclosing function's return values, used to
-	// Emit the correct opGetUpvalue after the iterator call.
-	returnKinds []isa.RegisterKind
-
-	// outerLabels are labelled break/continue targets from enclosing loops. Enables
-	// cross-closure labelled break/continue by encoding the target as a state flag value.
-	outerLabels []outerLabelTarget
-
-	// stateFlagUpvalueIndex is the upvalue index for the state flag register in the yield
-	// closure. 0=normal, 1=break, 2=return-pending, 3+=labelled break/continue to outer
-	// loops.
-	stateFlagUpvalueIndex int
-}
-
-// outerLabelTarget describes a labelled loop in an enclosing scope that can be targeted
-// by break/continue from within a range-over-func yield body.
-type outerLabelTarget struct {
-	// label is the name of the labelled loop target in the enclosing scope.
-	label string
-
-	// breakFlag is the state flag value for labelled break.
-	breakFlag int64
-
-	// continueFlag is the state flag value for labelled continue (0 if not a loop).
-	continueFlag int64
-
-	// breakableIndex is the index into the outer Compiler's breakables slice.
-	breakableIndex int
-}
-
-// upvalueReference tracks a captured variable's upvalue index and kind within a closure
-// being compiled.
-type upvalueReference struct {
-	// index is the upvalue slot index within the closure's upvalue table.
-	index int
-
-	// kind is the register kind the closure body sees the upvalue as. Equals originalKind
-	// for heap-promoted captures.
-	kind isa.RegisterKind
-
-	// isIndirect is true when the captured variable is heap-promoted.
-	isIndirect bool
-
-	// originalKind preserves the typed bank the variable had pre-promotion, meaningful only
-	// when isIndirect is true.
-	originalKind isa.RegisterKind
-}
-
-// breakableContext tracks pending break and continue jumps for a loop or switch
-// statement.
-//
-//exhaustruct:ignore
-type breakableContext struct {
-	// label is the optional label name for labelled break/continue.
-	label string
-
-	// breakJumps holds instruction offsets of break jumps to patch.
-	breakJumps []int
-
-	// continueJumps holds instruction offsets of continue jumps to patch. Only meaningful
-	// for loops.
-	continueJumps []int
-
-	// fallthroughJumps holds instruction offsets of fallthrough jumps to patch. Only
-	// meaningful for switch statements.
-	fallthroughJumps []int
-
-	// isLoop is true for for-loops, false for switch statements.
-	isLoop bool
-}
-
 // copyFunctionTable merges already-resolved entries into the compiler's function table.
 //
 // Used to seed a package compiler with cross-package method indices discovered earlier in
@@ -1485,7 +1593,7 @@ func CompileEvalExpression(ctx context.Context, config CompilerConfig, expressio
 
 	location, err := c.compileExpression(ctx, expression)
 	if err != nil {
-		return nil, fmt.Errorf("compiling eval expression: %w", err)
+		return nil, fmt.Errorf("compiling eval expression: %w", c.withStickyCause(err))
 	}
 
 	location = c.coerceEvalBoolResult(ctx, config.Info, expression, location)

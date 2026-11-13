@@ -4,18 +4,17 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=2 string=1
-;   dispatch:  asm=4 shim=1 exit=0 go=0
+;   registers: int64=2 string=1
+;   dispatch:  asm=3 shim=1 exit=0 go=0
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=108
 ;   strings: [0]="hello"
 
-0000 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "hello"
-0001 A 1:LOAD_INT_CONST_SMALL      75   0 108    ; ints[0] = 108
-0002 S 0:STR_INDEX_RUNE             1   0   0
-0003 A 1:MOVE_INT                  35   0   1
-0004 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "hello"
+0001 A 1:LOAD_INT64_IMMEDIATE                                75   0 108    ; ints[0] = 108
+0002 S 0:STRINGS_INDEX_RUNE                                   0   0   0
+0003 A 2:RETURN                                               0  10   1    ; 1 values

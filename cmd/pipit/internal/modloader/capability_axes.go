@@ -21,6 +21,7 @@ package modloader
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 )
@@ -60,17 +61,25 @@ var allAxes = []string{
 	AxisEnvRead, AxisEnvWrite,
 }
 
-// gateClassifier maps a native call's arguments to the capability axis and scope it
-// exercises.
+// capabilityClaim is one axis and scope a native call exercises.
+type capabilityClaim struct {
+	// axis names the capability axis, such as AxisFilesystemWrite.
+	axis string
+
+	// scope narrows the claim within the axis, such as a path or an address.
+	scope string
+}
+
+// gateClassifier maps a native call's arguments to the capability claims it exercises.
 //
 // Takes args ([]reflect.Value) which are the reflected call arguments.
 //
-// Returns string which is the capability axis.
-// Returns string which is the scope within it.
-type gateClassifier func(args []reflect.Value) (axis, scope string)
+// Returns []capabilityClaim which lists each axis and scope the call needs, in the order
+// they are consulted.
+type gateClassifier func(args []reflect.Value) []capabilityClaim
 
-// nativeGateRules maps a dotted native symbol path to the classifier that decides which
-// capability axis and scope the call exercises. A symbol absent from the map is ungated.
+// nativeGateRules maps a registered native symbol to the classifier that decides which
+// capability claims the call exercises. A symbol absent from the map is ungated.
 var nativeGateRules = map[string]gateClassifier{
 	"net.Dial":                   dialClassifier,
 	"net.DialTimeout":            dialClassifier,
@@ -82,30 +91,62 @@ var nativeGateRules = map[string]gateClassifier{
 	"net.Listen":                 listenClassifier,
 	"net/http.ListenAndServe":    urlClassifier(AxisNetworkListen),
 	"net/http.ListenAndServeTLS": urlClassifier(AxisNetworkListen),
-	"os.Open":                    pathClassifier(AxisFilesystemRead),
-	"os.ReadFile":                pathClassifier(AxisFilesystemRead),
-	"io/ioutil.ReadFile":         pathClassifier(AxisFilesystemRead),
+
+	"os.Open":                    pathClassifier(AxisFilesystemRead, 0),
+	"os.ReadFile":                pathClassifier(AxisFilesystemRead, 0),
+	"os.Stat":                    pathClassifier(AxisFilesystemRead, 0),
+	"os.Lstat":                   pathClassifier(AxisFilesystemRead, 0),
+	"os.ReadDir":                 pathClassifier(AxisFilesystemRead, 0),
+	"os.Readlink":                pathClassifier(AxisFilesystemRead, 0),
+	"io/ioutil.ReadFile":         pathClassifier(AxisFilesystemRead, 0),
+	"io/ioutil.ReadDir":          pathClassifier(AxisFilesystemRead, 0),
+	"path/filepath.Walk":         pathClassifier(AxisFilesystemRead, 0),
+	"path/filepath.WalkDir":      pathClassifier(AxisFilesystemRead, 0),
+	"path/filepath.Glob":         pathClassifier(AxisFilesystemRead, 0),
+	"path/filepath.EvalSymlinks": pathClassifier(AxisFilesystemRead, 0),
+	"archive/zip.OpenReader":     pathClassifier(AxisFilesystemRead, 0),
+	"crypto/tls.LoadX509KeyPair": pathsClassifier(AxisFilesystemRead, 0, 1),
+	"debug/buildinfo.ReadFile":   pathClassifier(AxisFilesystemRead, 0),
+	"debug/elf.Open":             pathClassifier(AxisFilesystemRead, 0),
+	"debug/macho.Open":           pathClassifier(AxisFilesystemRead, 0),
+	"debug/pe.Open":              pathClassifier(AxisFilesystemRead, 0),
+	"go/build.ImportDir":         pathClassifier(AxisFilesystemRead, 0),
+	"go/parser.ParseDir":         pathClassifier(AxisFilesystemRead, 1),
+	"html/template.ParseGlob":    pathClassifier(AxisFilesystemRead, 0),
+	"text/template.ParseGlob":    pathClassifier(AxisFilesystemRead, 0),
+	"net/http.ServeFile":         pathClassifier(AxisFilesystemRead, 2),
 	"os.OpenFile":                openFileClassifier,
-	"os.Create":                  pathClassifier(AxisFilesystemWrite),
-	"os.WriteFile":               pathClassifier(AxisFilesystemWrite),
-	"io/ioutil.WriteFile":        pathClassifier(AxisFilesystemWrite),
-	"os.Mkdir":                   pathClassifier(AxisFilesystemWrite),
-	"os.MkdirAll":                pathClassifier(AxisFilesystemWrite),
-	"os.Remove":                  pathClassifier(AxisFilesystemWrite),
-	"os.RemoveAll":               pathClassifier(AxisFilesystemWrite),
-	"os.Truncate":                pathClassifier(AxisFilesystemWrite),
-	"os.Rename":                  renameClassifier,
-	"os.Symlink":                 renameClassifier,
-	"os.Link":                    renameClassifier,
-	"os.Getenv":                  nameClassifier(AxisEnvRead),
-	"os.LookupEnv":               nameClassifier(AxisEnvRead),
-	"os.Environ":                 func(_ []reflect.Value) (string, string) { return AxisEnvRead, "*" },
-	"os.Setenv":                  nameClassifier(AxisEnvWrite),
-	"os.Unsetenv":                nameClassifier(AxisEnvWrite),
-	"os.Clearenv":                func(_ []reflect.Value) (string, string) { return AxisEnvWrite, "*" },
-	"os/exec.Command":            nameClassifier(AxisExec),
-	"os/exec.LookPath":           nameClassifier(AxisExec),
-	"os/exec.CommandContext":     commandContextClassifier,
+
+	"os.Create":           pathClassifier(AxisFilesystemWrite, 0),
+	"os.WriteFile":        pathClassifier(AxisFilesystemWrite, 0),
+	"io/ioutil.WriteFile": pathClassifier(AxisFilesystemWrite, 0),
+	"os.Mkdir":            pathClassifier(AxisFilesystemWrite, 0),
+	"os.MkdirAll":         pathClassifier(AxisFilesystemWrite, 0),
+	"os.Remove":           pathClassifier(AxisFilesystemWrite, 0),
+	"os.RemoveAll":        pathClassifier(AxisFilesystemWrite, 0),
+	"os.Truncate":         pathClassifier(AxisFilesystemWrite, 0),
+	"os.Chmod":            pathClassifier(AxisFilesystemWrite, 0),
+	"os.Chown":            pathClassifier(AxisFilesystemWrite, 0),
+	"os.Lchown":           pathClassifier(AxisFilesystemWrite, 0),
+	"os.Chtimes":          pathClassifier(AxisFilesystemWrite, 0),
+	"os.CopyFS":           pathClassifier(AxisFilesystemWrite, 0),
+	"os.CreateTemp":       temporaryDirectoryClassifier,
+	"os.MkdirTemp":        temporaryDirectoryClassifier,
+	"io/ioutil.TempFile":  temporaryDirectoryClassifier,
+	"io/ioutil.TempDir":   temporaryDirectoryClassifier,
+	"os.Rename":           pathsClassifier(AxisFilesystemWrite, 0, 1),
+	"os.Link":             pathsClassifier(AxisFilesystemWrite, 0, 1),
+	"os.Symlink":          symlinkClassifier,
+
+	"os.Getenv":              nameClassifier(AxisEnvRead),
+	"os.LookupEnv":           nameClassifier(AxisEnvRead),
+	"os.Environ":             fixedClassifier(AxisEnvRead, "*"),
+	"os.Setenv":              nameClassifier(AxisEnvWrite),
+	"os.Unsetenv":            nameClassifier(AxisEnvWrite),
+	"os.Clearenv":            fixedClassifier(AxisEnvWrite, "*"),
+	"os/exec.Command":        nameClassifier(AxisExec),
+	"os/exec.LookPath":       nameClassifier(AxisExec),
+	"os/exec.CommandContext": commandContextClassifier,
 }
 
 // ParseGateSpec parses a --gate flag value into the list of axes to gate.
@@ -157,45 +198,39 @@ func ParseGateSpec(spec string) ([]string, error) {
 	return resolved, nil
 }
 
-// classifyNativeCall resolves the axis and scope for a native call, if it is gated.
+// classifyNativeCall resolves the claims a native call exercises, if it is gated.
 //
-// Takes fnPath (string) which is the dotted native symbol path.
+// Takes fnPath (string) which is the registered native symbol.
 // Takes args ([]reflect.Value) which are the reflected call arguments.
 //
-// Returns axis (string) which is the capability axis.
-// Returns scope (string) which narrows the axis.
-// Returns gated (bool) which is true when the call is a gated entry point.
-func classifyNativeCall(fnPath string, args []reflect.Value) (axis, scope string, gated bool) {
+// Returns []capabilityClaim which lists the claims, in the order they are consulted.
+// Returns bool which is true when the call is a gated entry point.
+func classifyNativeCall(fnPath string, args []reflect.Value) ([]capabilityClaim, bool) {
 	rule, ok := nativeGateRules[fnPath]
 	if !ok {
-		return "", "", false
+		return nil, false
 	}
-	axis, scope = rule(args)
-	return axis, scope, true
+	return rule(args), true
 }
 
 // dialClassifier reads network and address from a net.Dial-shaped call.
 //
 // Takes args ([]reflect.Value) which are the reflected call arguments.
 //
-// Returns axis (string) which is AxisNetworkDial.
-// Returns scope (string) which is the "network:address" pair.
-func dialClassifier(args []reflect.Value) (axis, scope string) {
-	network := argString(args, 0)
-	address := argString(args, 1)
-	return AxisNetworkDial, joinScope(network, address)
+// Returns []capabilityClaim which holds one AxisNetworkDial claim scoped to
+// "network:address".
+func dialClassifier(args []reflect.Value) []capabilityClaim {
+	return []capabilityClaim{{axis: AxisNetworkDial, scope: joinScope(argString(args, 0), argString(args, 1))}}
 }
 
 // listenClassifier reads network and address from a net.Listen-shaped call.
 //
 // Takes args ([]reflect.Value) which are the reflected call arguments.
 //
-// Returns axis (string) which is AxisNetworkListen.
-// Returns scope (string) which is the "network:address" pair.
-func listenClassifier(args []reflect.Value) (axis, scope string) {
-	network := argString(args, 0)
-	address := argString(args, 1)
-	return AxisNetworkListen, joinScope(network, address)
+// Returns []capabilityClaim which holds one AxisNetworkListen claim scoped to
+// "network:address".
+func listenClassifier(args []reflect.Value) []capabilityClaim {
+	return []capabilityClaim{{axis: AxisNetworkListen, scope: joinScope(argString(args, 0), argString(args, 1))}}
 }
 
 // urlClassifier builds a classifier for calls whose first argument is a URL or address
@@ -205,19 +240,47 @@ func listenClassifier(args []reflect.Value) (axis, scope string) {
 //
 // Returns gateClassifier which reads the first string argument as the scope.
 func urlClassifier(axis string) gateClassifier {
-	return func(args []reflect.Value) (string, string) {
-		return axis, argString(args, 0)
+	return func(args []reflect.Value) []capabilityClaim {
+		return []capabilityClaim{{axis: axis, scope: argString(args, 0)}}
 	}
 }
 
-// pathClassifier builds a classifier for calls whose first argument is a filesystem path.
+// fixedClassifier builds a classifier whose claim does not depend on the arguments.
 //
 // Takes axis (string) which is the axis to report.
+// Takes scope (string) which is the scope to report.
 //
-// Returns gateClassifier which reads the first string argument as the scope.
-func pathClassifier(axis string) gateClassifier {
-	return func(args []reflect.Value) (string, string) {
-		return axis, argString(args, 0)
+// Returns gateClassifier which always reports the one claim.
+func fixedClassifier(axis, scope string) gateClassifier {
+	return func(_ []reflect.Value) []capabilityClaim {
+		return []capabilityClaim{{axis: axis, scope: scope}}
+	}
+}
+
+// pathClassifier builds a classifier for calls with one filesystem path argument.
+//
+// Takes axis (string) which is the axis to report.
+// Takes index (int) which is the position of the path argument.
+//
+// Returns gateClassifier which reads that argument as the scope.
+func pathClassifier(axis string, index int) gateClassifier {
+	return pathsClassifier(axis, index)
+}
+
+// pathsClassifier builds a classifier for calls with several filesystem path arguments,
+// such as os.Rename, and reports one claim per path.
+//
+// Takes axis (string) which is the axis to report.
+// Takes indices (...int) which are the positions of the path arguments.
+//
+// Returns gateClassifier which reports one claim per path, in argument order.
+func pathsClassifier(axis string, indices ...int) gateClassifier {
+	return func(args []reflect.Value) []capabilityClaim {
+		claims := make([]capabilityClaim, 0, len(indices))
+		for _, index := range indices {
+			claims = append(claims, capabilityClaim{axis: axis, scope: argString(args, index)})
+		}
+		return claims
 	}
 }
 
@@ -228,24 +291,43 @@ func pathClassifier(axis string) gateClassifier {
 //
 // Returns gateClassifier which reads the first string argument as the scope.
 func nameClassifier(axis string) gateClassifier {
-	return func(args []reflect.Value) (string, string) {
-		return axis, argString(args, 0)
+	return func(args []reflect.Value) []capabilityClaim {
+		return []capabilityClaim{{axis: axis, scope: argString(args, 0)}}
 	}
 }
 
-// renameClassifier reads the source and destination paths from a two-path write call.
+// symlinkClassifier reads os.Symlink(target, name).
+//
+// The new name is a write. The target is a read, resolved against the new name's
+// directory when it is relative, because that is where the link will point.
 //
 // Takes args ([]reflect.Value) which are the reflected call arguments.
 //
-// Returns axis (string) which is AxisFilesystemWrite.
-// Returns scope (string) which is the "old -> new" pair.
-func renameClassifier(args []reflect.Value) (axis, scope string) {
-	from := argString(args, 0)
-	to := argString(args, 1)
-	if to == "" {
-		return AxisFilesystemWrite, from
+// Returns []capabilityClaim which holds the write claim and then the read claim.
+func symlinkClassifier(args []reflect.Value) []capabilityClaim {
+	target := argString(args, 0)
+	name := argString(args, 1)
+	if !filepath.IsAbs(target) && name != "" {
+		target = filepath.Join(filepath.Dir(name), target)
 	}
-	return AxisFilesystemWrite, from + " -> " + to
+	return []capabilityClaim{
+		{axis: AxisFilesystemWrite, scope: name},
+		{axis: AxisFilesystemRead, scope: target},
+	}
+}
+
+// temporaryDirectoryClassifier reads the directory a temporary file or directory is
+// created in, which is os.TempDir() when the script passes "".
+//
+// Takes args ([]reflect.Value) which are the reflected call arguments.
+//
+// Returns []capabilityClaim which holds one AxisFilesystemWrite claim on the directory.
+func temporaryDirectoryClassifier(args []reflect.Value) []capabilityClaim {
+	directory := argString(args, 0)
+	if directory == "" {
+		directory = os.TempDir()
+	}
+	return []capabilityClaim{{axis: AxisFilesystemWrite, scope: directory}}
 }
 
 // openFileClassifier maps os.OpenFile to a read or write axis by inspecting its flag
@@ -253,15 +335,14 @@ func renameClassifier(args []reflect.Value) (axis, scope string) {
 //
 // Takes args ([]reflect.Value) which are the reflected call arguments.
 //
-// Returns axis (string) which is AxisFilesystemRead or AxisFilesystemWrite.
-// Returns scope (string) which is the opened path.
-func openFileClassifier(args []reflect.Value) (axis, scope string) {
-	axis = AxisFilesystemRead
+// Returns []capabilityClaim which holds one claim on the opened path.
+func openFileClassifier(args []reflect.Value) []capabilityClaim {
+	axis := AxisFilesystemRead
 	flag := argInt(args, 1)
 	if flag&(os.O_WRONLY|os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_APPEND) != 0 {
 		axis = AxisFilesystemWrite
 	}
-	return axis, argString(args, 0)
+	return []capabilityClaim{{axis: axis, scope: argString(args, 0)}}
 }
 
 // commandContextClassifier maps os/exec.CommandContext, whose command name is the second
@@ -269,10 +350,9 @@ func openFileClassifier(args []reflect.Value) (axis, scope string) {
 //
 // Takes args ([]reflect.Value) which are the reflected call arguments.
 //
-// Returns axis (string) which is AxisExec.
-// Returns scope (string) which is the command name.
-func commandContextClassifier(args []reflect.Value) (axis, scope string) {
-	return AxisExec, argString(args, 1)
+// Returns []capabilityClaim which holds one AxisExec claim on the command name.
+func commandContextClassifier(args []reflect.Value) []capabilityClaim {
+	return []capabilityClaim{{axis: AxisExec, scope: argString(args, 1)}}
 }
 
 // joinScope formats a network and address into the canonical "network:address" scope.

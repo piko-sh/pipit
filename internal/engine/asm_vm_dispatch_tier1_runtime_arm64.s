@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerSubOpCap sets ints[B] = cap(value at C) via asmCallCap (collectionLengthOrCap).
-TEXT ·handlerSubOpCap(SB), NOSPLIT, $32-0
+// handlerCapacityGeneral sets ints[B] = cap(value at C) via asmCallCapacityGeneral (collectionLengthOrCap).
+TEXT ·handlerCapacityGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -35,7 +35,7 @@ TEXT ·handlerSubOpCap(SB), NOSPLIT, $32-0
 	MOVD R19, 8(RSP)
 	MOVD R1, 16(RSP)
 	MOVD R2, 24(RSP)
-	BL   ·asmCallCap(SB)
+	BL   ·asmCallCapacityGeneral(SB)
 	MOVD 32(RSP), R19
 	MOVD CTX_SAVED_PC(R19), R20
 	MOVD CTX_CODE_BASE(R19), R22
@@ -48,8 +48,8 @@ TEXT ·handlerSubOpCap(SB), NOSPLIT, $32-0
 	ADD  $48, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpBytesToString sets strings[B] = string(bytes at C) via asmCallBytesToString (arena-backed).
-TEXT ·handlerSubOpBytesToString(SB), NOSPLIT, $32-0
+// handlerConvertBytesToString sets strings[B] = string(bytes at C) via asmCallConvertBytesToString (arena-backed).
+TEXT ·handlerConvertBytesToString(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -58,7 +58,7 @@ TEXT ·handlerSubOpBytesToString(SB), NOSPLIT, $32-0
 	MOVD R19, 8(RSP)
 	MOVD R1, 16(RSP)
 	MOVD R2, 24(RSP)
-	BL   ·asmCallBytesToString(SB)
+	BL   ·asmCallConvertBytesToString(SB)
 	MOVD 32(RSP), R19
 	MOVD CTX_SAVED_PC(R19), R20
 	MOVD CTX_CODE_BASE(R19), R22
@@ -71,8 +71,8 @@ TEXT ·handlerSubOpBytesToString(SB), NOSPLIT, $32-0
 	ADD  $48, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpBoxSliceInt boxes []int64 at C into general[B] via asmCallBoxSliceInt (reflect.ValueOf).
-TEXT ·handlerSubOpBoxSliceInt(SB), NOSPLIT, $32-0
+// handlerBoxSliceInt64 boxes []int64 at C into general[B] via asmCallBoxSliceInt64 (reflect.ValueOf).
+TEXT ·handlerBoxSliceInt64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -81,7 +81,7 @@ TEXT ·handlerSubOpBoxSliceInt(SB), NOSPLIT, $32-0
 	MOVD R19, 8(RSP)
 	MOVD R1, 16(RSP)
 	MOVD R2, 24(RSP)
-	BL   ·asmCallBoxSliceInt(SB)
+	BL   ·asmCallBoxSliceInt64(SB)
 	MOVD 32(RSP), R19
 	MOVD CTX_SAVED_PC(R19), R20
 	MOVD CTX_CODE_BASE(R19), R22
@@ -94,8 +94,8 @@ TEXT ·handlerSubOpBoxSliceInt(SB), NOSPLIT, $32-0
 	ADD  $48, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpAllocStructLiteral carves a zeroed pointer-free struct literal from the arena generic-bytes slab into general[C]; falls back to Go via EXIT_TIER2.
-TEXT ·handlerSubOpAllocStructLiteral(SB), NOSPLIT|NOFRAME, $0
+// handlerAllocateStructLiteral carves a zeroed pointer-free struct literal from the arena generic-bytes slab into general[C]. It falls back to Go via EXIT_TIER2.
+TEXT ·handlerAllocateStructLiteral(SB), NOSPLIT|NOFRAME, $0
 	LSR  $24, R0, R1
 	AND  $0xFF, R1, R1
 	MOVWU (R22)(R20<<2), R2

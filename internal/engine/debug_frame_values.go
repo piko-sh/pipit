@@ -138,9 +138,9 @@ func registerIndex(location program.VarLocation) int {
 func readRegisterLocation(registers *Registers, location program.VarLocation) reflect.Value {
 	index := registerIndex(location)
 	switch location.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return indexedValue(registers.Ints, index)
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return indexedValue(registers.Floats, index)
 	case isa.RegisterString:
 		return indexedValue(registers.Strings, index)
@@ -151,19 +151,19 @@ func readRegisterLocation(registers *Registers, location program.VarLocation) re
 		return reflect.Value{}
 	case isa.RegisterBool:
 		return indexedValue(registers.Bools, index)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return indexedValue(registers.Uints, index)
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return indexedValue(registers.Complex, index)
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		return indexedValue(registers.SlicesInt, index)
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		return indexedValue(registers.slicesFloat, index)
 	case isa.RegisterSliceString:
 		return indexedValue(registers.slicesString, index)
 	case isa.RegisterSliceBool:
 		return indexedValue(registers.slicesBool, index)
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		return indexedValue(registers.slicesUint, index)
 	case isa.RegisterSliceByte:
 		return indexedValue(registers.slicesByte, index)
@@ -209,9 +209,9 @@ func readUpvalueLocation(frame *CallFrame, location program.VarLocation) reflect
 // Returns reflect.Value which is invalid for an empty general cell or unknown kind.
 func upvalueCellValue(cell *program.UpvalueCell) reflect.Value {
 	switch cell.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return reflect.ValueOf(cell.IntValue)
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return reflect.ValueOf(cell.FloatValue)
 	case isa.RegisterString:
 		return reflect.ValueOf(cell.StringValue)
@@ -219,19 +219,19 @@ func upvalueCellValue(cell *program.UpvalueCell) reflect.Value {
 		return cell.GeneralValue
 	case isa.RegisterBool:
 		return reflect.ValueOf(cell.BoolValue)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return reflect.ValueOf(cell.UintValue)
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return reflect.ValueOf(cell.ComplexValue)
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		return reflect.ValueOf(cell.SliceIntValue)
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		return reflect.ValueOf(cell.SliceFloatValue)
 	case isa.RegisterSliceString:
 		return reflect.ValueOf(cell.SliceStringValue)
 	case isa.RegisterSliceBool:
 		return reflect.ValueOf(cell.SliceBoolValue)
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		return reflect.ValueOf(cell.SliceUintValue)
 	case isa.RegisterSliceByte:
 		return reflect.ValueOf(cell.SliceByteValue)
@@ -250,17 +250,17 @@ func upvalueCellValue(cell *program.UpvalueCell) reflect.Value {
 func writeRegisterLocation(registers *Registers, location program.VarLocation, value reflect.Value) error {
 	index := registerIndex(location)
 	switch location.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return storeScalar(registers.Ints, index, value)
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return storeScalar(registers.Floats, index, value)
 	case isa.RegisterString:
 		return storeScalar(registers.Strings, index, value)
 	case isa.RegisterBool:
 		return storeScalar(registers.Bools, index, value)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return storeScalar(registers.Uints, index, value)
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return storeScalar(registers.Complex, index, value)
 	case isa.RegisterGeneral:
 		if index >= len(registers.General) {
@@ -317,17 +317,17 @@ func writeUpvalueLocation(frame *CallFrame, location program.VarLocation, value 
 		return fault.ErrVariableNotWritable
 	}
 	switch cell.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return storeCellScalar(&cell.IntValue, value)
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return storeCellScalar(&cell.FloatValue, value)
 	case isa.RegisterString:
 		return storeCellScalar(&cell.StringValue, value)
 	case isa.RegisterBool:
 		return storeCellScalar(&cell.BoolValue, value)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return storeCellScalar(&cell.UintValue, value)
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return storeCellScalar(&cell.ComplexValue, value)
 	default:
 		return fault.ErrVariableNotWritable

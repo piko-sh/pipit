@@ -36,13 +36,13 @@ func TestRegisterToReflectValueBoxesEveryBank(t *testing.T) {
 		name  string
 		kind  isa.RegisterKind
 	}{
-		{name: "the integer bank", kind: isa.RegisterInt,
+		{name: "the integer bank", kind: isa.RegisterInt64,
 			seed: func(registers *Registers) { registers.Ints[0] = 42 },
 			check: func(t *testing.T, boxed reflect.Value) {
 				t.Helper()
 				require.Equal(t, int64(42), boxed.Int())
 			}},
-		{name: "the float bank", kind: isa.RegisterFloat,
+		{name: "the float bank", kind: isa.RegisterFloat64,
 			seed: func(registers *Registers) { registers.Floats[0] = 1.5 },
 			check: func(t *testing.T, boxed reflect.Value) {
 				t.Helper()
@@ -60,13 +60,13 @@ func TestRegisterToReflectValueBoxesEveryBank(t *testing.T) {
 				t.Helper()
 				require.True(t, boxed.Bool())
 			}},
-		{name: "the unsigned bank", kind: isa.RegisterUint,
+		{name: "the unsigned bank", kind: isa.RegisterUint64,
 			seed: func(registers *Registers) { registers.Uints[0] = 42 },
 			check: func(t *testing.T, boxed reflect.Value) {
 				t.Helper()
 				require.Equal(t, uint64(42), boxed.Uint())
 			}},
-		{name: "the complex bank", kind: isa.RegisterComplex,
+		{name: "the complex bank", kind: isa.RegisterComplex128,
 			seed: func(registers *Registers) { registers.Complex[0] = 1 + 2i },
 			check: func(t *testing.T, boxed reflect.Value) {
 				t.Helper()
@@ -78,13 +78,13 @@ func TestRegisterToReflectValueBoxesEveryBank(t *testing.T) {
 				t.Helper()
 				require.Equal(t, "boxed", boxed.String())
 			}},
-		{name: "the integer slice bank", kind: isa.RegisterSliceInt,
+		{name: "the integer slice bank", kind: isa.RegisterSliceInt64,
 			seed: func(registers *Registers) { registers.SlicesInt[0] = []int64{1, 2} },
 			check: func(t *testing.T, boxed reflect.Value) {
 				t.Helper()
 				require.Equal(t, 2, boxed.Len())
 			}},
-		{name: "the float slice bank", kind: isa.RegisterSliceFloat,
+		{name: "the float slice bank", kind: isa.RegisterSliceFloat64,
 			seed: func(registers *Registers) { registers.slicesFloat[0] = []float64{1} },
 			check: func(t *testing.T, boxed reflect.Value) {
 				t.Helper()
@@ -102,7 +102,7 @@ func TestRegisterToReflectValueBoxesEveryBank(t *testing.T) {
 				t.Helper()
 				require.Equal(t, 1, boxed.Len())
 			}},
-		{name: "the unsigned slice bank", kind: isa.RegisterSliceUint,
+		{name: "the unsigned slice bank", kind: isa.RegisterSliceUint64,
 			seed: func(registers *Registers) { registers.slicesUint[0] = []uint64{7} },
 			check: func(t *testing.T, boxed reflect.Value) {
 				t.Helper()
@@ -152,13 +152,13 @@ func TestCopySameKindArgMovesBetweenRegisterFiles(t *testing.T) {
 		name  string
 		kind  isa.RegisterKind
 	}{
-		{name: "the integer bank", kind: isa.RegisterInt,
+		{name: "the integer bank", kind: isa.RegisterInt64,
 			seed: func(registers *Registers) { registers.Ints[1] = 42 },
 			check: func(t *testing.T, d *Registers) {
 				t.Helper()
 				require.Equal(t, int64(42), d.Ints[0])
 			}},
-		{name: "the float bank", kind: isa.RegisterFloat,
+		{name: "the float bank", kind: isa.RegisterFloat64,
 			seed: func(registers *Registers) { registers.Floats[1] = 1.5 },
 			check: func(t *testing.T, d *Registers) {
 				t.Helper()
@@ -176,13 +176,13 @@ func TestCopySameKindArgMovesBetweenRegisterFiles(t *testing.T) {
 				t.Helper()
 				require.True(t, d.Bools[0])
 			}},
-		{name: "the unsigned bank", kind: isa.RegisterUint,
+		{name: "the unsigned bank", kind: isa.RegisterUint64,
 			seed: func(registers *Registers) { registers.Uints[1] = 42 },
 			check: func(t *testing.T, d *Registers) {
 				t.Helper()
 				require.Equal(t, uint64(42), d.Uints[0])
 			}},
-		{name: "the complex bank", kind: isa.RegisterComplex,
+		{name: "the complex bank", kind: isa.RegisterComplex128,
 			seed: func(registers *Registers) { registers.Complex[1] = 1 + 2i },
 			check: func(t *testing.T, d *Registers) {
 				t.Helper()
@@ -194,7 +194,7 @@ func TestCopySameKindArgMovesBetweenRegisterFiles(t *testing.T) {
 				t.Helper()
 				require.Equal(t, int64(7), d.General[0].Int())
 			}},
-		{name: "the integer slice bank", kind: isa.RegisterSliceInt,
+		{name: "the integer slice bank", kind: isa.RegisterSliceInt64,
 			seed: func(registers *Registers) { registers.SlicesInt[1] = []int64{1} },
 			check: func(t *testing.T, d *Registers) {
 				t.Helper()
@@ -343,28 +343,37 @@ func TestReflectValueBufferPoolHandsOutTheRequestedLength(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			buffer := acquireReflectValueBuffer(tt.length)
+			buffer, holder := acquireReflectValueBuffer(tt.length)
 
 			require.Len(t, buffer, tt.length)
 			for _, slot := range buffer {
 				require.False(t, slot.IsValid(), "a leased buffer must be cleared of the previous tenant's values")
 			}
-			releaseReflectValueBuffer(buffer)
+			releaseReflectValueBuffer(holder)
 		})
 	}
 
 	t.Run("a reused buffer is cleared before it is handed back out", func(t *testing.T) {
 		t.Parallel()
-		first := acquireReflectValueBuffer(4)
+		first, firstHolder := acquireReflectValueBuffer(4)
 		first[0] = reflect.ValueOf(42)
-		releaseReflectValueBuffer(first)
+		releaseReflectValueBuffer(firstHolder)
 
-		second := acquireReflectValueBuffer(4)
+		second, secondHolder := acquireReflectValueBuffer(4)
 
 		require.Len(t, second, 4)
 		for _, slot := range second {
 			require.False(t, slot.IsValid(), "a pooled buffer must not leak the previous caller's arguments")
 		}
-		releaseReflectValueBuffer(second)
+		releaseReflectValueBuffer(secondHolder)
+	})
+
+	t.Run("a release returns the holder it acquired", func(t *testing.T) {
+		buffer, holder := acquireReflectValueBuffer(3)
+		buffer[1] = reflect.ValueOf("kept")
+		releaseReflectValueBuffer(holder)
+
+		require.Empty(t, *holder, "the released holder keeps no length")
+		require.False(t, (*holder)[:3][1].IsValid(), "the released holder's backing is cleared")
 	})
 }

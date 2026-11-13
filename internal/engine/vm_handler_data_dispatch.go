@@ -24,6 +24,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
+	"weak"
 
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/symtab"
@@ -32,9 +33,9 @@ import (
 )
 
 const (
-	// DerefSnapshot is the isa.OpDeref operand-c sentinel requesting a freestanding value
-	// copy whose backing storage is a fresh allocation, so mutations to the source cannot
-	// leak into the copy. The default value 0 preserves live-view semantics.
+	// DerefSnapshot is the isa.OpDereference operand-c sentinel requesting a freestanding
+	// value copy whose backing storage is a fresh allocation, so mutations to the source
+	// cannot leak into the copy. The default value 0 preserves live-view semantics.
 	DerefSnapshot uint8 = 1
 
 	// maxTypedHandleCacheEntries caps the per-VM typed channel handle cache. Beyond the cap,
@@ -63,16 +64,20 @@ const (
 	// register is left untouched so multi-type cases do not clobber a prior match.
 	TypeAssertModeTypeSwitch uint8 = 2
 
-	// AddrSourceStable is the operand-C marker for isa.OpAddr on heap-stable sources where
-	// the escape-promote copy must be skipped because a copy would break aliasing with the
-	// container element, while the default value 0 preserves escape-promote behaviour for
-	// locals.
+	// AddrSourceStable is the operand-C marker for isa.OpAddress on heap-stable sources
+	// where the escape-promote copy must be skipped because a copy would break aliasing with
+	// the container element, while the default value 0 preserves escape-promote behaviour
+	// for locals.
 	AddrSourceStable uint8 = 1
 
 	// typeIsPointerFreeCacheInitialHint is the starting capacity for the typeIsPointerFree
 	// cache map. Sized for the typical interpreter session's distinct-type count; the map
 	// grows automatically.
 	typeIsPointerFreeCacheInitialHint = 64
+
+	// typeIsPointerFreeFrontSlots is the size of typeIsPointerFree's per-type front, a power
+	// of two.
+	typeIsPointerFreeFrontSlots = 512
 )
 
 var (
@@ -87,6 +92,16 @@ var (
 	// typeIsPointerFreeMu serialises copy-on-write updates to typeIsPointerFreeCache; the
 	// read path is lock-free.
 	typeIsPointerFreeMu sync.Mutex
+
+	// typeIsPointerFreeFront is a direct-mapped, lock-free front for typeIsPointerFreeCache.
+	//
+	// Each slot holds a type's *abi.Type address, with bit 0 set when the type is pointer
+	// free (types are word-aligned), or zero.
+	//
+	// A hit costs one atomic load and no map hash; a miss, or a slot another type took,
+	// falls back to the map. A slot is written only after the map holds its type, which
+	// keeps the address from naming another type.
+	typeIsPointerFreeFront [typeIsPointerFreeFrontSlots]atomic.Uintptr
 )
 
 // selectCaseInfo tracks the destination register for a select receiver case.
@@ -106,7 +121,7 @@ type selectCaseInfo struct {
 }
 
 // methodCacheKey identifies a (type, method name) pair for the per-VM method index cache
-// used by handleGetMethod.
+// used by handleBindMethodByNameBody.
 type methodCacheKey struct {
 	// typ is the reflect type of the receiver.
 	typ reflect.Type
@@ -115,9 +130,8 @@ type methodCacheKey struct {
 	Name string
 }
 
-// boundMethodVM captures state for running a bound method in a child VM. Capture
-// happens on the owning goroutine because native callers may invoke the method
-// concurrently.
+// boundMethodVM captures state for running a bound method in a child VM. Capture happens
+// on the owning goroutine because native callers may invoke the method concurrently.
 type boundMethodVM struct {
 	// vm is the VM the method was bound on; a failed call records its error there.
 	vm *VM
@@ -131,9 +145,6 @@ type boundMethodVM struct {
 	// symbols is the bound VM's symbol registry.
 	symbols *symtab.SymbolRegistry
 
-	// functions is the function table the child VM dispatches against.
-	functions []*program.CompiledFunction
-
 	// rootFunction is the root the child VM executes under.
 	rootFunction *program.CompiledFunction
 
@@ -144,117 +155,22 @@ type boundMethodVM struct {
 	// the parent VM's. Set for the cross-package adapter path; nil for the in-package case.
 	rootFunctionOverride *program.CompiledFunction
 
+	// makerArena names the arena of the VM the method was bound on, for its count of active
+	// callbacks (parked callers); a nil pointer in an arena without a licence.
+	makerArena weak.Pointer[RegisterArena]
+
+	// gates are the export gates each child VM's run holds, which are those the VM the
+	// method was bound on had published when the method was bound (VM.exportedGates).
+	gates exportGateSet
+
+	// functions is the function table the child VM dispatches against.
+	functions []*program.CompiledFunction
+
 	// limits carries the resource limits inherited from the parent VM.
 	limits VMLimits
 
 	// goroutineID is the bound VM's goroutine identity, inherited by each child VM.
 	goroutineID uint64
-}
-
-// newBoundMethodVM captures what invoking callee as a method of a value bound on vm
-// needs. It must run on the goroutine that owns vm.
-//
-// Takes vm (*VM) which is the VM the method is bound on.
-// Takes callee (*program.CompiledFunction) which is the method body.
-// Takes rootFunctionOverride (*program.CompiledFunction) which pins the child VM's root
-// for a method compiled in another package; nil for vm's own root.
-//
-// Returns the bound method.
-func newBoundMethodVM(vm *VM, callee *program.CompiledFunction, rootFunctionOverride *program.CompiledFunction) *boundMethodVM {
-	bound := &boundMethodVM{
-		vm:                   vm,
-		link:                 vm.currentLink(),
-		globals:              vm.Globals,
-		symbols:              vm.symbols,
-		functions:            vm.functions,
-		rootFunction:         vm.rootFunction,
-		callee:               callee,
-		rootFunctionOverride: rootFunctionOverride,
-		limits:               vm.Limits,
-		goroutineID:          vm.goroutineID,
-	}
-	if rootFunctionOverride != nil {
-		bound.functions = rootFunctionOverride.Functions
-		bound.rootFunction = rootFunctionOverride
-	}
-	return bound
-}
-
-// invoke runs a bound method in a child VM using bindCallbackRun's cancellation rules.
-// Cancellation or timeout fails the live execution, while other failures are recorded
-// on the bound VM.
-//
-// Takes receiver (reflect.Value) which is the method receiver value.
-// Takes arguments ([]reflect.Value) which holds the method arguments.
-// Takes extract (func(reflect.Value) reflect.Value) which converts each argument.
-//
-// Returns []reflect.Value which represents the method's return values, or zero-valued
-// result slots when the child VM errors.
-func (b *boundMethodVM) invoke(receiver reflect.Value, arguments []reflect.Value, extract func(reflect.Value) reflect.Value) []reflect.Value {
-	results, err := b.invokeResult(receiver, arguments, extract)
-	if err == nil {
-		return results
-	}
-	if !failOnStop(b.link, err) && b.vm.evalError == nil {
-		b.vm.evalError = fmt.Errorf("bound method invocation failed: %w", err)
-	}
-	return reflectResults(nil, b.callee.ResultKinds)
-}
-
-// invokeResult is invoke returning the child VM's failure to the caller instead of
-// recording it on the parent, for adapters whose interface method can return an error.
-//
-// Takes receiver (reflect.Value) which is the method receiver value.
-// Takes arguments ([]reflect.Value) which holds the method arguments.
-// Takes extract (func(reflect.Value) reflect.Value) which converts each argument.
-//
-// Returns []reflect.Value which represents the method's return values.
-// Returns error when the child VM failed.
-//
-// Panics when the child VM raises an interpreted panic and an upstream native dispatch
-// frame is still active, so the panic reaches an interpreted defer/recover.
-func (b *boundMethodVM) invokeResult(receiver reflect.Value, arguments []reflect.Value, extract func(reflect.Value) reflect.Value) ([]reflect.Value, error) {
-	childVM := NewVM(b.link.detached, b.globals, b.symbols)
-	childVM.bindCallbackRun(b.link, b.limits.CallbackTimeout)
-	childVM.goroutineID = b.goroutineID
-	childVM.reentrantInterpreterVM = true
-	childVM.debugKind = DebugThreadBoundMethod
-	childVM.debugParkDone = b.link.ctx.Done()
-
-	childVM.hasGoroutines = true
-	childVM.Limits = b.limits
-	childVM.functions = b.functions
-	childVM.rootFunction = b.rootFunction
-	arena := GetRegisterArena()
-
-	arena.MaxArenaBytes = b.limits.MaxArenaBytes
-	arena.MaxAllocSize = b.limits.MaxAllocSize
-	arena.disableMinorGC = b.limits.DisableMinorGC
-	arena.cloneUnownedStrings = true
-	arena.AttachBudgetTracker(b.limits.Tracker)
-	childVM.Arena = arena
-	childVM.CallStack = arena.frameStack()
-	defer childVM.FinishWatcher()
-	defer childVM.ReturnUnspentCostChunk()
-	defer childVM.finishRun()
-	defer func() {
-		childVM.CallStack = nil
-		putRegisterArenaAbandoningEscapes(arena)
-	}()
-	childVM.PushFrame(b.callee)
-	f := childVM.currentFrame()
-	placeBoundMethodReceiver(&f.Registers, b.callee, receiver)
-	setMethodArgs(&f.Registers, b.callee, arguments, extract)
-	result, err := childVM.run(0)
-	allResults := childVM.EvalAllResults
-	childVM.EvalAllResults = nil
-	if err != nil {
-		if childVM.panicValue != nil && b.globals != nil && b.globals.dispatchDepth.Load() > 0 {
-			panic(wrapCallbackPanic(childVM))
-		}
-		return nil, err
-	}
-	return reflectResultsMulti(result, allResults, b.callee.ResultKinds), nil
 }
 
 // rangeNextContext bundles the decoded extension-word parameters needed by the
@@ -277,22 +193,296 @@ type rangeNextContext struct {
 	ValInstruction isa.Instruction
 }
 
-// cachedAddr returns v.Addr() but bypasses reflect.PointerTo's sync.Map lookup via a
-// one-slot per-VM cache. Hot for the `&Struct{...}` ADDR opcode chain in tight
-// constructors.
+// newBoundMethodVM captures what invoking callee as a method of a value bound on vm
+// needs. It must run on the goroutine that owns vm.
+//
+// Takes vm (*VM) which is the VM the method is bound on.
+// Takes callee (*program.CompiledFunction) which is the method body.
+// Takes rootFunctionOverride (*program.CompiledFunction) which pins the child VM's root
+// for a method compiled in another package; nil for vm's own root.
+//
+// Returns the bound method.
+func newBoundMethodVM(vm *VM, callee *program.CompiledFunction, rootFunctionOverride *program.CompiledFunction) *boundMethodVM {
+	return new(makeBoundMethodVM(vm, callee, rootFunctionOverride))
+}
+
+// invoke runs a bound method in a child VM using bindCallbackRun's cancellation rules.
+// Cancellation or timeout fails the live execution, while other failures are recorded on
+// the bound VM.
+//
+// Takes receiver (reflect.Value) which is the method receiver value.
+// Takes arguments ([]reflect.Value) which holds the method arguments.
+// Takes extract (func(reflect.Value) reflect.Value) which converts each argument.
+//
+// Returns []reflect.Value which represents the method's return values, or zero-valued
+// result slots when the child VM errors.
+func (b *boundMethodVM) invoke(receiver reflect.Value, arguments []reflect.Value, extract func(reflect.Value) reflect.Value) []reflect.Value {
+	results, err := b.invokeResult(receiver, arguments, extract)
+	if err == nil {
+		return results
+	}
+	if !failOnStop(b.link, err) && b.vm.evalError == nil {
+		b.vm.evalError = fmt.Errorf("bound method invocation failed: %w", err)
+	}
+	return reflectResults(nil, b.callee.ResultKinds)
+}
+
+// invokeResult is invoke returning the child VM's failure to the caller instead of
+// recording it on the parent, for adapters whose interface method can return an error.
+//
+// An interpreted panic from the child VM propagates through any active upstream native
+// dispatch frame to reach an interpreted defer/recover.
+//
+// Takes receiver (reflect.Value) which is the method receiver value.
+// Takes arguments ([]reflect.Value) which holds the method arguments.
+// Takes extract (func(reflect.Value) reflect.Value) which converts each argument.
+//
+// Returns []reflect.Value which represents the method's return values.
+// Returns error when the child VM failed.
+func (b *boundMethodVM) invokeResult(receiver reflect.Value, arguments []reflect.Value, extract func(reflect.Value) reflect.Value) ([]reflect.Value, error) {
+	callee, err := receiverMethodBody(b.rootFunction, receiver, b.callee)
+	if err != nil {
+		return nil, err
+	}
+	childVM := NewVM(b.link.detached, b.globals, b.symbols)
+	recycleChild := false
+	defer func() {
+		if recycleChild {
+			childVM.recycle()
+		}
+	}()
+	childVM.bindCallbackRun(b.link, b.limits.CallbackTimeout)
+	childVM.goroutineID = b.goroutineID
+	childVM.reentrantInterpreterVM = true
+	childVM.debugKind = DebugThreadBoundMethod
+	childVM.debugParkDone = b.link.ctx.Done()
+
+	childVM.hasGoroutines = true
+	childVM.Limits = b.limits
+	childVM.runGates = b.gates
+	childVM.functions = b.functions
+	childVM.rootFunction = b.rootFunction
+	arena := b.acquireArena(childVM)
+	childVM.Arena = arena
+	if arena.licensed {
+		arena.setLicenceVM(childVM)
+	}
+	childVM.CallStack = arena.frameStack()
+	defer childVM.FinishWatcher()
+	defer childVM.ReturnUnspentCostChunk()
+	defer childVM.finishRun()
+	completed := false
+	defer func() {
+		childVM.CallStack = nil
+		childVM.Arena = nil
+		if completed && b.keepsBoundArena(childVM, arena) && b.vm.parkBoundArena(arena) {
+			return
+		}
+		releaseRegisterArena(b.limits.abandonsArenas(), arena, true)
+	}()
+	restoreUnwindSlice := childVM.adoptAbortUnwindSliceIfNested()
+	defer restoreUnwindSlice()
+	childVM.parkedMaker = b.makerArena
+	if childVM.enterServedChain() {
+		defer childVM.leaveServedChain()
+	}
+	childVM.pushBoundMethodFrame(callee, receiver, arguments, extract)
+	result, err := childVM.runBoundMethodUnwinding()
+	allResults := childVM.EvalAllResults
+	childVM.EvalAllResults = nil
+	childVM.evalSingle = false
+	if err != nil {
+		b.raiseStopThroughNative(childVM, err)
+		return nil, err
+	}
+	result = b.handOffResults(childVM, result, allResults, receiver, arguments)
+	results := reflectResultsMulti(result, allResults, callee.ResultKinds)
+	recycleChild = true
+	completed = true
+	return results, nil
+}
+
+// pushBoundMethodFrame pushes the frame a bound method runs in, with its receiver and
+// arguments in place.
+//
+// Takes callee (*program.CompiledFunction) which is the method body.
+// Takes receiver (reflect.Value) which is the method receiver value.
+// Takes arguments ([]reflect.Value) which holds the method arguments.
+// Takes extract (func(reflect.Value) reflect.Value) which converts each argument.
+func (vm *VM) pushBoundMethodFrame(callee *program.CompiledFunction, receiver reflect.Value, arguments []reflect.Value, extract func(reflect.Value) reflect.Value) {
+	vm.PushFrame(callee)
+	frame := vm.currentFrame()
+	placeBoundMethodReceiver(&frame.Registers, callee, receiver)
+	setMethodArgs(&frame.Registers, callee, arguments, extract)
+}
+
+// acquireArena returns the arena the bound method's VM runs on: the one the previous call
+// kept, or a fresh one under the bound method's limits.
+//
+// Takes childVM (*VM) which is the VM the arena is for.
+//
+// Returns *RegisterArena which is the arena.
+func (b *boundMethodVM) acquireArena(childVM *VM) *RegisterArena {
+	if arena, kept := b.vm.takeBoundArena(); kept {
+		return arena
+	}
+	arena := acquireRegisterArena(b.limits.abandonsArenas())
+	arena.setRunBudget(b.limits.MaxArenaBytes)
+	arena.MaxAllocSize = b.limits.MaxAllocSize
+	arena.cloneUnownedStrings = true
+	arena.AttachBudgetTracker(b.limits.Tracker)
+	arena.attachLicencePolicy(&b.limits)
+	arena.licenceAlwaysShared = arena.licensed
+	if arenaAuditEnabled {
+		arena.auditAcquired(childVM.debugKind.String())
+	}
+	return arena
+}
+
+// raiseStopThroughNative raises a bound-method VM's stop through its native caller when
+// it must cross the native frame: a guest panic inside an active dispatch, or a hard
+// stop.
+//
+// Takes childVM (*VM) which ran the method.
+// Takes err (error) which is why it stopped.
+//
+// Panics with the method's panic or stop when it must reach the native caller.
+func (b *boundMethodVM) raiseStopThroughNative(childVM *VM, err error) {
+	if childVM.panicValue != nil && b.globals != nil && b.globals.dispatchDepth.Load() > 0 {
+		panic(wrapCallbackPanic(childVM))
+	}
+	if crossesNativeFrame(err, b.globals) {
+		panic(err)
+	}
+}
+
+// handOffResults hands off a finished bound-method run's results, receiver and arguments,
+// counting a run that needed no epoch revocation.
+//
+// Takes childVM (*VM) which ran the method.
+// Takes result (any) which is the single result, or the first of several.
+// Takes allResults ([]any) which holds every result of a multi-result method.
+// Takes receiver (reflect.Value) which is the method's receiver.
+// Takes arguments ([]reflect.Value) which are its arguments.
+//
+// Returns any which is the single result after its hand-off.
+func (b *boundMethodVM) handOffResults(childVM *VM, result any, allResults []any, receiver reflect.Value, arguments []reflect.Value) any {
+	handedOff := false
+	if len(b.callee.ResultKinds) <= 1 {
+		single := [1]any{result}
+		handedOff = childVM.handOffReentrantRun(single[:], receiver, arguments)
+		result = single[0]
+	} else {
+		handedOff = childVM.handOffReentrantRun(allResults, receiver, arguments)
+	}
+	if handedOff && licenceCounting {
+		callbackReleaseCounters.boundRuns.Add(1)
+	}
+	return result
+}
+
+// runBoundMethodUnwinding runs a bound-method VM and its pending defers after a hard
+// abort, cost stop or cancellation.
+//
+// A hard abort then goes on up as the same Go panic, joined with the unwind report when a
+// defer was left blocked; a cost stop or a cancellation is returned. Once a stopped
+// execution has abandoned a lock, it returns the fail-closed report instead of running
+// (failedClosed).
+//
+// Returns any which is the run's result.
+// Returns error which is the run's error.
+//
+// Panics again for a hard abort, joined with any unwind report, and for recovered values
+// that are not handled execution stops.
+func (vm *VM) runBoundMethodUnwinding() (result any, err error) {
+	if refused := vm.failedClosed(); refused != nil {
+		return nil, refused
+	}
+	defer vm.leaveCallbackRun(vm.enterCallbackRun())
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			return
+		}
+		if abort, ok := recovered.(error); ok && unwindsAfter(abort) && !vm.abortUnwinding {
+			if report := vm.unwindAfterAbort(); report != nil {
+				panic(joinUnwindReport(abort, report))
+			}
+		}
+		panic(recovered)
+	}()
+	vm.bindFinaliserPlacement()
+	if vm.enterServedChain() {
+		defer vm.leaveServedChain()
+	}
+	if vm.mayRunGated() && vm.beginGatedRun() {
+		defer vm.endGatedRun()
+	}
+	result, err = vm.run(0)
+	return result, vm.unwindAfterStoppedRun(0, err)
+}
+
+// cachedAddr returns v.Addr() using the VM's pointer-type cache.
 //
 // Takes v (reflect.Value) which the caller has already proved CanAddr.
 //
 // Returns a Pointer-kind Value equivalent to v.Addr().
 func (vm *VM) cachedAddr(v reflect.Value) reflect.Value {
-	elemType := v.Type()
-	ptrType := vm.ptrTypeCacheValue
-	if vm.ptrTypeCacheKey != elemType {
-		ptrType = reflect.PointerTo(elemType)
-		vm.ptrTypeCacheKey = elemType
-		vm.ptrTypeCacheValue = ptrType
+	return unsafePointerKindValue(reflectValueABIType(vm.pointerTypeOf(v.Type())), ReflectValuePtr(v))
+}
+
+// pointerTypeOf returns the pointer type to elementType from a small per-VM table,
+// falling back to reflect.PointerTo on a miss and replacing the table's oldest entry.
+//
+// Takes elementType (reflect.Type) which is the element type.
+//
+// Returns reflect.Type which is the pointer type to elementType.
+func (vm *VM) pointerTypeOf(elementType reflect.Type) reflect.Type {
+	for index := range vm.pointerTypeCache {
+		if vm.pointerTypeCache[index].element == elementType {
+			return vm.pointerTypeCache[index].pointer
+		}
 	}
-	return unsafePointerKindValue(reflectValueABIType(ptrType), ReflectValuePtr(v))
+	slot := &vm.pointerTypeCache[vm.pointerTypeCacheNext]
+	vm.pointerTypeCacheNext = (vm.pointerTypeCacheNext + 1) % pointerTypeCacheSlots
+	slot.element, slot.pointer = elementType, reflect.PointerTo(elementType)
+	return slot.pointer
+}
+
+// makeBoundMethodVM is newBoundMethodVM returning the bound method by value, for a call
+// site that invokes it at once and keeps nothing, so it can live on the caller's stack.
+// It pins vm all the same, as every holder of a bound method does.
+//
+// Takes vm (*VM) which is the VM the method is bound on.
+// Takes callee (*program.CompiledFunction) which is the method body.
+// Takes rootFunctionOverride (*program.CompiledFunction) which pins the child VM's root
+// for a method compiled in another package, or is nil for vm's own root.
+//
+// Returns the bound method.
+func makeBoundMethodVM(vm *VM, callee *program.CompiledFunction, rootFunctionOverride *program.CompiledFunction) boundMethodVM {
+	vm.pinIdentity()
+	bound := boundMethodVM{
+		vm:                   vm,
+		link:                 vm.currentLink(),
+		globals:              vm.Globals,
+		symbols:              vm.symbols,
+		functions:            vm.functions,
+		rootFunction:         vm.rootFunction,
+		callee:               callee,
+		rootFunctionOverride: rootFunctionOverride,
+		limits:               vm.Limits,
+		goroutineID:          vm.goroutineID,
+		makerArena:           weak.Pointer[RegisterArena]{},
+		gates:                vm.exportedGates(),
+	}
+	if rootFunctionOverride != nil {
+		bound.functions = rootFunctionOverride.Functions
+		bound.rootFunction = rootFunctionOverride
+	}
+	if vm.Arena != nil && vm.Arena.licensed {
+		bound.makerArena = weak.Make(vm.Arena)
+	}
+	return bound
 }
 
 // reflectResultsMulti packages a bound method's return values.
@@ -336,7 +526,8 @@ func reflectResultsMulti(result any, allResults []any, resultKinds []isa.Registe
 // Takes receiver (reflect.Value) which is the receiver value to install.
 func placeBoundMethodReceiver(registers *Registers, callee *program.CompiledFunction, receiver reflect.Value) {
 	if callee != nil && !callee.IsPointerReceiver &&
-		receiver.IsValid() && receiver.Kind() == reflect.Pointer && !receiver.IsNil() {
+		receiver.IsValid() && receiver.Kind() == reflect.Pointer && !receiver.IsNil() &&
+		receiver.Type() != runtimeClosureReflectType {
 		receiver = receiver.Elem()
 	}
 	registers.General[0] = receiver
@@ -363,7 +554,7 @@ func reflectResults(result any, resultKinds []isa.RegisterKind) []reflect.Value 
 	return []reflect.Value{reflect.ValueOf(result)}
 }
 
-// handleAddr stores the address of the source value into the destination register.
+// handleAddress stores the address of the source value into the destination register.
 // Arena-resident values are promoted to their own storage first so the resulting pointer
 // cannot alias subsequent arena bytes, unless operand-C is AddrSourceStable.
 //
@@ -373,10 +564,10 @@ func reflectResults(result any, resultKinds []isa.RegisterKind) []reflect.Value 
 // Takes instruction (instruction) which encodes the source/destination register indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleAddr(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleAddress(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	v := registers.General[instruction.B]
 	if !v.IsValid() {
-		vMPanicInvalidRegister("handleAddr", "source", instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleAddress", "source", instruction.B, instruction, frame, registers)
 	}
 	switch {
 	case instruction.C == AddrSourceStable:
@@ -401,7 +592,7 @@ func handleAddr(vm *VM, frame *CallFrame, registers *Registers, instruction isa.
 	return opContinue
 }
 
-// handleDeref dereferences a pointer in the general register bank and stores the
+// handleDereference dereferences a pointer in the general register bank and stores the
 // pointed-to value in the destination register.
 //
 // Takes vm (*VM) which is the virtual machine.
@@ -409,7 +600,7 @@ func handleAddr(vm *VM, frame *CallFrame, registers *Registers, instruction isa.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleDeref(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleDereference(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	v := registers.General[instruction.B]
 	if instruction.C == DerefSnapshot {
 		if !v.IsValid() {

@@ -29,26 +29,26 @@ import (
 )
 
 func installPerOpDirectExits() {
-	asmJumpTable[isa.OpMapIndex] = reflect.ValueOf(handlerMapIndexExit).Pointer()
+	asmJumpTable[isa.OpGetMap] = reflect.ValueOf(handlerGetMapExit).Pointer()
 	asmJumpTable[isa.OpAppend] = reflect.ValueOf(handlerAppendExit).Pointer()
-	asmJumpTable[isa.OpAppendByteFast] = reflect.ValueOf(handlerAppendByteFastExit).Pointer()
+	asmJumpTable[isa.OpAppendByte] = reflect.ValueOf(handlerAppendByteExit).Pointer()
 	asmJumpTable[isa.OpGetField] = reflect.ValueOf(handlerGetFieldExit).Pointer()
 	asmJumpTable[isa.OpSetField] = reflect.ValueOf(handlerSetFieldExit).Pointer()
-	asmJumpTable[isa.OpAppendStructFast] = reflect.ValueOf(handlerAppendStructFastExit).Pointer()
-	asmJumpTable[isa.OpAppendIntFast] = reflect.ValueOf(handlerAppendIntFastExit).Pointer()
-	asmJumpTable[isa.OpAppendFloatFast] = reflect.ValueOf(handlerAppendFloatFastExit).Pointer()
-	asmJumpTable[isa.OpAppendStringFast] = reflect.ValueOf(handlerAppendStringFastExit).Pointer()
+	asmJumpTable[isa.OpAppendStruct] = reflect.ValueOf(handlerAppendStructExit).Pointer()
+	asmJumpTable[isa.OpAppendInt64] = reflect.ValueOf(handlerAppendInt64Exit).Pointer()
+	asmJumpTable[isa.OpAppendFloat64] = reflect.ValueOf(handlerAppendFloat64Exit).Pointer()
+	asmJumpTable[isa.OpAppendString] = reflect.ValueOf(handlerAppendStringExit).Pointer()
 }
 
 var directExitHandlerAddresses = []uintptr{
-	reflect.ValueOf(handlerMapIndexExit).Pointer(),
+	reflect.ValueOf(handlerGetMapExit).Pointer(),
 	reflect.ValueOf(handlerAppendExit).Pointer(),
-	reflect.ValueOf(handlerAppendByteFastExit).Pointer(),
+	reflect.ValueOf(handlerAppendByteExit).Pointer(),
 	reflect.ValueOf(handlerGetFieldExit).Pointer(),
 	reflect.ValueOf(handlerSetFieldExit).Pointer(),
-	reflect.ValueOf(handlerAppendStructFastExit).Pointer(),
-	reflect.ValueOf(handlerAppendIntFastExit).Pointer(),
-	reflect.ValueOf(handlerAppendFloatFastExit).Pointer(),
-	reflect.ValueOf(handlerAppendStringFastExit).Pointer(),
-	reflect.ValueOf(handlerSubOpSliceSetStringDirectExit).Pointer(),
+	reflect.ValueOf(handlerAppendStructExit).Pointer(),
+	reflect.ValueOf(handlerAppendInt64Exit).Pointer(),
+	reflect.ValueOf(handlerAppendFloat64Exit).Pointer(),
+	reflect.ValueOf(handlerAppendStringExit).Pointer(),
+	reflect.ValueOf(handlerSetSliceStringElementExit).Pointer(),
 }

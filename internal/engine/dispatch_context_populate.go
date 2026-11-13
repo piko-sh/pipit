@@ -33,8 +33,7 @@ const (
 )
 
 // buildDispatchContext populates a dispatchContext from the current VM frame state. The
-// context is only valid for the lifetime of the current frame; after isa.SubOpCall or
-// opReturn it must be rebuilt.
+// context is only valid for the lifetime of the current frame.
 //
 // Takes ctx (*dispatchContext) which is the dispatch context struct to populate with
 // current frame state.
@@ -69,6 +68,7 @@ func (vm *VM) buildDispatchContext(ctx *dispatchContext, jumpTable *[opcodeTable
 		ctx.currentFrame = uintptr(unsafe.Pointer(&vm.CallStack[fp]))
 	}
 	ctx.baseFramePointer = int64(vm.baseFramePointer)
+	ctx.globals = uintptr(unsafe.Pointer(vm.Globals))
 	ctx.callDepthLimit = int64(vm.callDepthLimit())
 	ctx.deferStackLength = int64(len(vm.deferStack))
 
@@ -143,6 +143,7 @@ func (vm *VM) populateExtendedBases(ctx *dispatchContext, registers *Registers) 
 // state.
 func (vm *VM) populateArenaContext(ctx *dispatchContext) {
 	if vm.Arena == nil {
+		ctx.arenaRouteState = 0
 		return
 	}
 	if len(vm.Arena.intSlab) > 0 {
@@ -209,8 +210,8 @@ func (vm *VM) syncCallContextFromASM(ctx *dispatchContext) {
 
 // applyPoppedFrameSnapshots restores popped-frame dispatch state.
 //
-// ASM-side inline return handlers (handlerReturnInline / handlerReturnVoidInline) update
-// CTX_FRAME_POINTER and arena indices without going through Go's vm.popFrame; the Go-side
+// ASM-side inline return handlers (handlerReturn / handlerReturnVoid) update
+// CTX_FRAME_POINTER and arena indices without going through Go's vm.popFrame. The Go-side
 // vm.RootFunction / vm.functions tables and the parallel rootSnapshots slice are
 // untouched. When a popped frame had a non-nil snapshot (recorded because a cross-bundle
 // closure or external-method swap happened during its push), the caller's dispatch tables
@@ -421,12 +422,14 @@ func populateAuxiliaryTableBases(ctx *dispatchContext, function *program.Compile
 	ctx.typeTableLength = int64(len(function.TypeTable))
 }
 
-// populateGenericBytesContext publishes the arena's slab-header and cursor addresses
-// for assembly allocation. vm.arena keeps the arena alive.
+// populateGenericBytesContext publishes the arena's slab-header and cursor addresses for
+// assembly allocation, and its revoked-epoch route state's address for the assembly
+// pointer-store route. vm.arena keeps the arena alive.
 //
 // Takes ctx (*dispatchContext) which receives the addresses.
 // Takes arena (*RegisterArena) which owns the slab.
 func populateGenericBytesContext(ctx *dispatchContext, arena *RegisterArena) {
 	ctx.arenaGenericBytesSlabHeader = uintptr(unsafe.Pointer(&arena.genericBytesSlab))
 	ctx.arenaGenericBytesIndexPointer = uintptr(unsafe.Pointer(&arena.genericBytesIndex))
+	ctx.arenaRouteState = uintptr(unsafe.Pointer(&arena.licenceState.revokedEpochRouteState))
 }

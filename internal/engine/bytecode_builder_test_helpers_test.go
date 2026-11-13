@@ -66,7 +66,7 @@ func (b *bytecodeBuilder) emitExt(payload int32) *bytecodeBuilder {
 	a := uint8(unsigned & 0xFF)
 	bc := uint8((unsigned >> 8) & 0xFF)
 	c := uint8((unsigned >> 16) & 0xFF)
-	b.body = append(b.body, isa.Instruction{Op: isa.OpExt, A: a, B: bc, C: c})
+	b.body = append(b.body, isa.Instruction{Op: isa.OpExtension, A: a, B: bc, C: c})
 	return b
 }
 
@@ -107,12 +107,12 @@ func (b *bytecodeBuilder) addType(t reflect.Type) uint8 {
 }
 
 func (b *bytecodeBuilder) intRegisters(n uint32) *bytecodeBuilder {
-	b.numRegisters[isa.RegisterInt] = n
+	b.numRegisters[isa.RegisterInt64] = n
 	return b
 }
 
 func (b *bytecodeBuilder) floatRegisters(n uint32) *bytecodeBuilder {
-	b.numRegisters[isa.RegisterFloat] = n
+	b.numRegisters[isa.RegisterFloat64] = n
 	return b
 }
 
@@ -132,17 +132,17 @@ func (b *bytecodeBuilder) boolRegisters(n uint32) *bytecodeBuilder {
 }
 
 func (b *bytecodeBuilder) uintRegisters(n uint32) *bytecodeBuilder {
-	b.numRegisters[isa.RegisterUint] = n
+	b.numRegisters[isa.RegisterUint64] = n
 	return b
 }
 
 func (b *bytecodeBuilder) sliceIntRegisters(n uint32) *bytecodeBuilder {
-	b.numRegisters[isa.RegisterSliceInt] = n
+	b.numRegisters[isa.RegisterSliceInt64] = n
 	return b
 }
 
 func (b *bytecodeBuilder) sliceFloatRegisters(n uint32) *bytecodeBuilder {
-	b.numRegisters[isa.RegisterSliceFloat] = n
+	b.numRegisters[isa.RegisterSliceFloat64] = n
 	return b
 }
 
@@ -157,17 +157,17 @@ func (b *bytecodeBuilder) sliceBoolRegisters(n uint32) *bytecodeBuilder {
 }
 
 func (b *bytecodeBuilder) sliceUintRegisters(n uint32) *bytecodeBuilder {
-	b.numRegisters[isa.RegisterSliceUint] = n
+	b.numRegisters[isa.RegisterSliceUint64] = n
 	return b
 }
 
 func (b *bytecodeBuilder) returnInt() *bytecodeBuilder {
-	b.resultKinds = []isa.RegisterKind{isa.RegisterInt}
+	b.resultKinds = []isa.RegisterKind{isa.RegisterInt64}
 	return b
 }
 
 func (b *bytecodeBuilder) returnFloat() *bytecodeBuilder {
-	b.resultKinds = []isa.RegisterKind{isa.RegisterFloat}
+	b.resultKinds = []isa.RegisterKind{isa.RegisterFloat64}
 	return b
 }
 

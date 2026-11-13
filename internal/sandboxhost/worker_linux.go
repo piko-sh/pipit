@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxhost
 
@@ -49,9 +49,9 @@ type linuxIsolatedProcess struct {
 // record removed; a failed cleanup keeps the record for NewIsolatedRecovery.
 //
 // Returns error which reports the run's failure and any cleanup failure.
-func (process *linuxIsolatedProcess) Close() error {
+func (process *linuxIsolatedProcess) Close(ctx context.Context) error {
 	worker := process.WorkerProcess
-	closeErr := worker.Close()
+	closeErr := worker.Close(ctx)
 	if !process.recorded || !worker.Released() {
 		return closeErr
 	}

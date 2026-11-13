@@ -164,7 +164,7 @@ func TestSortSliceWithTimeAfter(t *testing.T) {
 			"Since": reflect.ValueOf(time.Since),
 		},
 	})
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	tests := []struct {
 		want       any
@@ -319,7 +319,7 @@ func TestSortSliceWithNativeStructTimeAfter(t *testing.T) {
 			"MakeItems": reflect.ValueOf(makeItems),
 		},
 	})
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	tests := []struct {
 		want       any
@@ -431,7 +431,7 @@ func TestSortSliceWithRealTypesPackage(t *testing.T) {
 	require.NoError(t, err)
 	symbols.RegisterTypesPackage("sort", realSortPkg)
 
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	tests := []struct {
 		want       any
@@ -531,7 +531,7 @@ func TestNativeStructFieldWithRealTypesPackage(t *testing.T) {
 	realJSONPkg, err := imp.Import("encoding/json")
 	require.NoError(t, err)
 	symbols.RegisterTypesPackage("encoding/json", realJSONPkg)
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	source := `package main
 
@@ -612,7 +612,7 @@ func TestSortSliceProductionLayout(t *testing.T) {
 	require.NoError(t, err)
 	symbols.RegisterTypesPackage("encoding/json", realJSONPkg)
 
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	tests := []struct {
 		want       any
@@ -731,7 +731,7 @@ func TestMethodCallSameNameAsPackageFunction(t *testing.T) {
 	realTimePkg, err := imp.Import("time")
 	require.NoError(t, err)
 	symbols.RegisterTypesPackage("time", realTimePkg)
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	source := `
 package main
@@ -971,7 +971,7 @@ func TestStructLiteralSliceFieldIndexMultiReturn(t *testing.T) {
 	stringsPkg, err := imp.Import("strings")
 	require.NoError(t, err)
 	symbols.RegisterTypesPackage("strings", stringsPkg)
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	source := `
 package main
@@ -1154,7 +1154,7 @@ func TestStructFieldIndexCrossFunction(t *testing.T) {
 	fmtPkg, err := imp.Import("fmt")
 	require.NoError(t, err)
 	symbols.RegisterTypesPackage("fmt", fmtPkg)
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	source := `
 package main
@@ -1284,7 +1284,7 @@ func TestDoubleRecycleRedeclaredVar(t *testing.T) {
 			}),
 		},
 	})
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	source := `
 package main
@@ -1381,7 +1381,7 @@ func TestLargeNativeCallWithRecycling(t *testing.T) {
 			"GetSlice": reflect.ValueOf(getSliceFunc),
 		},
 	})
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	source := `
 package main
@@ -1498,7 +1498,7 @@ func TestLargeNativeMethodCallWithRecycling(t *testing.T) {
 			"NewArena": reflect.ValueOf(func() *testArena { return &testArena{} }),
 		},
 	})
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	source := `
 package main
@@ -1615,7 +1615,7 @@ func TestVarDeclMapThenAddr(t *testing.T) {
 			}),
 		},
 	})
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	source := `
 package main
@@ -1659,7 +1659,7 @@ func TestNamedStringMethodCallAsArgument(t *testing.T) {
 			"CapabilityID": reflect.ValueOf((*testCapabilityID)(nil)),
 		},
 	})
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	source := `
 package main
@@ -1699,7 +1699,7 @@ func TestNamedStringMethodCallAsArgumentWithRecycling(t *testing.T) {
 			"CapabilityID": reflect.ValueOf((*testCapabilityID)(nil)),
 		},
 	})
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	source := `
 package main

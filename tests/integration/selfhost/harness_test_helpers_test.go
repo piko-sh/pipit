@@ -57,8 +57,11 @@ const (
 	compileImportPath    = "pipit.sh/pipit/internal/compile"
 	corpusPackagePath    = "main"
 	caseTimeout          = 3 * time.Minute
+	selfCompileTimeout   = 5 * time.Minute
 	interpretedCallDepth = 100000
 )
+
+var errInterpretedCompileTimeout = errors.New("the interpreted compile ran past its time limit")
 
 const driverSource = `package main
 
@@ -169,19 +172,18 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	return opts, nil
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
-	status, _ := runWithResults(args, stdout, stderr)
+func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	status, _ := runWithResults(ctx, args, stdout, stderr)
 	return status
 }
 
-func runWithResults(args []string, stdout, stderr io.Writer) (int, []caseResult) {
+func runWithResults(ctx context.Context, args []string, stdout, stderr io.Writer) (int, []caseResult) {
 	opts, err := parseOptions(args, stderr)
 	if err != nil {
 		return 2, nil
 	}
 
 	started := time.Now()
-	ctx := context.Background()
 	traceLogger, closeTrace, err := openTraceLogger(opts.traceLowerings, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "selfhost: %v\n", err)
@@ -311,7 +313,7 @@ func newHost(ctx context.Context, hostOpts hostOptions) (*host, error) {
 		return nil, fmt.Errorf("initialising the driver: %w", err)
 	}
 	return &host{
-		interpreter: interpreter, compiled: compiled, driver: driver, symbols: newRegistry(providers),
+		interpreter: interpreter, compiled: compiled, driver: driver, symbols: newRegistry(ctx, providers),
 		nativeLogger: nativeLogger, interpretedLogger: interpretedLogger, dump: "",
 	}, nil
 }
@@ -338,7 +340,7 @@ func interpreterOptionsFor(hostOpts hostOptions) []pipit.Option {
 	return interpreterOptions
 }
 
-func newRegistry(providers []symtab.SymbolProviderPort) *symtab.SymbolRegistry {
+func newRegistry(ctx context.Context, providers []symtab.SymbolProviderPort) *symtab.SymbolRegistry {
 	exports := symtab.NewCompositeSymbolProvider(providers...).Exports()
 	delete(exports, policy.PkgUnsafe)
 	registry := symtab.NewSymbolRegistry(exports)
@@ -350,7 +352,7 @@ func newRegistry(providers []symtab.SymbolProviderPort) *symtab.SymbolRegistry {
 			}
 		}
 	}
-	registry.SynthesiseAll()
+	registry.SynthesiseAll(ctx)
 	return registry
 }
 
@@ -418,7 +420,7 @@ func (h *host) runCase(ctx context.Context, path string) caseResult {
 		return caseResult{name: name, outcome: outcomeUnparsed, detail: err.Error(), nativeTime: 0, interpretedTime: 0}
 	}
 	info := newTypesInfo()
-	config := &types.Config{Sizes: types.SizesFor("gc", "amd64"), GoVersion: engine.InterpretedGoVersion, Importer: h.symbols}
+	config := &types.Config{Sizes: types.SizesFor("gc", "amd64"), GoVersion: engine.InterpretedGoVersion, Importer: h.symbols.Importer(ctx)}
 	if _, err := config.Check(corpusPackagePath, fset, []*ast.File{file}, info); err != nil {
 		return caseResult{name: name, outcome: outcomeNativeFailed, detail: "type check: " + err.Error(), nativeTime: 0, interpretedTime: 0}
 	}
@@ -431,7 +433,7 @@ func (h *host) runCase(ctx context.Context, path string) caseResult {
 	}
 
 	interpretedStart := time.Now()
-	interpretedPacked, disassembly, err := h.compileInterpreted(ctx, fset, info, []*ast.File{file}, corpusPackagePath)
+	interpretedPacked, disassembly, err := h.compileInterpreted(ctx, fset, info, []*ast.File{file}, corpusPackagePath, caseTimeout)
 	interpretedTime := time.Since(interpretedStart)
 	if err != nil {
 		detail := err.Error()
@@ -471,7 +473,7 @@ type packedProgram struct {
 
 func (h *host) compileNatively(ctx context.Context, fset *token.FileSet, info *types.Info, files []*ast.File, packagePath string) (packedProgram, error) {
 	if h.nativeLogger != nil {
-		ctx = logging.ContextWithLogger(ctx, h.nativeLogger)
+		ctx = logging.WithLogger(ctx, h.nativeLogger)
 	}
 	root := program.NewNamedFunction("<program>")
 	config := compile.CompilerConfig{
@@ -484,14 +486,14 @@ func (h *host) compileNatively(ctx context.Context, fset *token.FileSet, info *t
 	if err != nil {
 		return packedProgram{bytes: nil, disassembly: ""}, err
 	}
-	return pack(root, compilation.Compiler.FunctionTable(), compilation.InitFunctionIndices)
+	return pack(ctx, root, compilation.Compiler.FunctionTable(), compilation.InitFunctionIndices)
 }
 
-func (h *host) compileInterpreted(ctx context.Context, fset *token.FileSet, info *types.Info, files []*ast.File, packagePath string) ([]byte, string, error) {
-	ctx, cancel := context.WithTimeout(ctx, caseTimeout)
+func (h *host) compileInterpreted(ctx context.Context, fset *token.FileSet, info *types.Info, files []*ast.File, packagePath string, timeout time.Duration) ([]byte, string, error) {
+	ctx, cancel := context.WithTimeoutCause(ctx, timeout, errInterpretedCompileTimeout)
 	defer cancel()
 	if h.interpretedLogger != nil {
-		ctx = logging.ContextWithLogger(ctx, h.interpretedLogger)
+		ctx = logging.WithLogger(ctx, h.interpretedLogger)
 	}
 	root := program.NewNamedFunction("<program>")
 	sink := make(map[string]any, 2)
@@ -512,21 +514,21 @@ func (h *host) compileInterpreted(ctx context.Context, fset *token.FileSet, info
 	if !ok {
 		return nil, "", errors.New("the interpreted compiler reported no function table")
 	}
-	packed, err := pack(root, table, inits)
+	packed, err := pack(ctx, root, table, inits)
 	if err != nil {
 		return nil, "", err
 	}
 	return packed.bytes, packed.disassembly, nil
 }
 
-func pack(root *program.CompiledFunction, table map[string]uint16, inits []uint16) (packedProgram, error) {
+func pack(ctx context.Context, root *program.CompiledFunction, table map[string]uint16, inits []uint16) (packedProgram, error) {
 	if len(inits) == 0 {
 		inits = nil
 	}
 	entrypoints := make(map[string]uint16, len(table))
 	maps.Copy(entrypoints, table)
 	fileSet := program.NewCompiledFileSet(root, entrypoints, inits, nil)
-	packedBytes, err := pipit.PackCompiledFileSetToBytes(fileSet)
+	packedBytes, err := pipit.PackCompiledFileSetToBytes(ctx, fileSet)
 	if err != nil {
 		return packedProgram{bytes: nil, disassembly: ""}, err
 	}

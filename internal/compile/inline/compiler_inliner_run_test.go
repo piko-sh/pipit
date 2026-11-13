@@ -20,6 +20,7 @@ package inline
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -30,20 +31,20 @@ import (
 )
 
 func intSlot(register uint8) program.VarLocation {
-	return program.VarLocation{Kind: isa.RegisterInt, Register: register}
+	return program.VarLocation{Kind: isa.RegisterInt64, Register: register}
 }
 
 func doublingCallee() *program.CompiledFunction {
 	return &program.CompiledFunction{
 		Name: "double",
 		Body: []isa.Instruction{
-			isa.NewInstruction(isa.OpAddInt, 0, 1, 1),
+			isa.NewInstruction(isa.OpAddInt64, 0, 1, 1),
 			isa.NewTier2Instruction(isa.SubOpTier2Return, 1),
 		},
-		NumRegisters:       [isa.NumRegisterKinds]uint32{isa.RegisterInt: 2},
-		ParameterKinds:     []isa.RegisterKind{isa.RegisterInt},
+		NumRegisters:       [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 2},
+		ParameterKinds:     []isa.RegisterKind{isa.RegisterInt64},
 		ParameterRegisters: []uint8{1},
-		ResultKinds:        []isa.RegisterKind{isa.RegisterInt},
+		ResultKinds:        []isa.RegisterKind{isa.RegisterInt64},
 	}
 }
 
@@ -55,8 +56,8 @@ func callerCalling(callee *program.CompiledFunction, site program.CallSite) *pro
 			isa.NewTier1Instruction(isa.SubOpCall, 0, 0),
 			isa.NewTier2Instruction(isa.SubOpTier2Return, 1),
 		},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 4},
-		ResultKinds:  []isa.RegisterKind{isa.RegisterInt},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 4},
+		ResultKinds:  []isa.RegisterKind{isa.RegisterInt64},
 		CallSites:    []program.CallSite{site},
 		Functions:    []*program.CompiledFunction{callee},
 	}
@@ -81,11 +82,11 @@ func TestInliningSplicesASmallCalleeIntoItsCaller(t *testing.T) {
 		Returns:   []program.VarLocation{intSlot(0)},
 	})
 
-	require.NoError(t, RunBytecodeInliner(context.Background(), caller, passes.DefaultOptions()))
+	require.NoError(t, RunBytecodeInliner(t.Context(), caller, passes.DefaultOptions()))
 
 	require.Zero(t, callsRemaining(caller),
 		"the call word is what the splice replaces, so a spliced site leaves none behind")
-	require.Greater(t, len(caller.Body), 2,
+	require.True(t, slices.ContainsFunc(caller.Body, func(instruction isa.Instruction) bool { return instruction.Op == isa.OpAddInt64 }),
 		"the callee's own instructions have to end up in the caller's body")
 }
 
@@ -133,7 +134,7 @@ func TestInliningRefusesACalleeItCannotSpliceSafely(t *testing.T) {
 			name: "a callee using an instruction the splice driver does not reproduce",
 			callee: func() *program.CompiledFunction {
 				callee := doublingCallee()
-				callee.Body = append([]isa.Instruction{isa.NewInstruction(isa.OpAllocIndirect, 1, 0, 0)}, callee.Body...)
+				callee.Body = append([]isa.Instruction{isa.NewInstruction(isa.OpAllocateIndirect, 1, 0, 0)}, callee.Body...)
 				return callee
 			},
 		},
@@ -148,7 +149,7 @@ func TestInliningRefusesACalleeItCannotSpliceSafely(t *testing.T) {
 			})
 			before := len(caller.Body)
 
-			require.NoError(t, RunBytecodeInliner(context.Background(), caller, passes.DefaultOptions()))
+			require.NoError(t, RunBytecodeInliner(t.Context(), caller, passes.DefaultOptions()))
 
 			require.Equal(t, 1, callsRemaining(caller),
 				"a callee the splice cannot reproduce keeps its real call")
@@ -179,7 +180,7 @@ func TestInliningRefusesACallSiteShapeItCannotHandle(t *testing.T) {
 			site.Returns = []program.VarLocation{intSlot(0)}
 			caller := callerCalling(doublingCallee(), site)
 
-			require.NoError(t, RunBytecodeInliner(context.Background(), caller, passes.DefaultOptions()))
+			require.NoError(t, RunBytecodeInliner(t.Context(), caller, passes.DefaultOptions()))
 
 			require.Equal(t, 1, callsRemaining(caller),
 				"the callee is only known at run time for these shapes, so there is nothing to splice")
@@ -196,7 +197,7 @@ func TestInliningACallSiteWithNoResolvedCalleeIsARefusal(t *testing.T) {
 	})
 	caller.CallSites[0].CachedCallee = nil
 
-	require.NoError(t, RunBytecodeInliner(context.Background(), caller, passes.DefaultOptions()))
+	require.NoError(t, RunBytecodeInliner(t.Context(), caller, passes.DefaultOptions()))
 
 	require.Equal(t, 1, callsRemaining(caller),
 		"a site whose callee was never resolved has no body to copy in")
@@ -211,7 +212,7 @@ func TestInliningAFunctionWithNoCallSitesChangesNothing(t *testing.T) {
 	}
 	before := append([]isa.Instruction(nil), root.Body...)
 
-	require.NoError(t, RunBytecodeInliner(context.Background(), root, passes.DefaultOptions()))
+	require.NoError(t, RunBytecodeInliner(t.Context(), root, passes.DefaultOptions()))
 
 	require.Equal(t, before, root.Body)
 }
@@ -219,14 +220,14 @@ func TestInliningAFunctionWithNoCallSitesChangesNothing(t *testing.T) {
 func TestInliningNothingAtAllIsHarmless(t *testing.T) {
 	t.Parallel()
 
-	require.NoError(t, RunBytecodeInliner(context.Background(), nil, passes.DefaultOptions()),
+	require.NoError(t, RunBytecodeInliner(t.Context(), nil, passes.DefaultOptions()),
 		"a compilation that produced no root has nothing to inline, and refusing it would fail a valid build")
 }
 
 func TestInliningStopsWhenTheCallerCancels(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
 	caller := callerCalling(doublingCallee(), program.CallSite{
@@ -262,4 +263,110 @@ func TestCollectingReachableFunctionsVisitsEachFunctionOnce(t *testing.T) {
 
 	require.Len(t, CollectReachableFunctions(root), 2,
 		"a function reached twice is still one function, and visiting it twice would splice into it twice")
+}
+
+func TestInliningSplicesAScalarCallOutsideADebugBuild(t *testing.T) {
+	t.Parallel()
+
+	scalarCaller := func(debugging bool) *program.CompiledFunction {
+		caller := callerCalling(doublingCallee(), program.CallSite{
+			Arguments: []program.VarLocation{intSlot(2)},
+			Returns:   []program.VarLocation{intSlot(0)},
+		})
+		caller.Body[0] = isa.NewTier1Instruction(isa.SubOpCallScalar, 0, 0)
+		if debugging {
+			caller.DebugVarTable = &program.DebugVarTable{Entries: nil}
+		}
+		return caller
+	}
+	scalarCalls := func(compiledFunction *program.CompiledFunction) int {
+		count := 0
+		for _, instruction := range compiledFunction.Body {
+			if isa.InstrIsTier1SubOp(instruction, isa.SubOpCallScalar) {
+				count++
+			}
+		}
+		return count
+	}
+
+	inlined := scalarCaller(false)
+	require.NoError(t, RunBytecodeInliner(t.Context(), inlined, passes.DefaultOptions()))
+	require.Zero(t, scalarCalls(inlined), "a scalar call is spliced as an ordinary one is")
+
+	debugged := scalarCaller(true)
+	require.NoError(t, RunBytecodeInliner(t.Context(), debugged, passes.DefaultOptions()))
+	require.Equal(t, 1, scalarCalls(debugged), "a debug build keeps the scalar call's frame")
+}
+
+func TestInliningKeepsAScalarCallWhoseCalleeLoops(t *testing.T) {
+	t.Parallel()
+
+	callee := doublingCallee()
+	callee.Body = []isa.Instruction{
+		isa.NewInstruction(isa.OpAddInt64, 0, 1, 1),
+		isa.NewTier1Instruction(isa.SubOpJump, 0, 0),
+		isa.NewTier2Instruction(isa.SubOpTier2Return, 1),
+	}
+	require.True(t, program.SetJumpTarget(callee.Body, 1, 0))
+	caller := callerCalling(callee, program.CallSite{
+		Arguments: []program.VarLocation{intSlot(2)},
+		Returns:   []program.VarLocation{intSlot(0)},
+	})
+	caller.Body[0] = isa.NewTier1Instruction(isa.SubOpCallScalar, 0, 0)
+
+	require.NoError(t, RunBytecodeInliner(t.Context(), caller, passes.DefaultOptions()))
+	require.True(t, isa.InstrIsTier1SubOp(caller.Body[0], isa.SubOpCallScalar), "the call costs little next to the loop it would carry")
+}
+
+func TestInliningSplicesCalleesThatConvertBetweenBanks(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body []isa.Instruction
+		want []isa.SubOpcode
+	}{
+		{name: "a negation", want: []isa.SubOpcode{isa.SubOpNotInt64}, body: []isa.Instruction{
+			isa.NewTier1Instruction(isa.SubOpNotInt64, 0, 1),
+		}},
+		{name: "an integer made a bool and back", want: []isa.SubOpcode{isa.SubOpConvertInt64ToBool, isa.SubOpConvertBoolToInt64}, body: []isa.Instruction{
+			isa.NewTier1Instruction(isa.SubOpConvertInt64ToBool, 0, 1),
+			isa.NewTier1Instruction(isa.SubOpConvertBoolToInt64, 0, 0),
+		}},
+		{name: "an integer made unsigned and back", want: []isa.SubOpcode{isa.SubOpConvertInt64ToUint64, isa.SubOpConvertUint64ToInt64}, body: []isa.Instruction{
+			isa.NewTier1Instruction(isa.SubOpConvertInt64ToUint64, 0, 1),
+			isa.NewTier1Instruction(isa.SubOpConvertUint64ToInt64, 0, 0),
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			callee := doublingCallee()
+			callee.Body = append(slices.Clone(tt.body), isa.NewTier2Instruction(isa.SubOpTier2Return, 1))
+			callee.NumRegisters[isa.RegisterBool], callee.NumRegisters[isa.RegisterUint64] = 1, 1
+			caller := callerCalling(callee, program.CallSite{
+				Arguments: []program.VarLocation{intSlot(2)},
+				Returns:   []program.VarLocation{intSlot(0)},
+			})
+			caller.NumRegisters[isa.RegisterBool], caller.NumRegisters[isa.RegisterUint64] = 3, 3
+
+			require.NoError(t, RunBytecodeInliner(t.Context(), caller, passes.DefaultOptions()))
+
+			require.Zero(t, callsRemaining(caller), "a callee holding only conversions between banks is spliced")
+			for _, subOpcode := range tt.want {
+				spliced := slices.IndexFunc(caller.Body, func(instruction isa.Instruction) bool { return isa.InstrIsTier1SubOp(instruction, subOpcode) })
+				require.GreaterOrEqual(t, spliced, 0, "the conversion is carried into the caller")
+				word := caller.Body[spliced]
+				if subOpcode == isa.SubOpNotInt64 || subOpcode == isa.SubOpConvertInt64ToBool || subOpcode == isa.SubOpConvertInt64ToUint64 {
+					require.Equal(t, uint8(2), word.C, "the callee's parameter is read from the caller's argument register")
+				}
+				if subOpcode == isa.SubOpConvertInt64ToBool || subOpcode == isa.SubOpConvertInt64ToUint64 {
+					require.GreaterOrEqual(t, word.B, uint8(3), "the callee's temporary in the other bank takes a fresh caller register")
+				}
+				if subOpcode == isa.SubOpConvertBoolToInt64 || subOpcode == isa.SubOpConvertUint64ToInt64 {
+					require.GreaterOrEqual(t, word.C, uint8(3), "the callee's temporary in the other bank takes a fresh caller register")
+				}
+			}
+		})
+	}
 }

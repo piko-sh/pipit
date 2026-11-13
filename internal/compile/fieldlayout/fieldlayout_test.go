@@ -87,8 +87,8 @@ func TestLeafRegisterKindAdmittedGuardsTheGeneralBank(t *testing.T) {
 		leafKind reflect.Kind
 		want     bool
 	}{
-		{name: "a scalar bank admits any leaf", bank: isa.RegisterInt, leafKind: reflect.Struct, want: true},
-		{name: "the float bank admits any leaf", bank: isa.RegisterFloat, leafKind: reflect.Complex128, want: true},
+		{name: "a scalar bank admits any leaf", bank: isa.RegisterInt64, leafKind: reflect.Struct, want: true},
+		{name: "the float bank admits any leaf", bank: isa.RegisterFloat64, leafKind: reflect.Complex128, want: true},
 		{name: "the general bank admits a pointer", bank: isa.RegisterGeneral, leafKind: reflect.Pointer, want: true},
 		{name: "the general bank admits an interface", bank: isa.RegisterGeneral, leafKind: reflect.Interface, want: true},
 		{name: "the general bank admits a slice", bank: isa.RegisterGeneral, leafKind: reflect.Slice, want: true},

@@ -30,11 +30,11 @@ func TestAdmissionTableTenantsAreIndependent(t *testing.T) {
 	t.Parallel()
 
 	var table admissionTable
-	releaseA, err := table.acquire(context.Background(), "a")
+	releaseA, err := table.acquire(t.Context(), "a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	releaseB, err := table.acquire(context.Background(), "b")
+	releaseB, err := table.acquire(t.Context(), "b")
 	if err != nil {
 		t.Fatalf("second tenant blocked by the first: %v", err)
 	}
@@ -54,17 +54,17 @@ func TestAdmissionTableBound(t *testing.T) {
 	var table admissionTable
 	releases := make([]func(), 0, maximumAdmissionKeys)
 	for i := range maximumAdmissionKeys {
-		release, err := table.acquire(context.Background(), "tenant-"+strconv.Itoa(i))
+		release, err := table.acquire(t.Context(), "tenant-"+strconv.Itoa(i))
 		if err != nil {
 			t.Fatal(err)
 		}
 		releases = append(releases, release)
 	}
-	if _, err := table.acquire(context.Background(), "one-too-many"); !errors.Is(err, errAdmissionFull) {
+	if _, err := table.acquire(t.Context(), "one-too-many"); !errors.Is(err, errAdmissionFull) {
 		t.Fatalf("full table admitted a new tenant: %v", err)
 	}
 	releases[0]()
-	release, err := table.acquire(context.Background(), "one-too-many")
+	release, err := table.acquire(t.Context(), "one-too-many")
 	if err != nil {
 		t.Fatalf("freed slot not reusable: %v", err)
 	}
@@ -81,11 +81,11 @@ func TestAdmissionTableSecondSlotPerTenant(t *testing.T) {
 	t.Parallel()
 
 	var table admissionTable
-	release, err := table.acquire(context.Background(), "a")
+	release, err := table.acquire(t.Context(), "a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	queued := make(chan error, 1)
 	go func() {
 		lease, err := table.acquire(ctx, "a")
@@ -95,7 +95,7 @@ func TestAdmissionTableSecondSlotPerTenant(t *testing.T) {
 		queued <- err
 	}()
 	waitAdmissionPending(t, table.gate("a"))
-	if _, err := table.acquire(context.Background(), "a"); !errors.Is(err, errAdmissionFull) {
+	if _, err := table.acquire(t.Context(), "a"); !errors.Is(err, errAdmissionFull) {
 		t.Fatalf("third request for one tenant admitted: %v", err)
 	}
 	release()

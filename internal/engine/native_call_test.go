@@ -20,8 +20,11 @@ package engine
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -74,8 +77,8 @@ func TestNativeCallDispatchesToTheGoFunction(t *testing.T) {
 		{
 			name:      "one integer argument and one integer result",
 			function:  func(n int) int { return n * 2 },
-			arguments: []nativeSlot{{kind: isa.RegisterInt, register: 2}},
-			returns:   []nativeSlot{{kind: isa.RegisterInt, register: 0}},
+			arguments: []nativeSlot{{kind: isa.RegisterInt64, register: 2}},
+			returns:   []nativeSlot{{kind: isa.RegisterInt64, register: 0}},
 			seed:      func(r *Registers) { r.Ints[2] = 21 },
 			check: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -96,11 +99,11 @@ func TestNativeCallDispatchesToTheGoFunction(t *testing.T) {
 			name:     "several integer arguments",
 			function: func(a, b, c int) int { return a + b + c },
 			arguments: []nativeSlot{
-				{kind: isa.RegisterInt, register: 2},
-				{kind: isa.RegisterInt, register: 3},
-				{kind: isa.RegisterInt, register: 4},
+				{kind: isa.RegisterInt64, register: 2},
+				{kind: isa.RegisterInt64, register: 3},
+				{kind: isa.RegisterInt64, register: 4},
 			},
-			returns: []nativeSlot{{kind: isa.RegisterInt, register: 0}},
+			returns: []nativeSlot{{kind: isa.RegisterInt64, register: 0}},
 			seed:    func(r *Registers) { r.Ints[2], r.Ints[3], r.Ints[4] = 1, 2, 3 },
 			check: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -111,7 +114,7 @@ func TestNativeCallDispatchesToTheGoFunction(t *testing.T) {
 			name:     "several results land in their own banks",
 			function: func() (int, string) { return 1, "a" },
 			returns: []nativeSlot{
-				{kind: isa.RegisterInt, register: 0},
+				{kind: isa.RegisterInt64, register: 0},
 				{kind: isa.RegisterString, register: 5},
 			},
 			seed: func(*Registers) {},
@@ -136,7 +139,7 @@ func TestNativeCallDispatchesToTheGoFunction(t *testing.T) {
 			name:      "a slice argument through the general bank",
 			function:  func(xs []int) int { return len(xs) },
 			arguments: []nativeSlot{{kind: isa.RegisterGeneral, register: 2}},
-			returns:   []nativeSlot{{kind: isa.RegisterInt, register: 0}},
+			returns:   []nativeSlot{{kind: isa.RegisterInt64, register: 0}},
 			seed:      func(r *Registers) { r.General[2] = reflect.ValueOf([]int{1, 2, 3}) },
 			check: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -146,8 +149,8 @@ func TestNativeCallDispatchesToTheGoFunction(t *testing.T) {
 		{
 			name:      "a float argument and a float result",
 			function:  func(f float64) float64 { return f * 2 },
-			arguments: []nativeSlot{{kind: isa.RegisterFloat, register: 2}},
-			returns:   []nativeSlot{{kind: isa.RegisterFloat, register: 0}},
+			arguments: []nativeSlot{{kind: isa.RegisterFloat64, register: 2}},
+			returns:   []nativeSlot{{kind: isa.RegisterFloat64, register: 0}},
 			seed:      func(r *Registers) { r.Floats[2] = 1.5 },
 			check: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -157,7 +160,7 @@ func TestNativeCallDispatchesToTheGoFunction(t *testing.T) {
 		{
 			name:      "a boolean result",
 			function:  func(n int) bool { return n > 0 },
-			arguments: []nativeSlot{{kind: isa.RegisterInt, register: 2}},
+			arguments: []nativeSlot{{kind: isa.RegisterInt64, register: 2}},
 			returns:   []nativeSlot{{kind: isa.RegisterBool, register: 0}},
 			seed:      func(r *Registers) { r.Ints[2] = 1 },
 			check: func(t *testing.T, r *Registers) {
@@ -195,7 +198,7 @@ func TestNativeCallRunsAFunctionWithNoResults(t *testing.T) {
 	called := 0
 	vm, frame, registers := nativeCallFixture(t,
 		func(n int) { called = n },
-		[]nativeSlot{{kind: isa.RegisterInt, register: 2}},
+		[]nativeSlot{{kind: isa.RegisterInt64, register: 2}},
 		nil,
 	)
 	registers.Ints[2] = 7
@@ -301,4 +304,145 @@ func TestCacheParamTypesRecordsTheCalleeSignature(t *testing.T) {
 		require.Same(t, first, site.NativeParamCacheLoad(),
 			"a second call must reuse the published cache rather than rebuild it")
 	})
+}
+
+type uncachedMethodProbe struct{ base int }
+
+func (p uncachedMethodProbe) Combine(a, b, c, d int, s string) int {
+	return p.base + a + b + c + d + len(s)
+}
+
+func uncachedMethodValueFixture(t *testing.T, callee reflect.Value) (*VM, *CallFrame, *Registers) {
+	t.Helper()
+	arguments := []nativeSlot{
+		{kind: isa.RegisterInt64, register: 2}, {kind: isa.RegisterInt64, register: 3},
+		{kind: isa.RegisterInt64, register: 4}, {kind: isa.RegisterInt64, register: 5},
+		{kind: isa.RegisterString, register: 0},
+	}
+	vm, frame, registers := nativeCallFixture(t, func() {}, arguments, []nativeSlot{{kind: isa.RegisterInt64, register: 0}})
+	registers.General[1] = callee
+	registers.Ints[2], registers.Ints[3], registers.Ints[4], registers.Ints[5] = 1, 2, 3, 4
+	registers.Strings[0] = "xyz"
+	require.Equal(t, opContinue, handleCallNative(vm, frame, registers, op(0, 0, 0)))
+	require.Equal(t, int64(21), registers.Ints[0])
+	require.Equal(t, nativeFastPathNoneEntry, loadNativeFastPath(&frame.Function.CallSites[0]),
+		"the site must be classified as having no fast path, so later calls take callNativeUncached")
+	return vm, frame, registers
+}
+
+func TestAnUncachedMethodValueCallDoesNotConvertTheMethodValueToAnInterface(t *testing.T) {
+	if raceDetectorOn {
+		t.Skip("the race detector changes allocation counts")
+	}
+	probe := uncachedMethodProbe{base: 8}
+	reflectMethod := reflect.ValueOf(probe).MethodByName("Combine")
+	goMethodValue := reflect.ValueOf(probe.Combine)
+
+	measure := func(callee reflect.Value) float64 {
+		t.Helper()
+		vm, frame, registers := uncachedMethodValueFixture(t, callee)
+		return testing.AllocsPerRun(200, func() {
+			if handleCallNative(vm, frame, registers, op(0, 0, 0)) != opContinue {
+				t.Fatal("the call must continue")
+			}
+		})
+	}
+	viaReflect, viaGo := measure(reflectMethod), measure(goMethodValue)
+
+	require.LessOrEqual(t, viaReflect, viaGo+1,
+		"an uncached call of a reflect method value allocates %v objects against %v for the same Go method value", viaReflect, viaGo)
+}
+
+type unexportedMethodHolder struct{ hidden func() int }
+
+func TestAnUncachedCallOfAFunctionReadFromAnUnexportedFieldStillPanics(t *testing.T) {
+	holder := unexportedMethodHolder{hidden: func() int { return 1 }}
+	hidden := reflect.ValueOf(holder).Field(0)
+	require.False(t, hidden.CanInterface())
+	for _, classify := range []bool{true, false} {
+		vm, frame, registers := nativeCallFixture(t, func() {}, nil, []nativeSlot{{kind: isa.RegisterInt64, register: 0}})
+		registers.General[1] = hidden
+		site := &frame.Function.CallSites[0]
+		require.PanicsWithValue(t, "reflect.Value.Interface: cannot return value obtained from unexported field or method",
+			func() { callNativeUncached(vm, frame, registers, site, 0, classify) },
+			"classify=%v: the call must refuse the value as reflect.Value.Interface does", classify)
+	}
+}
+
+type methodValueCallProbe struct {
+	base int
+}
+
+func (p methodValueCallProbe) Add(n int) int { return p.base + n }
+
+func (p *methodValueCallProbe) Scale(n int) int {
+	p.base *= n
+	return p.base
+}
+
+func (p methodValueCallProbe) Sum(values ...int) int {
+	total := p.base
+	for _, value := range values {
+		total += value
+	}
+	return total
+}
+
+func TestAMethodValueIsCalledAsTheMethodFunctionWithItsReceiver(t *testing.T) {
+	t.Parallel()
+
+	probe := &methodValueCallProbe{base: 3}
+	add := reflect.ValueOf(*probe).MethodByName("Add")
+	require.Equal(t, 10, callNativeFunction(add, []reflect.Value{reflect.ValueOf(7)}, false)[0].Interface())
+	scale := reflect.ValueOf(probe).MethodByName("Scale")
+	require.Equal(t, 6, callNativeFunction(scale, []reflect.Value{reflect.ValueOf(2)}, false)[0].Interface())
+	require.Equal(t, 6, probe.base, "a pointer receiver is the same pointer")
+	sum := reflect.ValueOf(*probe).MethodByName("Sum")
+	require.Equal(t, 9, callNativeFunction(sum, []reflect.Value{reflect.ValueOf([]int{1, 2})}, true)[0].Interface())
+	require.Equal(t, 9, callNativeFunction(sum, []reflect.Value{reflect.ValueOf(1), reflect.ValueOf(2)}, false)[0].Interface())
+
+	var boxed fmt.Stringer = time.Duration(5)
+	viaInterface := reflect.ValueOf(&boxed).Elem().MethodByName("String")
+	require.Equal(t, "5ns", callNativeFunction(viaInterface, nil, false)[0].Interface(), "an interface receiver keeps the method value")
+	plain := reflect.ValueOf(strings.ToUpper)
+	require.Equal(t, "A", callNativeFunction(plain, []reflect.Value{reflect.ValueOf("a")}, false)[0].Interface())
+}
+
+func TestAMethodValueOnANilReceiverPanicsAsTheMethodValueDoes(t *testing.T) {
+	t.Parallel()
+
+	var missing *methodValueCallProbe
+	viaValue := reflect.ValueOf(missing).MethodByName("Add")
+	want := recoveredPanic(func() { viaValue.Call([]reflect.Value{reflect.ValueOf(1)}) })
+	got := recoveredPanic(func() { callNativeFunction(viaValue, []reflect.Value{reflect.ValueOf(1)}, false) })
+	require.NotNil(t, want)
+	require.Equal(t, fmt.Sprint(want), fmt.Sprint(got), "a value method called through a nil pointer panics the same way")
+
+	scale := reflect.ValueOf(missing).MethodByName("Scale")
+	want = recoveredPanic(func() { scale.Call([]reflect.Value{reflect.ValueOf(2)}) })
+	got = recoveredPanic(func() { callNativeFunction(scale, []reflect.Value{reflect.ValueOf(2)}, false) })
+	require.NotNil(t, want)
+	require.Equal(t, fmt.Sprint(want), fmt.Sprint(got), "a pointer method dereferencing a nil receiver panics the same way")
+}
+
+func TestAMethodValueCallAllocatesLessThanTheMethodValue(t *testing.T) {
+	if raceDetectorOn {
+		t.Skip("the race detector changes allocation counts")
+	}
+	if _, _, split := concreteMethodValue(reflect.ValueOf(methodValueCallProbe{}).MethodByName("Add")); !split {
+		t.Skip("this build calls method values as they are")
+	}
+	add := reflect.ValueOf(methodValueCallProbe{base: 1}).MethodByName("Add")
+	arguments := []reflect.Value{reflect.ValueOf(2)}
+	callNativeFunction(add, arguments, false)
+	direct := testing.AllocsPerRun(100, func() { add.Call(arguments) })
+	split := testing.AllocsPerRun(100, func() { callNativeFunction(add, arguments, false) })
+	t.Logf("method value %v, method function %v objects per call", direct, split)
+	require.Less(t, split, direct)
+}
+
+func recoveredPanic(call func()) (recovered any) {
+	defer func() { recovered = recover() }()
+	call()
+	return nil
 }

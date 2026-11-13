@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxlinux
 
@@ -87,13 +87,15 @@ func TestWorkerSharedOutputConcurrent(t *testing.T) {
 func TestWorkerOutputChargeAfterExit(t *testing.T) {
 	t.Parallel()
 	var process WorkerProcess
-	process.context, process.cancel = context.WithCancel(context.Background())
+	lifetime, cancel := context.WithCancel(t.Context())
+	process.cancel = cancel
+	process.watchLifetime(lifetime)
 	process.done = make(chan struct{})
 	process.output = &workerOutput{
 		cancel: process.cancel, data: nil, limit: 8, used: 0,
 		mutex: sync.Mutex{}, exceeded: false,
 	}
-	process.finish(nil)
+	process.finish(t.Context(), nil)
 	if err := process.Wait(); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +105,7 @@ func TestWorkerOutputChargeAfterExit(t *testing.T) {
 	if err := process.ChargeOutput(9); !errors.Is(err, ErrWorkerOutput) {
 		t.Fatal("buffered result bypassed accounting after process exit")
 	}
-	if !errors.Is(process.Wait(), ErrWorkerOutput) || !errors.Is(process.Close(), ErrWorkerOutput) {
+	if !errors.Is(process.Wait(), ErrWorkerOutput) || !errors.Is(process.Close(t.Context()), ErrWorkerOutput) {
 		t.Fatal("terminal methods lost late output overflow")
 	}
 }

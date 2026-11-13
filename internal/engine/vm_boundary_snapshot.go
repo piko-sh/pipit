@@ -111,20 +111,55 @@ func slabHoldsAddress(slab reflect.Value, address uintptr) bool {
 	return address >= base && address < base+size
 }
 
-// acquireBoundarySnapshot returns a fresh addressable reflect.Value of type t.
+// acquireBoundarySnapshot allocates an addressable, GC-rooted reflect.Value of type t,
+// backed by a per-type chunked slab with bump allocation.
 //
-// Backed by a per-type chunked slab with bump allocation; GC-rooted via the slab's typed
-// backing array.
-//
-// Takes t (reflect.Type) which is the element type of the desired addressable Value;
+// Takes t (reflect.Type) which is the element type of the desired addressable Value. It
 // selects (and lazily allocates) the per-type chunk.
 //
 // Returns an addressable reflect.Value of type t backed by the chunk slab.
 func (vm *VM) acquireBoundarySnapshot(t reflect.Type) reflect.Value {
-	abiTyp := reflectValueABIType(t)
+	if vm.allocatesForFinalisers() {
+		return reflect.New(t).Elem()
+	}
+	if slot, ok := vm.krefSnapshot(t); ok {
+		return slot
+	}
+	return vm.acquireBoundaryChunkSlot(t)
+}
+
+// acquireStructLiteralSlot allocates a boundary snapshot for a struct literal containing
+// pointers.
+//
+// A program that calls runtime.SetFinalizer gets a Go allocation of the struct instead
+// (allocatesForFinalisers).
+//
+// Takes valueType (reflect.Type) which is the struct type.
+//
+// Returns reflect.Value which is the zeroed, addressable slot.
+func (vm *VM) acquireStructLiteralSlot(valueType reflect.Type) reflect.Value {
+	if vm.allocatesForFinalisers() {
+		return reflect.New(valueType).Elem()
+	}
+	if slot, ok := vm.krefSnapshot(valueType); ok {
+		return slot
+	}
+	slot := vm.acquireBoundaryChunkSlot(valueType)
+	vm.seedFreshObject(slot)
+	return slot
+}
+
+// acquireBoundaryChunkSlot takes the next slot of valueType's boundary chunk, making a
+// chunk when there is none or it is full.
+//
+// Takes valueType (reflect.Type) which is the slot's type.
+//
+// Returns reflect.Value which is the slot.
+func (vm *VM) acquireBoundaryChunkSlot(valueType reflect.Type) reflect.Value {
+	abiTyp := reflectValueABIType(valueType)
 	chunk, ok := vm.boundarySnapshotChunks[abiTyp]
 	if !ok || chunk.nextIdx >= chunk.slab.Len() {
-		chunk = vm.newBoundaryChunk(t, abiTyp, chunk)
+		chunk = vm.newBoundaryChunk(valueType, abiTyp, chunk)
 	}
 	slot := chunk.slab.Index(chunk.nextIdx)
 	chunk.nextIdx++

@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxhost
 
 import (
@@ -28,6 +28,7 @@ import (
 
 	"pipit.sh/pipit/internal/sandboxbroker"
 	"pipit.sh/pipit/internal/sandboxlinux"
+	"pipit.sh/pipit/internal/sandboxwire"
 	"pipit.sh/pipit/internal/sandboxworker"
 )
 
@@ -42,9 +43,6 @@ const (
 // linuxFilesystemProcess is the Linux implementation of the combined source and broker
 // boundary.
 type linuxFilesystemProcess struct {
-	// context is the shared lifetime context for both processes.
-	context context.Context
-
 	// cancel terminates the shared lifetime.
 	cancel context.CancelFunc
 
@@ -73,13 +71,13 @@ type linuxFilesystemProcess struct {
 // Close cancels the shared lifetime and retains both native owners for cleanup retry.
 //
 // Returns any execution or cleanup error.
-func (process *linuxFilesystemProcess) Close() error {
+func (process *linuxFilesystemProcess) Close(ctx context.Context) error {
 	process.cancel()
 	var workerErr error
 	if process.worker != nil {
-		workerErr = process.worker.Close()
+		workerErr = process.worker.Close(ctx)
 	}
-	brokerErr := process.broker.Close()
+	brokerErr := process.broker.Close(ctx)
 	if process.broker.RecoveryPending() {
 		return errors.Join(workerErr, brokerErr)
 	}
@@ -88,7 +86,7 @@ func (process *linuxFilesystemProcess) Close() error {
 			return errors.Join(workerErr, brokerErr, err)
 		}
 	}
-	cleanup, cancel := context.WithTimeout(context.WithoutCancel(process.context), filesystemCleanupTimeout)
+	cleanup, cancel := sandboxwire.CleanupContext(ctx)
 	defer cancel()
 	if err := process.aggregate.Close(cleanup); err != nil {
 		return errors.Join(workerErr, brokerErr, err)
@@ -115,9 +113,9 @@ func (process *linuxFilesystemProcess) Diagnostics() string {
 // Takes request (sandboxworker.Request) which is the source-only request.
 //
 // Returns a response after both native owners have completed cleanup.
-func (process *linuxFilesystemProcess) evaluate(request sandboxworker.Request) (sandboxworker.Response, error) {
-	response, err := sandboxworker.ExchangeFilesystem(process.context, process.worker, process.policy, request, process.broker)
-	if err := errors.Join(err, process.Close()); err != nil {
+func (process *linuxFilesystemProcess) evaluate(ctx context.Context, request sandboxworker.Request) (sandboxworker.Response, error) {
+	response, err := sandboxworker.ExchangeFilesystem(ctx, process.worker, process.policy, request, process.broker)
+	if err := errors.Join(err, process.Close(ctx)); err != nil {
 		return sandboxworker.Response{}, err
 	}
 	return response, nil
@@ -137,7 +135,7 @@ func newIsolatedFilesystemProcess(ctx context.Context, config *IsolatedFilesyste
 	if lifetime == 0 {
 		lifetime = defaultFilesystemLifetime
 	}
-	ctx, cancel := context.WithTimeout(ctx, lifetime)
+	ctx, cancel := context.WithTimeoutCause(ctx, lifetime, sandboxwire.ErrLifetimeEnded)
 	policy, err := isolatedFilesystemRecoveryPolicy(ctx, config)
 	if err != nil {
 		cancel()
@@ -156,7 +154,7 @@ func newIsolatedFilesystemProcess(ctx context.Context, config *IsolatedFilesyste
 		return nil, filesystemLaunchError(err)
 	}
 	owner := &linuxFilesystemProcess{
-		context: ctx, cancel: cancel, worker: nil, broker: nil, aggregate: aggregate, images: nil,
+		cancel: cancel, worker: nil, broker: nil, aggregate: aggregate, images: nil,
 		policy: sandboxworker.FilesystemConfiguration{
 			Profile: sandboxworker.FilesystemProfile, Imports: append(config.Worker.Imports, "pipit/fs"),
 			Roots: grants, Limits: &config.Limits,
@@ -164,30 +162,30 @@ func newIsolatedFilesystemProcess(ctx context.Context, config *IsolatedFilesyste
 		record: launchRecord{directory: "", journal: false}, recorded: false,
 	}
 	if err != nil {
-		return owner, errors.Join(filesystemLaunchError(err), owner.Close())
+		return owner, errors.Join(filesystemLaunchError(err), owner.Close(ctx))
 	}
 	owner.record, err = createLaunchRecord(config.Worker.StateDirectory, config.Worker.Tenant, true)
 	if err != nil {
-		return owner, errors.Join(launchRecordError(err), owner.Close())
+		return owner, errors.Join(launchRecordError(err), owner.Close(ctx))
 	}
 	owner.recorded = true
 	owner.images, err = sandboxbroker.OpenLinuxImageStore(owner.record.imagesDirectory(), roots, owner.record.storeMetadata())
 	if err != nil {
-		return owner, errors.Join(filesystemLaunchError(err), owner.Close())
+		return owner, errors.Join(filesystemLaunchError(err), owner.Close(ctx))
 	}
 	native.ImageStore = owner.images
-	storage, err := owner.captureRecoveryStorage(policy)
+	storage, err := owner.captureRecoveryStorage(ctx, policy)
 	if err != nil {
-		return owner, errors.Join(filesystemLaunchError(err), owner.Close())
+		return owner, errors.Join(filesystemLaunchError(err), owner.Close(ctx))
 	}
 	owner.broker, err = sandboxlinux.OpenCheckpointedFilesystemBrokerInGroup(ctx, native, roots, config.Limits, storage, aggregate.Group)
 	if err != nil {
-		return owner, errors.Join(filesystemLaunchError(err), owner.Close())
+		return owner, errors.Join(filesystemLaunchError(err), owner.Close(ctx))
 	}
 	native.Executable, native.Digest = config.Worker.WorkerPath, config.Worker.WorkerSHA256
 	owner.worker, err = sandboxlinux.LaunchWorkerInGroup(ctx, native, aggregate.Group)
 	if err != nil {
-		return owner, errors.Join(filesystemLaunchError(err), owner.Close())
+		return owner, errors.Join(filesystemLaunchError(err), owner.Close(ctx))
 	}
 	return owner, nil
 }

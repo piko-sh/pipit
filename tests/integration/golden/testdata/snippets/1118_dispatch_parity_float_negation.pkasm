@@ -4,16 +4,15 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: float=2
-;   dispatch:  asm=4 shim=0 exit=0 go=0
+;   registers: float64=2
+;   dispatch:  asm=3 shim=0 exit=0 go=0
 ;   params:    (none)
-;   returns:   (float)
+;   returns:   (float64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   floats:  [0]=3.14
 
-0000 A 0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 3.14
-0001 A 1:NEG_FLOAT                 47   1   0
-0002 A 1:MOVE_FLOAT                36   0   1
-0003 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 0:LOAD_FLOAT64_CONSTANT                                0   0   0    ; floats[0] = 3.14
+0001 A 1:NEGATE_FLOAT64                                      47   0   0
+0002 A 2:RETURN                                               0  10   1    ; 1 values

@@ -27,6 +27,26 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
+// vmDispatchContexts holds a VM's assembly dispatch contexts: the one executing and the
+// ones its dispatch loops reuse.
+type vmDispatchContexts struct {
+	// liveCtx points at the dispatch context currently executing on this VM, letting Go-path
+	// handlers that retarget per-frame pointers (the closure AsmCallInfo fill's
+	// copy-on-write) sync the live context immediately instead of waiting for the next
+	// frame-change rebuild. Set alongside ctx.vm at population; only read while dispatching.
+	liveCtx *dispatchContext
+
+	// dispatchContextsNested holds the dispatch context of each deeper nesting depth.
+	dispatchContextsNested []*dispatchContext
+
+	// dispatchContextOuter is the assembly dispatch context of the outermost
+	// runDispatchedLoop on this VM, reused across loops and runs (acquireDispatchContext).
+	dispatchContextOuter dispatchContext
+
+	// dispatchContextDepth is the number of assembly dispatch loops running on this VM.
+	dispatchContextDepth int
+}
+
 // runDispatched executes bytecode starting from baseFramePointer using the ASM dispatch
 // loop, falling back to Go for tier-2 opcodes via a trampoline pattern.
 //
@@ -73,39 +93,48 @@ func (vm *VM) saveExitedFrameIfPushed(ctx *dispatchContext, exitedFramePointer i
 //
 // Returns the result and error of the run.
 func (vm *VM) runDispatchedLoop(baseFramePointer int) (any, error) {
-	if vm.Limits.ForceGoDispatch || vm.Limits.SafeMode || vm.Limits.Debug != nil {
+	if storeCensusBuilt || opcodeCensusBuilt || vm.Limits.ForceGoDispatch || vm.Limits.SafeMode || vm.Limits.Debug != nil {
 		return vm.run(baseFramePointer)
 	}
 
 	savedBaseFp := vm.baseFramePointer
+	savedPollBudget := vm.activePollBudget
 	vm.baseFramePointer = baseFramePointer
-	defer func() { vm.baseFramePointer = savedBaseFp }()
+	ctx := vm.acquireDispatchContext()
+	defer func() {
+		vm.baseFramePointer = savedBaseFp
+		vm.activePollBudget = savedPollBudget
+		vm.dispatchContextDepth--
+	}()
 
 	frame := &vm.CallStack[vm.FramePointer]
 	registers := &frame.Registers
 
-	var ctx dispatchContext
+	vm.activePollBudget = &ctx.pollBudget
 
-	vm.buildDispatchContext(&ctx, &asmJumpTable)
-	vm.saveCurrentDispatchRegisters(&ctx)
+	vm.buildDispatchContext(ctx, &asmJumpTable)
+	vm.saveCurrentDispatchRegisters(ctx)
 
 	ctx.pollBudget = dispatchPollBudget
 	for {
 		if vm.dispatchCheckpointDue() {
-			frame, registers = vm.runDispatchCheckpoint(&ctx)
+			frame, registers = vm.runDispatchCheckpoint(ctx)
 		}
-		dispatchLoop(&ctx)
+		dispatchLoop(ctx)
 
-		vm.syncCallContextFromASM(&ctx)
+		vm.syncCallContextFromASM(ctx)
 		exitedFramePointer := vm.FramePointer
-		frame, registers = vm.recordDispatchExit(&ctx, frame, registers)
+		frame, registers = vm.recordDispatchExit(ctx, frame, registers)
 
-		if vm.Cancelled.Load() != 0 || (pollDue(&ctx) && vm.pollContext()) {
+		if vm.Cancelled.Load() != 0 || (pollDue(ctx) && vm.pollContext()) {
 			return nil, vm.stopError()
+		}
+		if vm.holdsGates {
+			vm.yieldExportGates()
 		}
 
 		result, action, err := vm.handleDispatchExit(
-			&ctx, frame, registers, baseFramePointer,
+			ctx, frame, registers, baseFramePointer,
 		)
 		if action == loopReturn {
 			return result, err
@@ -114,11 +143,30 @@ func (vm *VM) runDispatchedLoop(baseFramePointer int) (any, error) {
 			continue
 		}
 
-		vm.saveExitedFrameIfPushed(&ctx, exitedFramePointer)
+		vm.saveExitedFrameIfPushed(ctx, exitedFramePointer)
 		frame = &vm.CallStack[vm.FramePointer]
 		registers = &frame.Registers
-		vm.rebuildDispatchPointers(&ctx, frame, registers)
+		vm.rebuildDispatchPointers(ctx, frame, registers)
 	}
+}
+
+// acquireDispatchContext returns a zeroed context for the VM's next assembly-loop nesting
+// depth.
+//
+// Returns *dispatchContext which is the context, owned by the caller until it returns.
+func (vm *VM) acquireDispatchContext() *dispatchContext {
+	depth := vm.dispatchContextDepth
+	vm.dispatchContextDepth = depth + 1
+	if depth == 0 {
+		vm.dispatchContextOuter = dispatchContext{}
+		return &vm.dispatchContextOuter
+	}
+	if depth > len(vm.dispatchContextsNested) {
+		vm.dispatchContextsNested = append(vm.dispatchContextsNested, new(dispatchContext))
+	}
+	ctx := vm.dispatchContextsNested[depth-1]
+	*ctx = dispatchContext{}
+	return ctx
 }
 
 // pollDue charges an exit to Go against the poll budget and re-arms it when polling is
@@ -173,49 +221,49 @@ func (vm *VM) handleDispatchExit(
 		return vm.processExitSetField(frame, registers, ctx)
 	case exitGetField:
 		return vm.processExitGetField(frame, registers, ctx)
-	case exitMapIndex:
-		return vm.processExitMapIndex(frame, registers, ctx)
+	case exitGetMap:
+		return vm.processExitGetMap(frame, registers, ctx)
 	case exitAppend:
 		return vm.processExitAppend(frame, registers, ctx)
-	case exitAppendByteFast:
-		return vm.processExitAppendByteFast(frame, registers, ctx)
-	case exitSliceSetStringDirect:
-		return vm.processExitSliceSetStringDirect(frame, registers, ctx)
-	case exitAppendStructFast:
-		return vm.processExitThroughHandler(frame, registers, ctx, handleAppendStructFast)
-	case exitAppendIntFast:
-		return vm.processExitThroughHandler(frame, registers, ctx, handleAppendInt)
-	case exitAppendFloatFast:
-		return vm.processExitThroughHandler(frame, registers, ctx, handleAppendFloat)
-	case exitAppendStringFast:
+	case exitAppendByte:
+		return vm.processExitAppendByte(frame, registers, ctx)
+	case exitSetSliceStringElement:
+		return vm.processExitSetSliceStringElement(frame, registers, ctx)
+	case exitAppendStruct:
+		return vm.processExitThroughHandler(frame, registers, ctx, handleAppendStruct)
+	case exitAppendInt64:
+		return vm.processExitThroughHandler(frame, registers, ctx, handleAppendInt64)
+	case exitAppendFloat64:
+		return vm.processExitThroughHandler(frame, registers, ctx, handleAppendFloat64)
+	case exitAppendString:
 		return vm.processExitThroughHandler(frame, registers, ctx, handleAppendString)
-	case exitTestNilJumpFalse:
-		return vm.processExitTestNilJumpFalse(frame, registers, ctx)
-	case exitTestNilJumpTrue:
-		return vm.processExitTestNilJumpTrue(frame, registers, ctx)
+	case exitJumpIfNotNil:
+		return vm.processExitJumpIfNotNil(frame, registers, ctx)
+	case exitJumpIfNil:
+		return vm.processExitJumpIfNil(frame, registers, ctx)
 	case exitFrameChanged:
 		vm.updateASMCallInfoBase()
 		return nil, loopRebuild, nil
-	case exitGetStructFieldIntT0:
-		return vm.processExitGetStructFieldIntT0(frame, registers, ctx)
-	case exitGetStructFieldUintT0:
-		return vm.processExitGetStructFieldUintT0(frame, registers, ctx)
-	case exitGetStructFieldFloatT0:
-		return vm.processExitGetStructFieldFloatT0(frame, registers, ctx)
-	case exitGetStructFieldBoolT0:
-		return vm.processExitGetStructFieldBoolT0(frame, registers, ctx)
-	case exitSetStructFieldIntT0:
-		return vm.processExitSetStructFieldIntT0(frame, registers, ctx)
-	case exitSetStructFieldUintT0:
-		return vm.processExitSetStructFieldUintT0(frame, registers, ctx)
-	case exitSetStructFieldFloatT0:
-		return vm.processExitSetStructFieldFloatT0(frame, registers, ctx)
-	case exitSetStructFieldBoolT0:
-		return vm.processExitSetStructFieldBoolT0(frame, registers, ctx)
-	case exitGetStructFieldGeneralT0:
-		return vm.processExitGetStructFieldGeneralT0(frame, registers, ctx)
-	case exitSetStructFieldGeneralT0:
-		return vm.processExitSetStructFieldGeneralT0(frame, registers, ctx)
+	case exitGetStructFieldInt64:
+		return vm.processExitGetStructFieldInt64(frame, registers, ctx)
+	case exitGetStructFieldUint64:
+		return vm.processExitGetStructFieldUint64(frame, registers, ctx)
+	case exitGetStructFieldFloat64:
+		return vm.processExitGetStructFieldFloat64(frame, registers, ctx)
+	case exitGetStructFieldBool:
+		return vm.processExitGetStructFieldBool(frame, registers, ctx)
+	case exitSetStructFieldInt64:
+		return vm.processExitSetStructFieldInt64(frame, registers, ctx)
+	case exitSetStructFieldUint64:
+		return vm.processExitSetStructFieldUint64(frame, registers, ctx)
+	case exitSetStructFieldFloat64:
+		return vm.processExitSetStructFieldFloat64(frame, registers, ctx)
+	case exitSetStructFieldBool:
+		return vm.processExitSetStructFieldBool(frame, registers, ctx)
+	case exitGetStructFieldGeneral:
+		return vm.processExitGetStructFieldGeneral(frame, registers, ctx)
+	case exitSetStructFieldGeneral:
+		return vm.processExitSetStructFieldGeneral(frame, registers, ctx)
 	case exitDivByZero:
 		return vm.raiseDivByZeroForDispatch()
 	case exitCallOverflow, exitStackOverflowPathB:
@@ -276,14 +324,14 @@ func (vm *VM) processExitGetField(
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
-// processExitMapIndex is the direct-exit Go handler for isa.OpMapIndex.
+// processExitGetMap is the direct-exit Go handler for isa.OpGetMap.
 //
 // Takes frame (*CallFrame) which specifies the current call frame.
 // Takes registers (*Registers) which provides the register file.
 // Takes ctx (*dispatchContext) which provides the dispatch context.
 //
 // Returns the result, the dispatch action, and any error.
-func (vm *VM) processExitMapIndex(
+func (vm *VM) processExitGetMap(
 	frame *CallFrame,
 	registers *Registers,
 	ctx *dispatchContext,
@@ -292,7 +340,7 @@ func (vm *VM) processExitMapIndex(
 	body := frame.Function.Body
 	instruction := body[frame.ProgramCounter]
 	frame.ProgramCounter++
-	rc := handleMapIndex(vm, frame, registers, instruction)
+	rc := handleGetMap(vm, frame, registers, instruction)
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
@@ -365,17 +413,15 @@ func (vm *VM) processExitAppend(
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
-// processExitAppendByteFast is the direct-exit Go handler for the specialised
-// byte-builder opcode.
-//
-// Skips both the handlerTable[op] indirect call and the generic tier-2 processor.
+// processExitAppendByte is the direct-exit Go handler for the specialised byte-builder
+// opcode.
 //
 // Takes frame (*CallFrame) which specifies the current call frame.
 // Takes registers (*Registers) which provides the register file.
 // Takes ctx (*dispatchContext) which provides the dispatch context.
 //
 // Returns the result, the dispatch action, and any error.
-func (vm *VM) processExitAppendByteFast(
+func (vm *VM) processExitAppendByte(
 	frame *CallFrame,
 	registers *Registers,
 	ctx *dispatchContext,
@@ -384,11 +430,11 @@ func (vm *VM) processExitAppendByteFast(
 	body := frame.Function.Body
 	instruction := body[frame.ProgramCounter]
 	frame.ProgramCounter++
-	rc := handleAppendByteFast(vm, frame, registers, instruction)
+	rc := handleAppendByte(vm, frame, registers, instruction)
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
-// processExitSliceSetStringDirect is the direct-exit Go handler for the tier-1 []string
+// processExitSetSliceStringElement is the direct-exit Go handler for the tier-1 []string
 // element store, which leaves assembly so the stored string passes the arena string
 // barrier before it can reach a heap-owned backing.
 //
@@ -397,7 +443,7 @@ func (vm *VM) processExitAppendByteFast(
 // Takes ctx (*dispatchContext) which provides the dispatch context.
 //
 // Returns the result, the dispatch action, and any error.
-func (vm *VM) processExitSliceSetStringDirect(
+func (vm *VM) processExitSetSliceStringElement(
 	frame *CallFrame,
 	registers *Registers,
 	ctx *dispatchContext,
@@ -406,26 +452,19 @@ func (vm *VM) processExitSliceSetStringDirect(
 	body := frame.Function.Body
 	instruction := body[frame.ProgramCounter]
 	frame.ProgramCounter++
-	rc := handleSubOpSliceSetStringDirect(vm, frame, registers, instruction)
+	rc := handleSetSliceStringElement(vm, frame, registers, instruction)
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
-// Tier-0 struct-field READER direct-exit Go handlers follow. Each one mirrors
-// processExitGetField's shape: read the current instruction, advance PC, dispatch
-// directly to the matching tier-0 Go handler (skipping the handlerTable[op] indirect
-// lookup), then run the shared post-first-op batching loop. Subsequent trampolining ops
-// in the same Go entry still go through the generic indirect-dispatch loop, so the saving
-// is the single handlerTable[op] miss the trampoline's entry op would otherwise pay.
-
-// processExitGetStructFieldIntT0 is the direct-exit Go handler for
-// isa.OpGetStructFieldIntT0.
+// processExitGetStructFieldInt64 is the direct-exit Go handler for
+// isa.OpGetStructFieldInt64.
 //
 // Takes frame (*CallFrame) which specifies the current call frame.
 // Takes registers (*Registers) which provides the register file.
 // Takes ctx (*dispatchContext) which provides the dispatch context.
 //
 // Returns the result, the dispatch action, and any error.
-func (vm *VM) processExitGetStructFieldIntT0(
+func (vm *VM) processExitGetStructFieldInt64(
 	frame *CallFrame,
 	registers *Registers,
 	ctx *dispatchContext,
@@ -434,19 +473,19 @@ func (vm *VM) processExitGetStructFieldIntT0(
 	body := frame.Function.Body
 	instruction := body[frame.ProgramCounter]
 	frame.ProgramCounter++
-	rc := handleGetStructFieldIntT0(vm, frame, registers, instruction)
+	rc := handleGetStructFieldInt64(vm, frame, registers, instruction)
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
-// processExitGetStructFieldUintT0 is the direct-exit Go handler for
-// opGetStructFieldUintT0.
+// processExitGetStructFieldUint64 is the direct-exit Go handler for
+// opGetStructFieldUint64.
 //
 // Takes frame (*CallFrame) which specifies the current call frame.
 // Takes registers (*Registers) which provides the register file.
 // Takes ctx (*dispatchContext) which provides the dispatch context.
 //
 // Returns the result, the dispatch action, and any error.
-func (vm *VM) processExitGetStructFieldUintT0(
+func (vm *VM) processExitGetStructFieldUint64(
 	frame *CallFrame,
 	registers *Registers,
 	ctx *dispatchContext,
@@ -455,19 +494,19 @@ func (vm *VM) processExitGetStructFieldUintT0(
 	body := frame.Function.Body
 	instruction := body[frame.ProgramCounter]
 	frame.ProgramCounter++
-	rc := handleGetStructFieldUintT0(vm, frame, registers, instruction)
+	rc := handleGetStructFieldUint64(vm, frame, registers, instruction)
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
-// processExitGetStructFieldFloatT0 is the direct-exit Go handler for
-// opGetStructFieldFloatT0.
+// processExitGetStructFieldFloat64 is the direct-exit Go handler for
+// opGetStructFieldFloat64.
 //
 // Takes frame (*CallFrame) which specifies the current call frame.
 // Takes registers (*Registers) which provides the register file.
 // Takes ctx (*dispatchContext) which provides the dispatch context.
 //
 // Returns the result, the dispatch action, and any error.
-func (vm *VM) processExitGetStructFieldFloatT0(
+func (vm *VM) processExitGetStructFieldFloat64(
 	frame *CallFrame,
 	registers *Registers,
 	ctx *dispatchContext,
@@ -476,19 +515,18 @@ func (vm *VM) processExitGetStructFieldFloatT0(
 	body := frame.Function.Body
 	instruction := body[frame.ProgramCounter]
 	frame.ProgramCounter++
-	rc := handleGetStructFieldFloatT0(vm, frame, registers, instruction)
+	rc := handleGetStructFieldFloat64(vm, frame, registers, instruction)
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
-// processExitGetStructFieldBoolT0 is the direct-exit Go handler for
-// opGetStructFieldBoolT0.
+// processExitGetStructFieldBool is the direct-exit Go handler for opGetStructFieldBool.
 //
 // Takes frame (*CallFrame) which specifies the current call frame.
 // Takes registers (*Registers) which provides the register file.
 // Takes ctx (*dispatchContext) which provides the dispatch context.
 //
 // Returns the result, the dispatch action, and any error.
-func (vm *VM) processExitGetStructFieldBoolT0(
+func (vm *VM) processExitGetStructFieldBool(
 	frame *CallFrame,
 	registers *Registers,
 	ctx *dispatchContext,
@@ -497,23 +535,19 @@ func (vm *VM) processExitGetStructFieldBoolT0(
 	body := frame.Function.Body
 	instruction := body[frame.ProgramCounter]
 	frame.ProgramCounter++
-	rc := handleGetStructFieldBoolT0(vm, frame, registers, instruction)
+	rc := handleGetStructFieldBool(vm, frame, registers, instruction)
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
-// Tier-0 struct-field WRITER direct-exit Go handlers follow (primitives only; the
-// General-bank Set stays on the generic processExitPathB path because it needs
-// runtimeTypedmemmove).
-
-// processExitSetStructFieldIntT0 is the direct-exit Go handler for
-// isa.OpSetStructFieldIntT0.
+// processExitSetStructFieldInt64 is the direct-exit Go handler for
+// isa.OpSetStructFieldInt64.
 //
 // Takes frame (*CallFrame) which specifies the current call frame.
 // Takes registers (*Registers) which provides the register file.
 // Takes ctx (*dispatchContext) which provides the dispatch context.
 //
 // Returns the result, the dispatch action, and any error.
-func (vm *VM) processExitSetStructFieldIntT0(
+func (vm *VM) processExitSetStructFieldInt64(
 	frame *CallFrame,
 	registers *Registers,
 	ctx *dispatchContext,
@@ -522,19 +556,19 @@ func (vm *VM) processExitSetStructFieldIntT0(
 	body := frame.Function.Body
 	instruction := body[frame.ProgramCounter]
 	frame.ProgramCounter++
-	rc := handleSetStructFieldIntT0(vm, frame, registers, instruction)
+	rc := handleSetStructFieldInt64(vm, frame, registers, instruction)
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
-// processExitSetStructFieldUintT0 is the direct-exit Go handler for
-// opSetStructFieldUintT0.
+// processExitSetStructFieldUint64 is the direct-exit Go handler for
+// opSetStructFieldUint64.
 //
 // Takes frame (*CallFrame) which specifies the current call frame.
 // Takes registers (*Registers) which provides the register file.
 // Takes ctx (*dispatchContext) which provides the dispatch context.
 //
 // Returns the result, the dispatch action, and any error.
-func (vm *VM) processExitSetStructFieldUintT0(
+func (vm *VM) processExitSetStructFieldUint64(
 	frame *CallFrame,
 	registers *Registers,
 	ctx *dispatchContext,
@@ -543,19 +577,19 @@ func (vm *VM) processExitSetStructFieldUintT0(
 	body := frame.Function.Body
 	instruction := body[frame.ProgramCounter]
 	frame.ProgramCounter++
-	rc := handleSetStructFieldUintT0(vm, frame, registers, instruction)
+	rc := handleSetStructFieldUint64(vm, frame, registers, instruction)
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
-// processExitSetStructFieldFloatT0 is the direct-exit Go handler for
-// opSetStructFieldFloatT0.
+// processExitSetStructFieldFloat64 is the direct-exit Go handler for
+// opSetStructFieldFloat64.
 //
 // Takes frame (*CallFrame) which specifies the current call frame.
 // Takes registers (*Registers) which provides the register file.
 // Takes ctx (*dispatchContext) which provides the dispatch context.
 //
 // Returns the result, the dispatch action, and any error.
-func (vm *VM) processExitSetStructFieldFloatT0(
+func (vm *VM) processExitSetStructFieldFloat64(
 	frame *CallFrame,
 	registers *Registers,
 	ctx *dispatchContext,
@@ -564,19 +598,18 @@ func (vm *VM) processExitSetStructFieldFloatT0(
 	body := frame.Function.Body
 	instruction := body[frame.ProgramCounter]
 	frame.ProgramCounter++
-	rc := handleSetStructFieldFloatT0(vm, frame, registers, instruction)
+	rc := handleSetStructFieldFloat64(vm, frame, registers, instruction)
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
-// processExitSetStructFieldBoolT0 is the direct-exit Go handler for
-// opSetStructFieldBoolT0.
+// processExitSetStructFieldBool is the direct-exit Go handler for opSetStructFieldBool.
 //
 // Takes frame (*CallFrame) which specifies the current call frame.
 // Takes registers (*Registers) which provides the register file.
 // Takes ctx (*dispatchContext) which provides the dispatch context.
 //
 // Returns the result, the dispatch action, and any error.
-func (vm *VM) processExitSetStructFieldBoolT0(
+func (vm *VM) processExitSetStructFieldBool(
 	frame *CallFrame,
 	registers *Registers,
 	ctx *dispatchContext,
@@ -585,11 +618,11 @@ func (vm *VM) processExitSetStructFieldBoolT0(
 	body := frame.Function.Body
 	instruction := body[frame.ProgramCounter]
 	frame.ProgramCounter++
-	rc := handleSetStructFieldBoolT0(vm, frame, registers, instruction)
+	rc := handleSetStructFieldBool(vm, frame, registers, instruction)
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
-// processExitGetStructFieldGeneralT0 is the direct-exit Go handler for
+// processExitGetStructFieldGeneral is the direct-exit Go handler for
 // isa.OpGetStructFieldGeneral.
 //
 // Takes frame (*CallFrame) which specifies the current call frame.
@@ -597,7 +630,7 @@ func (vm *VM) processExitSetStructFieldBoolT0(
 // Takes ctx (*dispatchContext) which provides the dispatch context.
 //
 // Returns the result, the dispatch action, and any error.
-func (vm *VM) processExitGetStructFieldGeneralT0(
+func (vm *VM) processExitGetStructFieldGeneral(
 	frame *CallFrame,
 	registers *Registers,
 	ctx *dispatchContext,
@@ -606,21 +639,19 @@ func (vm *VM) processExitGetStructFieldGeneralT0(
 	body := frame.Function.Body
 	instruction := body[frame.ProgramCounter]
 	frame.ProgramCounter++
-	rc := handleGetStructFieldGeneralT0(vm, frame, registers, instruction)
+	rc := handleGetStructFieldGeneral(vm, frame, registers, instruction)
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
-// processExitSetStructFieldGeneralT0 is the direct-exit Go handler for
-// isa.OpSetStructFieldGeneral. Same pattern as the reader; the handler still uses
-// runtime_typedmemmove internally for the pointer/interface store - the direct exit only
-// saves the handlerTable[op] indirect.
+// processExitSetStructFieldGeneral is the direct-exit Go handler for
+// isa.OpSetStructFieldGeneral. Same pattern as the reader.
 //
 // Takes frame (*CallFrame) which specifies the current call frame.
 // Takes registers (*Registers) which provides the register file.
 // Takes ctx (*dispatchContext) which provides the dispatch context.
 //
 // Returns the result, the dispatch action, and any error.
-func (vm *VM) processExitSetStructFieldGeneralT0(
+func (vm *VM) processExitSetStructFieldGeneral(
 	frame *CallFrame,
 	registers *Registers,
 	ctx *dispatchContext,
@@ -629,22 +660,18 @@ func (vm *VM) processExitSetStructFieldGeneralT0(
 	body := frame.Function.Body
 	instruction := body[frame.ProgramCounter]
 	frame.ProgramCounter++
-	rc := handleSetStructFieldGeneralT0(vm, frame, registers, instruction)
+	rc := handleSetStructFieldGeneral(vm, frame, registers, instruction)
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
-// processExitTestNilJumpFalse is the direct-exit Go handler for isa.OpTestNilJumpFalse.
-//
-// The handler body runs in Go; the direct exit saves only the handlerTable[op] indirect
-// on the trampoline's first op and fires once per recursive step in any *node-style
-// pointer walker.
+// processExitJumpIfNotNil is the direct-exit Go handler for isa.OpJumpIfNotNil.
 //
 // Takes frame (*CallFrame) which specifies the current call frame.
 // Takes registers (*Registers) which provides the register file.
 // Takes ctx (*dispatchContext) which provides the dispatch context.
 //
 // Returns the result, the dispatch action, and any error.
-func (vm *VM) processExitTestNilJumpFalse(
+func (vm *VM) processExitJumpIfNotNil(
 	frame *CallFrame,
 	registers *Registers,
 	ctx *dispatchContext,
@@ -653,19 +680,18 @@ func (vm *VM) processExitTestNilJumpFalse(
 	body := frame.Function.Body
 	instruction := body[frame.ProgramCounter]
 	frame.ProgramCounter++
-	rc := handleTestNilJumpFalse(vm, frame, registers, instruction)
+	rc := handleJumpIfNotNil(vm, frame, registers, instruction)
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
-// processExitTestNilJumpTrue mirrors processExitTestNilJumpFalse for the inverted-sense
-// nil test.
+// processExitJumpIfNil mirrors processExitJumpIfNotNil for the inverted-sense nil test.
 //
 // Takes frame (*CallFrame) which specifies the current call frame.
 // Takes registers (*Registers) which provides the register file.
 // Takes ctx (*dispatchContext) which provides the dispatch context.
 //
 // Returns the result, the dispatch action, and any error.
-func (vm *VM) processExitTestNilJumpTrue(
+func (vm *VM) processExitJumpIfNil(
 	frame *CallFrame,
 	registers *Registers,
 	ctx *dispatchContext,
@@ -674,7 +700,7 @@ func (vm *VM) processExitTestNilJumpTrue(
 	body := frame.Function.Body
 	instruction := body[frame.ProgramCounter]
 	frame.ProgramCounter++
-	rc := handleTestNilJumpTrue(vm, frame, registers, instruction)
+	rc := handleJumpIfNil(vm, frame, registers, instruction)
 	return vm.runPathBBatch(frame, registers, ctx, codeLength, body, rc)
 }
 
@@ -686,7 +712,8 @@ func (vm *VM) processExitTestNilJumpTrue(
 // round-trip per batched op. On reaching the cap it hands control back to ASM so
 // dispatchLoop() runs its cancellation check. Terminal results resolve through
 // resolveTerminalResult(); any other non-continue result means the frame changed and
-// dispatch must rebuild.
+// dispatch must rebuild. A raised checkpoint flag ends the batch at the instruction
+// boundary, so the dispatch loop services it before re-entering ASM.
 //
 // Takes frame (*CallFrame) which specifies the current call frame.
 // Takes registers (*Registers) which provides the register file.
@@ -712,7 +739,8 @@ func (vm *VM) runPathBBatch(
 			vm.updateASMCallInfoBase()
 			return nil, loopRebuild, nil
 		}
-		if frame.ProgramCounter >= codeLength || !instructionWouldTrampoline(body[frame.ProgramCounter]) {
+		if frame.ProgramCounter >= codeLength || vm.checkpointFlags != 0 ||
+			!instructionWouldTrampoline(body[frame.ProgramCounter]) {
 			ctx.programCounter = int64(frame.ProgramCounter)
 			ctx.deferStackLength = int64(len(vm.deferStack))
 			return nil, loopContinue, nil
@@ -802,8 +830,8 @@ func (vm *VM) processExitReturn(
 	tier2Instruction := frame.Function.Body[frame.ProgramCounter]
 	frame.ProgramCounter++
 	vm.ReturnGoDispatches++
-	syntheticReturn := isa.Instruction{Op: isa.OpNop, A: tier2Instruction.C, B: 0, C: 0}
-	switch handleReturn(vm, frame, registers, syntheticReturn) {
+	syntheticReturn := isa.Instruction{Op: isa.OpNoOperation, A: tier2Instruction.C, B: 0, C: 0}
+	switch handleReturnBody(vm, frame, registers, syntheticReturn) {
 	case opDone:
 		result := vm.evalResult
 		vm.evalResult = nil
@@ -833,7 +861,7 @@ func (vm *VM) processExitReturnVoid(
 	registers *Registers,
 ) (any, dispatchAction, error) {
 	frame.ProgramCounter++
-	switch handleReturnVoid(vm, frame, registers, isa.Instruction{Op: isa.OpNop, A: 0, B: 0, C: 0}) {
+	switch handleReturnVoid(vm, frame, registers, isa.Instruction{Op: isa.OpNoOperation, A: 0, B: 0, C: 0}) {
 	case opDone:
 		return nil, loopReturn, nil
 	case opPanicError:

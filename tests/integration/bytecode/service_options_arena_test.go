@@ -120,9 +120,9 @@ func TestArenaFactoryWithExecute(t *testing.T) {
 	b.addIntConst(21)
 	b.addIntConst(21)
 	b.intRegisters(3).returnInt()
-	b.Emit(isa.OpLoadIntConst, 1, 0, 0)
-	b.Emit(isa.OpLoadIntConst, 2, 1, 0)
-	b.Emit(isa.OpAddInt, 0, 1, 2)
+	b.Emit(isa.OpLoadInt64Constant, 1, 0, 0)
+	b.Emit(isa.OpLoadInt64Constant, 2, 1, 0)
+	b.Emit(isa.OpAddInt64, 0, 1, 2)
 	b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
 	result, err := service.Execute(t.Context(), b.build())

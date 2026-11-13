@@ -279,8 +279,9 @@ func runSource(source, mode string) (result map[string]any) {
 		result[resultKeyError] = "browser source exceeds 1 MiB"
 		return result
 	}
+	ctx := context.Background()
 	if mode == "untrusted" {
-		return runRestrictedSource(source, result)
+		return runRestrictedSource(ctx, source, result)
 	}
 	if mode != "dev" {
 		result[resultKeyError] = "unknown browser execution mode"
@@ -289,7 +290,7 @@ func runSource(source, mode string) (result map[string]any) {
 	caps := developerCaps()
 	interpreter := pipit.NewInterpreter(append(caps.options(), stdlib.WithStandardLibrary())...)
 
-	ctx, cancel := context.WithTimeout(context.Background(), caps.execTime)
+	ctx, cancel := context.WithTimeoutCause(ctx, caps.execTime, pipit.ErrExecutionCancelled)
 	defer cancel()
 
 	var evalResult any
@@ -322,7 +323,7 @@ func runSource(source, mode string) (result map[string]any) {
 // Takes result (map[string]any) which receives bounded output and scalar JSON.
 //
 // Returns map[string]any containing the evaluation outcome.
-func runRestrictedSource(source string, result map[string]any) map[string]any {
+func runRestrictedSource(ctx context.Context, source string, result map[string]any) map[string]any {
 	var config pipit.RestrictedConfig
 	config.Imports = []string{"math"}
 	interpreter, err := pipit.NewRestrictedInterpreter(config, stdlib.Providers()...)
@@ -330,7 +331,7 @@ func runRestrictedSource(source string, result map[string]any) map[string]any {
 		result[resultKeyError] = err.Error()
 		return result
 	}
-	value, err := interpreter.EvalFile(context.Background(), source, "main")
+	value, err := interpreter.EvalFile(ctx, source, "main")
 	result["stdout"] = value.Output
 	result[resultKeyTruncated] = value.OutputTruncated
 	if len(value.Value) != 0 && string(value.Value) != "null" {
@@ -406,7 +407,7 @@ func disassembleSource(source string) (result map[string]any) {
 	}
 	caps := developerCaps()
 	interpreter := pipit.NewInterpreter(append(caps.options(), stdlib.WithStandardLibrary(), pipit.WithDebugInfo())...)
-	ctx, cancel := context.WithTimeout(context.Background(), caps.execTime)
+	ctx, cancel := context.WithTimeoutCause(context.Background(), caps.execTime, pipit.ErrExecutionCancelled)
 	defer cancel()
 	cfs, err := interpreter.CompileFileSet(ctx, map[string]string{"main.go": source})
 	if err != nil {

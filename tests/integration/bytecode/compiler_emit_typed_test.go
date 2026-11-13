@@ -36,7 +36,7 @@ func TestCoerceForOperandPassesThroughOnMatch(t *testing.T) {
 
 	c := newTestCompiler(t)
 	bodyLenBefore := len(c.Function.Body)
-	loc := program.VarLocation{Register: 5, Kind: isa.RegisterInt}
+	loc := program.VarLocation{Register: 5, Kind: isa.RegisterInt64}
 
 	out := c.CoerceForOperand(t.Context(), isa.RoleRegInt, true, loc)
 	require.Equal(t, loc, out, "matching kind should pass through unchanged")
@@ -63,10 +63,10 @@ func TestCoerceForOperandInsertsUnpackForGeneralToInt(t *testing.T) {
 	source := program.VarLocation{Register: 7, Kind: isa.RegisterGeneral}
 
 	out := c.CoerceForOperand(t.Context(), isa.RoleRegInt, true, source)
-	require.Equal(t, isa.RegisterInt, out.Kind, "result should be in int bank")
+	require.Equal(t, isa.RegisterInt64, out.Kind, "result should be in int bank")
 	require.NotEmpty(t, c.Function.Body, "an instruction should have been emitted")
 	last := c.Function.Body[len(c.Function.Body)-1]
-	require.True(t, isa.InstrIsTier1SubOp(last, isa.SubOpMoveGeneralToInt),
+	require.True(t, isa.InstrIsTier1SubOp(last, isa.SubOpUnboxInt64),
 		"a general->int move should have been inserted; got %v", last)
 }
 
@@ -74,19 +74,19 @@ func TestEmitTypedFunnelInjectsCoercion(t *testing.T) {
 	t.Parallel()
 
 	c := newTestCompiler(t)
-	destination := program.VarLocation{Register: 0, Kind: isa.RegisterInt}
+	destination := program.VarLocation{Register: 0, Kind: isa.RegisterInt64}
 	srcA := program.VarLocation{Register: 4, Kind: isa.RegisterGeneral}
-	srcB := program.VarLocation{Register: 1, Kind: isa.RegisterInt}
+	srcB := program.VarLocation{Register: 1, Kind: isa.RegisterInt64}
 
-	c.EmitTyped(t.Context(), isa.OpAddInt, destination, srcA, srcB)
+	c.EmitTyped(t.Context(), isa.OpAddInt64, destination, srcA, srcB)
 
 	require.GreaterOrEqual(t, len(c.Function.Body), 2,
-		"funnel should emit at least one coerce + the opAddInt")
+		"funnel should emit at least one coerce + the opAddInt64")
 	final := c.Function.Body[len(c.Function.Body)-1]
-	require.Equal(t, isa.OpAddInt, final.Op, "final emitted op should be opAddInt")
+	require.Equal(t, isa.OpAddInt64, final.Op, "final emitted op should be opAddInt64")
 	prev := c.Function.Body[len(c.Function.Body)-2]
-	require.True(t, isa.InstrIsTier1SubOp(prev, isa.SubOpMoveGeneralToInt),
-		"a general->int coercion should precede the opAddInt; got %v", prev)
+	require.True(t, isa.InstrIsTier1SubOp(prev, isa.SubOpUnboxInt64),
+		"a general->int coercion should precede the opAddInt64; got %v", prev)
 }
 
 func newTestCompiler(t *testing.T) *compile.Compiler {

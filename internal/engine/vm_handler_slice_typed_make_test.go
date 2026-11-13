@@ -36,17 +36,17 @@ func TestTypedMakeHandlersCheckLengthAndCapacity(t *testing.T) {
 		handler opcodeHandler
 		measure func(*Registers) (int, int)
 	}{
-		{name: "int", subOp: isa.SubOpMakeSliceInt, handler: handleSubOpMakeSliceInt,
+		{name: "int", subOp: isa.SubOpMakeSliceInt64, handler: handleMakeSliceInt64,
 			measure: func(r *Registers) (int, int) { return len(r.SlicesInt[0]), cap(r.SlicesInt[0]) }},
-		{name: "float", subOp: isa.SubOpMakeSliceFloat, handler: handleSubOpMakeSliceFloat,
+		{name: "float", subOp: isa.SubOpMakeSliceFloat64, handler: handleMakeSliceFloat64,
 			measure: func(r *Registers) (int, int) { return len(r.slicesFloat[0]), cap(r.slicesFloat[0]) }},
-		{name: "string", subOp: isa.SubOpMakeSliceString, handler: handleSubOpMakeSliceString,
+		{name: "string", subOp: isa.SubOpMakeSliceString, handler: handleMakeSliceString,
 			measure: func(r *Registers) (int, int) { return len(r.slicesString[0]), cap(r.slicesString[0]) }},
-		{name: "bool", subOp: isa.SubOpMakeSliceBool, handler: handleSubOpMakeSliceBool,
+		{name: "bool", subOp: isa.SubOpMakeSliceBool, handler: handleMakeSliceBool,
 			measure: func(r *Registers) (int, int) { return len(r.slicesBool[0]), cap(r.slicesBool[0]) }},
-		{name: "uint", subOp: isa.SubOpMakeSliceUint, handler: handleSubOpMakeSliceUint,
+		{name: "uint", subOp: isa.SubOpMakeSliceUint64, handler: handleMakeSliceUint64,
 			measure: func(r *Registers) (int, int) { return len(r.slicesUint[0]), cap(r.slicesUint[0]) }},
-		{name: "byte", subOp: isa.SubOpMakeSliceByte, handler: handleSubOpMakeSliceByte,
+		{name: "byte", subOp: isa.SubOpMakeSliceByte, handler: handleMakeSliceByte,
 			measure: func(r *Registers) (int, int) { return len(r.slicesByte[0]), cap(r.slicesByte[0]) }},
 	}
 	cases := []struct {
@@ -66,7 +66,7 @@ func TestTypedMakeHandlersCheckLengthAndCapacity(t *testing.T) {
 			t.Run(h.name+"/"+c.name, func(t *testing.T) {
 				t.Parallel()
 
-				vm, frame, registers := newExtWordFrame(t, isa.NewInstruction(isa.OpExt, 2, 0, 0))
+				vm, frame, registers := newExtWordFrame(t, isa.NewInstruction(isa.OpExtension, 2, 0, 0))
 				registers.Ints[1] = c.length
 				registers.Ints[2] = c.capacity
 

@@ -68,76 +68,88 @@ func requireFusedLoopCancelled(t *testing.T, compiledFunction *program.CompiledF
 	require.Less(t, elapsed, fusedLoopCancelGrace, "fused back edge must observe the deadline")
 }
 
-func buildIncIntJumpLtLoop() *program.CompiledFunction {
-	bb := newBytecodeBuilder()
-	bound := bb.addIntConst(math.MaxInt64)
-	bb.intRegisters(2).returnInt()
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), 0, 0)
-	bb.Emit(isa.OpLoadIntConst, 1, bound, 0)
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpIncIntJumpLt), 0, 1)
-	bb.emitExt(fusedLoopSelfOffset)
-	bb.Emit(isa.OpNop, 0, 0, 0)
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
-	return bb.build()
+func buildIncrementInt64ThenJumpIfLessThanLoop() *program.CompiledFunction {
+	block := newBytecodeBuilder()
+	bound := block.addIntConst(math.MaxInt64)
+	block.intRegisters(2).returnInt()
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), 0, 0)
+	block.Emit(isa.OpLoadInt64Constant, 1, bound, 0)
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpIncrementInt64ThenJumpIfLessThan), 0, 1)
+	block.emitExt(fusedLoopSelfOffset)
+	block.Emit(isa.OpNoOperation, 0, 0, 0)
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
+	return block.build()
 }
 
-func buildLenStringLtJumpFalseLoop() *program.CompiledFunction {
-	bb := newBytecodeBuilder()
-	text := bb.addStringConst(strings.Repeat("x", fusedLoopStringLength))
-	bb.intRegisters(1).stringRegisters(1).returnInt()
-	bb.Emit(isa.OpLoadStringConst, 0, text, 0)
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), 0, fusedLoopStringLength+1)
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpLenStringLtJumpFalse), 0, 0)
-	bb.emitExt(fusedLoopSelfOffset)
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
-	return bb.build()
+func buildIncrementInt64ThenJumpIfLessThanConstantLoop() *program.CompiledFunction {
+	block := newBytecodeBuilder()
+	bound := block.addIntConst(math.MaxInt64)
+	block.intRegisters(1).returnInt()
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), 0, 0)
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpIncrementInt64ThenJumpIfLessThanConstant), 0, bound)
+	block.emitExt(fusedLoopSelfOffset)
+	block.Emit(isa.OpNoOperation, 0, 0, 0)
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
+	return block.build()
 }
 
-func buildRangeCheckUintJumpFalseLoop() *program.CompiledFunction {
-	bb := newBytecodeBuilder()
-	bb.intRegisters(1).uintRegisters(1).returnInt()
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadUintConstSmall), 0, 50)
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2RangeCheckUintJumpFalse), 0)
-	bb.Emit(isa.OpExt, 1, 10, 0)
-	bb.emitExt(rangeCheckSelfOffset)
-	for range engine.RangeCheckUintFusionNopCount {
-		bb.Emit(isa.OpNop, 0, 0, 0)
+func buildLessThanLengthStringThenJumpIfFalseLoop() *program.CompiledFunction {
+	block := newBytecodeBuilder()
+	text := block.addStringConst(strings.Repeat("x", fusedLoopStringLength))
+	block.intRegisters(1).stringRegisters(1).returnInt()
+	block.Emit(isa.OpLoadStringConstant, 0, text, 0)
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), 0, fusedLoopStringLength+1)
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpLessThanLengthStringThenJumpIfFalse), 0, 0)
+	block.emitExt(fusedLoopSelfOffset)
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
+	return block.build()
+}
+
+func buildInRangeUint64ThenJumpIfFalseLoop() *program.CompiledFunction {
+	block := newBytecodeBuilder()
+	block.intRegisters(1).uintRegisters(1).returnInt()
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadUint64Immediate), 0, 50)
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2InRangeUint64ThenJumpIfFalse), 0)
+	block.Emit(isa.OpExtension, 1, 10, 0)
+	block.emitExt(rangeCheckSelfOffset)
+	for range engine.RangeCheckUintFusionNoOperationCount {
+		block.Emit(isa.OpNoOperation, 0, 0, 0)
 	}
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
-	return bb.build()
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
+	return block.build()
 }
 
-func buildAddIntJumpLoop() *program.CompiledFunction {
-	bb := newBytecodeBuilder()
-	one := bb.addIntConst(1)
-	bb.intRegisters(1).returnInt()
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), 0, 0)
-	bb.Emit(isa.OpAddIntJump, 0, 0, one)
-	bb.emitExt(fusedLoopSelfOffset)
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
-	return bb.build()
+func buildAddInt64ConstantThenJumpLoop() *program.CompiledFunction {
+	block := newBytecodeBuilder()
+	one := block.addIntConst(1)
+	block.intRegisters(1).returnInt()
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), 0, 0)
+	block.Emit(isa.OpAddInt64ConstantThenJump, 0, 0, one)
+	block.emitExt(fusedLoopSelfOffset)
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
+	return block.build()
 }
 
-func buildEqIntConstJumpTrueLoop() *program.CompiledFunction {
-	bb := newBytecodeBuilder()
-	zero := bb.addIntConst(0)
-	bb.intRegisters(1).returnInt()
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), 0, 0)
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpEqIntConstJumpTrue), 0, zero)
-	bb.emitExt(fusedLoopSelfOffset)
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
-	return bb.build()
+func buildEqualInt64ConstantThenJumpIfTrueLoop() *program.CompiledFunction {
+	block := newBytecodeBuilder()
+	zero := block.addIntConst(0)
+	block.intRegisters(1).returnInt()
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), 0, 0)
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpEqualInt64ConstantThenJumpIfTrue), 0, zero)
+	block.emitExt(fusedLoopSelfOffset)
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
+	return block.build()
 }
 
-func buildLtIntConstJumpFalseLoop() *program.CompiledFunction {
-	bb := newBytecodeBuilder()
-	three := bb.addIntConst(3)
-	bb.intRegisters(1).returnInt()
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), 0, 5)
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpLtIntConstJumpFalse), 0, three)
-	bb.emitExt(fusedLoopSelfOffset)
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
-	return bb.build()
+func buildLessThanInt64ConstantThenJumpIfFalseLoop() *program.CompiledFunction {
+	block := newBytecodeBuilder()
+	three := block.addIntConst(3)
+	block.intRegisters(1).returnInt()
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), 0, 5)
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpLessThanInt64ConstantThenJumpIfFalse), 0, three)
+	block.emitExt(fusedLoopSelfOffset)
+	block.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
+	return block.build()
 }
 
 func compileFusedLoopSource(t *testing.T, code string) *program.CompiledFunction {
@@ -157,50 +169,58 @@ func TestASMFusedLoopsCancellable(t *testing.T) {
 	}{
 		{
 			name:  "inc_int_jump_lt counted loop",
-			build: buildIncIntJumpLtLoop,
+			build: buildIncrementInt64ThenJumpIfLessThanLoop,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpIncIntJumpLt)
+				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpIncrementInt64ThenJumpIfLessThan)
+			},
+		},
+		{
+			name:  "inc_int_jump_lt_const counted loop",
+			build: buildIncrementInt64ThenJumpIfLessThanConstantLoop,
+			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
+				t.Helper()
+				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpIncrementInt64ThenJumpIfLessThanConstant)
 			},
 		},
 		{
 			name:  "len_string_lt_jump_false loop",
-			build: buildLenStringLtJumpFalseLoop,
+			build: buildLessThanLengthStringThenJumpIfFalseLoop,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpLenStringLtJumpFalse)
+				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpLessThanLengthStringThenJumpIfFalse)
 			},
 		},
 		{
 			name:  "range_check_uint_jump_false loop",
-			build: buildRangeCheckUintJumpFalseLoop,
+			build: buildInRangeUint64ThenJumpIfFalseLoop,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsTier2SubOp(t, compiledFunction, isa.SubOpTier2RangeCheckUintJumpFalse)
+				requireContainsTier2SubOp(t, compiledFunction, isa.SubOpTier2InRangeUint64ThenJumpIfFalse)
 			},
 		},
 		{
 			name:  "add_int_jump loop",
-			build: buildAddIntJumpLoop,
+			build: buildAddInt64ConstantThenJumpLoop,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsOpcode(t, compiledFunction, isa.OpAddIntJump)
+				requireContainsOpcode(t, compiledFunction, isa.OpAddInt64ConstantThenJump)
 			},
 		},
 		{
 			name:  "eq_int_const_jump_true loop",
-			build: buildEqIntConstJumpTrueLoop,
+			build: buildEqualInt64ConstantThenJumpIfTrueLoop,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpEqIntConstJumpTrue)
+				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpEqualInt64ConstantThenJumpIfTrue)
 			},
 		},
 		{
 			name:  "lt_int_const_jump_false loop",
-			build: buildLtIntConstJumpFalseLoop,
+			build: buildLessThanInt64ConstantThenJumpIfFalseLoop,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpLtIntConstJumpFalse)
+				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpLessThanInt64ConstantThenJumpIfFalse)
 			},
 		},
 	}
@@ -223,7 +243,7 @@ func TestASMFusedLoopsCancellable(t *testing.T) {
 			code: `x := 0; for i := 0; i < 9223372036854775807; i++ { x += i }; x`,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpLtIntConstJumpFalse)
+				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpLessThanInt64ConstantThenJumpIfFalse)
 			},
 		},
 		{
@@ -231,7 +251,7 @@ func TestASMFusedLoopsCancellable(t *testing.T) {
 			code: `s := "abc"; x := 0; for i := 0; i < len(s); i++ { x += int(s[i]); if x > 0 { i = 0 } }; x`,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpLenStringLtJumpFalse)
+				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpLessThanLengthStringThenJumpIfFalse)
 			},
 		},
 		{
@@ -239,7 +259,7 @@ func TestASMFusedLoopsCancellable(t *testing.T) {
 			code: `x := 0; u := uint(5); for u >= 1 && u <= 10 { x++; if x < 0 { u = 100 } }; x`,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsTier2SubOp(t, compiledFunction, isa.SubOpTier2RangeCheckUintJumpFalse)
+				requireContainsTier2SubOp(t, compiledFunction, isa.SubOpTier2InRangeUint64ThenJumpIfFalse)
 			},
 		},
 		{
@@ -247,7 +267,23 @@ func TestASMFusedLoopsCancellable(t *testing.T) {
 			code: `x := 1; for x != 0 { x = x + 1 }; x`,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpJump)
+				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpEqualInt64ConstantThenJumpIfFalse)
+			},
+		},
+		{
+			name: "counted loop with a constant bound",
+			code: `x := 0; for i := 0; i < 9; i++ { x++; i = 0 }; x`,
+			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
+				t.Helper()
+				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpGreaterOrEqualInt64ConstantThenJumpIfFalse)
+			},
+		},
+		{
+			name: "counted loop with a register bound",
+			code: `x := 0; n := 9; for i := 0; i < n; i++ { x++; i = 0 }; x`,
+			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
+				t.Helper()
+				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpIncrementInt64ThenJumpIfLessThan)
 			},
 		},
 	}

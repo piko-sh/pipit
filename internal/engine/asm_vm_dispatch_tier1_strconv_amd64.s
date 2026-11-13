@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerSubOpStrconvFormatBool sets strings[B] = bools[C] ? "true" : "false" by stamping a pre-allocated header.
-TEXT ·handlerSubOpStrconvFormatBool(SB), NOSPLIT|NOFRAME, $0
+// handlerStrconvFormatBool sets strings[B] = bools[C] ? "true" : "false" by stamping a pre-allocated header.
+TEXT ·handlerStrconvFormatBool(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, BX
@@ -50,8 +50,8 @@ TEXT ·handlerSubOpStrconvFormatBool(SB), NOSPLIT|NOFRAME, $0
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerSubOpStrconvItoa sets strings[B] = strconv.Itoa(int(ints[C])) via asmCallStrconvItoa.
-TEXT ·handlerSubOpStrconvItoa(SB), NOSPLIT|NOFRAME, $0
+// handlerStrconvItoa sets strings[B] = strconv.Itoa(int(ints[C])) via asmCallStrconvItoa.
+TEXT ·handlerStrconvItoa(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -75,8 +75,8 @@ TEXT ·handlerSubOpStrconvItoa(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpStrconvFormatInt sets strings[B] = strconv.FormatInt(ints[C], int(ints[ext.A])) via asmCallStrconvFormatInt.
-TEXT ·handlerSubOpStrconvFormatInt(SB), NOSPLIT|NOFRAME, $0
+// handlerStrconvFormatInt sets strings[B] = strconv.FormatInt(ints[C], int(ints[ext.A])) via asmCallStrconvFormatInt.
+TEXT ·handlerStrconvFormatInt(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX

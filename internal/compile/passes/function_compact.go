@@ -20,6 +20,7 @@ package passes
 
 import (
 	"context"
+	"fmt"
 
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
@@ -35,8 +36,8 @@ const (
 )
 
 // compactBodyPass deletes the words earlier passes left behind that do nothing at run
-// time: NOPs and unconditional jumps to the next instruction. It runs last, so every
-// other pass can keep relying on stable PCs.
+// time, including NO_OPERATION words and unconditional jumps to the next instruction. It
+// runs last, so every other pass can keep relying on stable PCs.
 type compactBodyPass struct{}
 
 // Name returns the pass identifier.
@@ -49,48 +50,101 @@ func (compactBodyPass) Name() string { return "compact" }
 // Takes state (*PassContext) which carries the shared analysis, invalidated on change.
 // Takes compiledFunction (*program.CompiledFunction) whose body is rebuilt.
 //
-// Returns error (always nil).
-func (compactBodyPass) Run(_ context.Context, state *PassContext, compiledFunction *program.CompiledFunction) error {
-	if compactBody(compiledFunction) {
+// Returns error when cancellation interrupts the rounds.
+func (compactBodyPass) Run(ctx context.Context, state *PassContext, compiledFunction *program.CompiledFunction) error {
+	changed, err := compactBody(ctx, compiledFunction)
+	if changed {
 		state.Analysis.invalidate()
 	}
-	return nil
+	return err
 }
 
-// compactBody moves out-of-line blocks back to the jump that enters them, deletes dead
-// words, then threads jumps through unconditional jumps, repeating until nothing changes.
+// sourceLine identifies a source line a breakpoint can bind to.
+type sourceLine struct {
+	// line is the 1-based line number.
+	line int32
+
+	// file is the source map's file index.
+	file uint16
+}
+
+// straightBlock is an out-of-line block entered only by one forward jump and left only by
+// a jump back to the word after it.
+type straightBlock struct {
+	// start is the block's first word, the entering jump's target.
+	start int
+
+	// end is the block's closing jump back.
+	end int
+}
+
+// straightenMasks holds the per-word masks block straightening consults.
+type straightenMasks struct {
+	// dead marks words that will be deleted.
+	dead []bool
+
+	// pinned marks the type-switch table words, or is nil.
+	pinned []bool
+
+	// previousLive holds, for each word, the last live instruction that starts before it, or
+	// -1 when there is none.
+	previousLive []int
+}
+
+// compactBody straightens blocks, deletes dead words, threads jumps and inverts branches.
+//
 // Straightening runs first so threading cannot add a second entry to a block.
+//
+// A debug build keeps the jump a conditional jump steps over. A breakpoint on the
+// statement it stands for binds to that word.
+//
+// A type switch's dispatch table is kept as the runtime reads it (pinnedTypeSwitchWords).
+// A body holding a table that is not laid out that way is left alone.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose body is rebuilt.
 //
-// Returns true when the body changed.
-func compactBody(compiledFunction *program.CompiledFunction) bool {
-	if len(compiledFunction.Body) == 0 || bodyHasTypeSwitch(compiledFunction.Body) {
-		return false
+// Returns bool which is true when the body changed.
+// Returns error when cancellation stops the rounds.
+func compactBody(ctx context.Context, compiledFunction *program.CompiledFunction) (bool, error) {
+	if len(compiledFunction.Body) == 0 {
+		return false, nil
 	}
 	changed := false
 	for range maxCompactRounds {
+		if err := ctx.Err(); err != nil {
+			return changed, fmt.Errorf("compactBody cancelled: %w", err)
+		}
 		compacted := compactOnce(compiledFunction)
 		threaded := threadJumps(compiledFunction.Body)
-		if !compacted && !threaded {
-			return changed
+		inverted := !compiledFunction.HasDebugVarTable() && invertJumpsOverJumps(compiledFunction.Body)
+		if !compacted && !threaded && !inverted {
+			return changed, nil
 		}
 		changed = true
 	}
-	return changed
+	return changed, nil
 }
 
-// compactOnce performs one rebuild: straightened blocks move to their jump, and dead
-// words are deleted.
+// compactOnce rebuilds the body with straightened blocks and dead words removed.
+//
+// A dead word that is the last one carrying its source line is kept only in a debug
+// build, where a breakpoint on that line needs a word to bind to.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose body is rebuilt.
 //
 // Returns true when the body changed.
 func compactOnce(compiledFunction *program.CompiledFunction) bool {
 	body := compiledFunction.Body
-	dead := markDeadWords(body)
-	live := keepSoleSourceLines(compiledFunction.DebugSourceMap, dead)
-	blocks := findStraightenableBlocks(body, dead)
+	pinned, wellFormed := pinnedTypeSwitchWords(body)
+	if !wellFormed {
+		return false
+	}
+	dead := markDeadWords(body, pinned)
+	var live map[sourceLine]int
+	if compiledFunction.HasDebugVarTable() {
+		live = keepSoleSourceLines(compiledFunction.DebugSourceMap, dead)
+	}
+	blocks := findStraightenableBlocks(body, dead, pinned)
 	for jumpPC, block := range blocks {
 		if !dropKeepsSourceLines(compiledFunction.DebugSourceMap, live, jumpPC, block.end) {
 			delete(blocks, jumpPC)
@@ -140,21 +194,23 @@ func placeStraightenedBlock(rewrite *bodyRewrite, body []isa.Instruction, dead [
 	rewrite.drop(block.end)
 }
 
-// markDeadWords marks the NOPs that start an instruction, then, until nothing changes,
-// the unconditional jumps whose target is the next live instruction.
+// markDeadWords marks redundant no-operations and jumps to the next live instruction.
+//
+// A type switch's default jump is never marked. The runtime requires it after the rows.
 //
 // Takes body ([]isa.Instruction) which is the instruction stream.
+// Takes pinned ([]bool) which marks the type-switch table words, or is nil.
 //
 // Returns the per-word mask of deletable words.
-func markDeadWords(body []isa.Instruction) []bool {
+func markDeadWords(body []isa.Instruction, pinned []bool) []bool {
 	dead := make([]bool, len(body))
 	var jumps []int
 	for pc := 0; pc < len(body); {
 		width := instructionFootprint(body, pc)
 		switch {
-		case width == 1 && isCanonicalNop(body[pc]):
+		case width == 1 && isCanonicalNoOperation(body[pc]):
 			dead[pc] = true
-		case width == 1 && isa.InstrIsTier1SubOp(body[pc], isa.SubOpJump):
+		case width == 1 && isa.InstrIsTier1SubOp(body[pc], isa.SubOpJump) && !pinnedAt(pinned, pc):
 			jumps = append(jumps, pc)
 		}
 		pc += width
@@ -172,6 +228,48 @@ func markDeadWords(body []isa.Instruction) []bool {
 	return dead
 }
 
+// pinnedTypeSwitchWords marks the head, rows and default jump of each type-switch table.
+//
+// The runtime scans a table in exactly that order, so compaction keeps those words
+// together and in place relative to one another.
+//
+// Takes body ([]isa.Instruction) which is the instruction stream.
+//
+// Returns []bool which is the per-word mask, nil for a body with no type switch.
+// Returns bool which is false when some table does not end in a default jump.
+func pinnedTypeSwitchWords(body []isa.Instruction) ([]bool, bool) {
+	var pinned []bool
+	for pc := 0; pc < len(body); pc++ {
+		if !isa.InstrIsTier1SubOp(body[pc], isa.SubOpTypeSwitchJump) {
+			continue
+		}
+		if pinned == nil {
+			pinned = make([]bool, len(body))
+		}
+		pinned[pc] = true
+		pc++
+		for pc < len(body) && body[pc].Op == isa.OpTypeSwitchCase {
+			pinned[pc] = true
+			pc++
+		}
+		if pc >= len(body) || !isa.InstrIsTier1SubOp(body[pc], isa.SubOpJump) {
+			return nil, false
+		}
+		pinned[pc] = true
+	}
+	return pinned, true
+}
+
+// pinnedAt reports whether pc is a type-switch table word.
+//
+// Takes pinned ([]bool) which is the mask, or nil when the body has no type switch.
+// Takes pc (int) which is the word.
+//
+// Returns bool which is false for a nil mask.
+func pinnedAt(pinned []bool, pc int) bool {
+	return pc < len(pinned) && pinned[pc]
+}
+
 // instructionFootprint returns how many words the instruction at pc spans: a jump's
 // footprint including its padding, otherwise the word and its extension words.
 //
@@ -184,7 +282,7 @@ func instructionFootprint(body []isa.Instruction, pc int) int {
 		return program.JumpFootprint(body[pc])
 	}
 	width := 1
-	for pc+width < len(body) && body[pc+width].Op == isa.OpExt {
+	for pc+width < len(body) && body[pc+width].Op == isa.OpExtension {
 		width++
 	}
 	return width
@@ -201,15 +299,6 @@ func nextLiveWord(dead []bool, pc int) int {
 		pc++
 	}
 	return pc
-}
-
-// sourceLine identifies a source line a breakpoint can bind to.
-type sourceLine struct {
-	// line is the 1-based line number.
-	line int32
-
-	// file is the source map's file index.
-	file uint16
 }
 
 // liveSourceLines counts, for each source line, the live words carrying it.
@@ -281,32 +370,24 @@ func dropKeepsSourceLines(sourceMap *program.SourceMap, live map[sourceLine]int,
 	return true
 }
 
-// straightBlock is an out-of-line block entered only by one forward jump and left only by
-// a jump back to the word after it.
-type straightBlock struct {
-	// start is the block's first word, the entering jump's target.
-	start int
-
-	// end is the block's closing jump back.
-	end int
-}
-
 // findStraightenableBlocks finds, for each unconditional forward jump, the block it
 // enters when the block can be moved to replace the jump.
 //
 // Takes body ([]isa.Instruction) which is the instruction stream.
 // Takes dead ([]bool) which marks words that will be deleted.
+// Takes pinned ([]bool) which marks the type-switch table words, or is nil.
 //
-// Returns the blocks keyed by the PC of their entering jump; a zero end means none.
-func findStraightenableBlocks(body []isa.Instruction, dead []bool) map[int]straightBlock {
+// Returns the blocks keyed by the PC of their entering jump. A zero end means none.
+func findStraightenableBlocks(body []isa.Instruction, dead, pinned []bool) map[int]straightBlock {
 	sources := jumpSourcesByTarget(body)
 	claimed := make([]bool, len(body))
 	blocks := make(map[int]straightBlock)
+	masks := straightenMasks{dead: dead, pinned: pinned, previousLive: previousLiveInstructions(body, dead)}
 	for pc := 0; pc < len(body); pc += instructionFootprint(body, pc) {
-		if dead[pc] || claimed[pc] || !isa.InstrIsTier1SubOp(body[pc], isa.SubOpJump) {
+		if dead[pc] || claimed[pc] || pinnedAt(pinned, pc) || !isa.InstrIsTier1SubOp(body[pc], isa.SubOpJump) {
 			continue
 		}
-		block, ok := straightBlockFor(body, dead, sources, pc)
+		block, ok := straightBlockFor(body, masks, sources, pc)
 		if !ok || claimedRange(claimed, block) {
 			continue
 		}
@@ -321,25 +402,30 @@ func findStraightenableBlocks(body []isa.Instruction, dead []bool) map[int]strai
 
 // straightBlockFor checks whether the jump at jumpPC enters a block that can replace it.
 //
+// A block may hold a whole type-switch table, which then moves with its order intact. It
+// cannot start inside one, because the table word before it falls into it, and a table's
+// default jump never closes it, because closing drops the jump.
+//
 // Takes body ([]isa.Instruction) which is the instruction stream.
-// Takes dead ([]bool) which marks words that will be deleted.
+// Takes masks (straightenMasks) which marks the dead words and the type-switch tables.
 // Takes sources (map[int][]int) which lists the jumps landing on each PC.
 // Takes jumpPC (int) which is the candidate entering jump.
 //
-// Returns the block and whether it qualifies.
-func straightBlockFor(body []isa.Instruction, dead []bool, sources map[int][]int, jumpPC int) (straightBlock, bool) {
+// Returns straightBlock which is the candidate block.
+// Returns bool which is true when the block qualifies.
+func straightBlockFor(body []isa.Instruction, masks straightenMasks, sources map[int][]int, jumpPC int) (straightBlock, bool) {
 	start, ok := program.JumpTargetAt(body, jumpPC)
-	if !ok || start <= jumpPC+1 || start >= len(body) || fallsInto(body, dead, start) {
+	if !ok || start <= jumpPC+1 || start >= len(body) || fallsInto(body, masks.previousLive, start) {
 		return straightBlock{start: 0, end: 0}, false
 	}
-	back := nextLiveWord(dead, jumpPC+1)
+	back := nextLiveWord(masks.dead, jumpPC+1)
 	for pc := start; pc < len(body); pc += instructionFootprint(body, pc) {
 		target, jump := program.JumpTargetAt(body, pc)
-		if !jump || !isa.InstrIsTier1SubOp(body[pc], isa.SubOpJump) || nextLiveWord(dead, target) != back {
+		if !jump || pinnedAt(masks.pinned, pc) || !isa.InstrIsTier1SubOp(body[pc], isa.SubOpJump) || nextLiveWord(masks.dead, target) != back {
 			continue
 		}
 		block := straightBlock{start: start, end: pc}
-		return block, enteredOnlyBy(sources, block, jumpPC)
+		return block, enteredOnlyBy(sources, masks.dead, block, jumpPC)
 	}
 	return straightBlock{start: 0, end: 0}, false
 }
@@ -348,17 +434,12 @@ func straightBlockFor(body []isa.Instruction, dead []bool, sources map[int][]int
 // into pc.
 //
 // Takes body ([]isa.Instruction) which is the instruction stream.
-// Takes dead ([]bool) which marks words that will be deleted.
+// Takes previousLive ([]int) which names that instruction for each word, or -1.
 // Takes pc (int) which is the block start.
 //
 // Returns true unless that instruction is an unconditional jump or a return.
-func fallsInto(body []isa.Instruction, dead []bool, pc int) bool {
-	previous := -1
-	for start := 0; start < pc; start += instructionFootprint(body, start) {
-		if !dead[start] {
-			previous = start
-		}
-	}
+func fallsInto(body []isa.Instruction, previousLive []int, pc int) bool {
+	previous := previousLive[pc]
 	if previous < 0 {
 		return true
 	}
@@ -366,15 +447,48 @@ func fallsInto(body []isa.Instruction, dead []bool, pc int) bool {
 	return !program.IsReturnInstruction(inst) && !isa.InstrIsTier1SubOp(inst, isa.SubOpJump)
 }
 
+// previousLiveInstructions finds, for each word, the last live instruction that starts
+// before it, in one pass over the body.
+//
+// Takes body ([]isa.Instruction) which is the instruction stream.
+// Takes dead ([]bool) which marks words that will be deleted.
+//
+// Returns []int which holds that instruction's program counter for each word, or -1.
+func previousLiveInstructions(body []isa.Instruction, dead []bool) []int {
+	previous := make([]int, len(body))
+	last := -1
+	for pc := 0; pc < len(body); {
+		previous[pc] = last
+		if !dead[pc] {
+			last = pc
+		}
+		next := min(pc+instructionFootprint(body, pc), len(body))
+		for word := pc + 1; word < next; word++ {
+			previous[word] = last
+		}
+		pc = next
+	}
+	return previous
+}
+
 // enteredOnlyBy reports whether every jump into block comes from inside it, except the
 // entering jump at jumpPC, which may land on its first word.
 //
+// A jump onto a dead word just before the block is an entry too. It reaches the block by
+// falling through, and deleting that word would send the jump past the moved block.
+//
 // Takes sources (map[int][]int) which lists the jumps landing on each PC.
+// Takes dead ([]bool) which marks words that will be deleted.
 // Takes block (straightBlock) which is the candidate block.
 // Takes jumpPC (int) which is the entering jump.
 //
 // Returns true when the block has no other entry.
-func enteredOnlyBy(sources map[int][]int, block straightBlock, jumpPC int) bool {
+func enteredOnlyBy(sources map[int][]int, dead []bool, block straightBlock, jumpPC int) bool {
+	for pc := block.start - 1; pc >= 0 && dead[pc]; pc-- {
+		if len(sources[pc]) != 0 {
+			return false
+		}
+	}
 	for pc := block.start; pc <= block.end; pc++ {
 		for _, source := range sources[pc] {
 			inside := source >= block.start && source <= block.end
@@ -416,17 +530,88 @@ func jumpSourcesByTarget(body []isa.Instruction) map[int][]int {
 	return sources
 }
 
+// threadBranchesOnOneRegister redirects branches through tests of the same register.
+//
+// Takes body ([]isa.Instruction) which is rewritten in place.
+//
+// Returns true when some branch was retargeted.
+func threadBranchesOnOneRegister(body []isa.Instruction) bool {
+	changed := false
+	for pc := range body {
+		if !isRegisterBranch(body[pc]) {
+			continue
+		}
+		target, ok := program.JumpTargetAt(body, pc)
+		if !ok {
+			continue
+		}
+		final := threadedBranchTarget(body, pc, target)
+		if final != target && program.SetJumpTarget(body, pc, final) {
+			changed = true
+		}
+	}
+	return changed
+}
+
+// isRegisterBranch reports whether inst is a plain branch on an int register.
+//
+// Takes inst (isa.Instruction) which is the instruction to classify.
+//
+// Returns true for OpJumpIfFalse and OpJumpIfTrue.
+func isRegisterBranch(inst isa.Instruction) bool {
+	return inst.Op == isa.OpJumpIfFalse || inst.Op == isa.OpJumpIfTrue
+}
+
+// threadedBranchTarget follows the branch at pc through the branches on the same register
+// that it lands on, one after another.
+//
+// Takes body ([]isa.Instruction) which is the instruction stream.
+// Takes pc (int) which is the branch.
+// Takes target (int) which is where the branch lands now.
+//
+// Returns int which is where the branch may land instead, target when nothing changes.
+func threadedBranchTarget(body []isa.Instruction, pc, target int) int {
+	first := body[pc]
+	final := target
+	for range maxJumpThreadSteps {
+		if final < 0 || final >= len(body) || !isRegisterBranch(body[final]) || body[final].A != first.A {
+			return final
+		}
+		next := final + 1
+		if body[final].Op == first.Op {
+			onward, ok := program.JumpTargetAt(body, final)
+			if !ok {
+				return final
+			}
+			next = onward
+		}
+		if next == final || next == pc {
+			return final
+		}
+		final = next
+	}
+	return final
+}
+
 // threadJumps points every jump whose target is an unconditional jump at that jump's
 // final target, leaving any jump whose encoding cannot reach it.
+//
+// A type switch's rows and default jump keep their targets. Threading one through a jump
+// that goes back would make it a backward edge, which the verifier rejects for a row and
+// which a loop's poll does not cover for either.
 //
 // Takes body ([]isa.Instruction) which is rewritten in place.
 //
 // Returns true when some jump was retargeted.
 func threadJumps(body []isa.Instruction) bool {
+	pinned, wellFormed := pinnedTypeSwitchWords(body)
+	if !wellFormed {
+		return false
+	}
 	changed := false
 	for pc := 0; pc < len(body); pc += instructionFootprint(body, pc) {
 		target, ok := program.JumpTargetAt(body, pc)
-		if !ok {
+		if !ok || pinnedAt(pinned, pc) {
 			continue
 		}
 		final := target

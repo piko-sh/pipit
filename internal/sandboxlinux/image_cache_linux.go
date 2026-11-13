@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxlinux
 
@@ -286,8 +286,7 @@ func stageCacheImageBytes(ctx context.Context, directory *os.File, request Worke
 	target := os.NewFile(uintptr(targetFd), workerImageName)
 	defer func() { result = errors.Join(result, target.Close()) }()
 	digest := sha256.New()
-	reader := workerImageReader{context: ctx, source: source}
-	written, err := io.Copy(io.MultiWriter(target, digest), io.LimitReader(reader, maximumWorkerImageBytes+1))
+	written, err := copyCancellable(ctx, io.MultiWriter(target, digest), source, maximumWorkerImageBytes+1)
 	if err != nil {
 		return fmt.Errorf("copying approved worker: %w", err)
 	}

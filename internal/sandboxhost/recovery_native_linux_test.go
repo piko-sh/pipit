@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxhost_test
 
@@ -41,7 +41,7 @@ func testIsolatedRecoveryNative(t *testing.T, config sandboxhost.IsolatedConfig)
 	config.StateDirectory = privateStateDirectory(t)
 	config.Imports = []string{"math"}
 	before := filesystemNativeGroups(t, config.LinuxCgroupParent)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	crashPublicWorkerHost(t, ctx, config)
 	records := launchRecords(t, config.StateDirectory)
@@ -73,13 +73,13 @@ func testIsolatedRecoveryNative(t *testing.T, config sandboxhost.IsolatedConfig)
 	assertLaunchRecordsClean(t, config.StateDirectory)
 	worker, err := sandboxhost.NewIsolatedWorker(ctx, config)
 	if worker != nil {
-		defer worker.Close()
+		defer worker.Close(t.Context())
 	}
 	require.NoError(t, err, "a relaunch after recovery succeeds")
-	result, err := worker.Eval("import \"math\"\nmath.Sqrt(49)")
+	result, err := worker.Eval(t.Context(), "import \"math\"\nmath.Sqrt(49)")
 	require.NoError(t, err, "relaunched worker: %+v", result)
 	require.Equal(t, "7", string(result.Value))
-	require.NoError(t, worker.Close())
+	require.NoError(t, worker.Close(t.Context()))
 	assertLaunchRecordsClean(t, config.StateDirectory)
 	assertFilesystemGroupsClean(t, config.LinuxCgroupParent, before)
 }
@@ -120,15 +120,15 @@ func TestPublicWorkerRecoveryHostChild(t *testing.T) {
 	}
 	var config sandboxhost.IsolatedConfig
 	require.NoError(t, json.Unmarshal([]byte(encoded), &config))
-	session, err := sandboxhost.NewIsolatedSession(context.Background(), config)
+	session, err := sandboxhost.NewIsolatedSession(t.Context(), config)
 	if err != nil && session != nil {
-		_ = session.Close()
+		_ = session.Close(t.Context())
 	}
 	require.NoError(t, err)
-	defer session.Close()
-	_, err = session.Submit(context.Background(), "40 + 2")
+	defer session.Close(t.Context())
+	_, err = session.Submit(t.Context(), "40 + 2")
 	require.NoError(t, err)
 	fmt.Println("ready")
-	_, err = session.Submit(context.Background(), "for {}")
+	_, err = session.Submit(t.Context(), "for {}")
 	require.FailNow(t, "the original session host is killed before it returns", "%v", err)
 }

@@ -35,33 +35,33 @@ import (
 func accumulateArenaBytecodeHints(hints *arenaBytecodeHints, body []isa.Instruction, allFuncs []*program.CompiledFunction) {
 	for i := range body {
 		switch body[i].Op {
-		case isa.OpConcatString:
-			hints.Bytes += arenaConcatStringAvgBytes
-		case isa.OpConcatRuneString:
-			hints.Bytes += arenaConcatRuneStringAvgBytes
+		case isa.OpConcatenateString:
+			hints.Bytes += arenaConcatenateStringAvgBytes
+		case isa.OpConcatenateStringRune:
+			hints.Bytes += arenaConcatenateStringRuneAvgBytes
 		case isa.OpDrillTier1:
 			if isa.SubOpcode(body[i].A) == isa.SubOpDrillTier2 {
 				accumulateTier2Hints(hints, body[i].B)
 				continue
 			}
 			accumulateTier1Hints(hints, body[i].A)
-		case isa.OpPackInterface, isa.OpPackTyped:
+		case isa.OpBoxAsInterface, isa.OpBoxAsType:
 			accumulatePackHint(hints, isa.RegisterKind(body[i].C))
 		case isa.OpMakeClosure:
 			accumulateClosureHint(hints, body[i], allFuncs)
-		case isa.OpAppend, isa.OpAppendSpread, isa.OpAppendInPlace, isa.OpAppendSpreadInPlace, isa.OpAppendStructFast:
+		case isa.OpAppend, isa.OpAppendSpread, isa.OpAppendInPlace, isa.OpAppendSpreadInPlace, isa.OpAppendStruct:
 			hints.sliceHeaders++
 			hints.appendOccurrences++
-		case isa.OpAppendByteFast, isa.OpAppendByteFastInPlace, isa.OpAppendIntFast, isa.OpAppendFloatFast, isa.OpAppendStringFast:
+		case isa.OpAppendByte, isa.OpAppendByteInPlace, isa.OpAppendInt64, isa.OpAppendFloat64, isa.OpAppendString:
 			hints.sliceHeaders++
 		case isa.OpMakeSlice:
 			hints.sliceHeaders++
 			hints.makeSliceGeneric++
 			hints.genericBytes += arenaMakeSliceGenericAvgBytes
-		case isa.OpAllocIndirect:
-			hints.allocIndirectOccurrences++
+		case isa.OpAllocateIndirect:
+			hints.allocateIndirectOccurrences++
 			hints.sliceHeaders++
-			hints.genericBytes += arenaAllocIndirectAvgBytes
+			hints.genericBytes += arenaAllocateIndirectAvgBytes
 		default:
 		}
 	}
@@ -94,18 +94,18 @@ func accumulateClosureHint(hints *arenaBytecodeHints, instr isa.Instruction, all
 // Takes sourceKind (isa.RegisterKind) which selects the kind branch.
 func accumulatePackHint(hints *arenaBytecodeHints, sourceKind isa.RegisterKind) {
 	switch sourceKind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		hints.boxInts++
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		hints.boxUints++
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		hints.boxFloats++
 	case isa.RegisterString:
 		hints.boxStrings++
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		hints.boxComplexes++
-	case isa.RegisterSliceInt, isa.RegisterSliceFloat, isa.RegisterSliceString,
-		isa.RegisterSliceBool, isa.RegisterSliceUint, isa.RegisterSliceByte:
+	case isa.RegisterSliceInt64, isa.RegisterSliceFloat64, isa.RegisterSliceString,
+		isa.RegisterSliceBool, isa.RegisterSliceUint64, isa.RegisterSliceByte:
 		hints.sliceHeaders++
 	default:
 	}
@@ -120,24 +120,24 @@ func accumulatePackHint(hints *arenaBytecodeHints, sourceKind isa.RegisterKind) 
 // instruction's A operand.
 func accumulateTier1Hints(hints *arenaBytecodeHints, subOp uint8) {
 	switch isa.SubOpcode(subOp) {
-	case isa.SubOpBytesToString:
+	case isa.SubOpConvertBytesToString:
 		hints.Bytes += arenaBytesToStringAvgBytes
 	case isa.SubOpStrconvItoa:
 		hints.Bytes += arenaItoaMaxBytes
 	case isa.SubOpStrconvFormatInt:
 		hints.Bytes += arenaFormatIntMaxBytes
-	case isa.SubOpRuneToString:
+	case isa.SubOpConvertRuneToString:
 		hints.Bytes += arenaRuneToStringMaxBytes
-	case isa.SubOpMakeSliceInt:
-		hints.MakeSliceInt++
-	case isa.SubOpMakeSliceFloat:
-		hints.MakeSliceFloat++
+	case isa.SubOpMakeSliceInt64:
+		hints.MakeSliceInt64++
+	case isa.SubOpMakeSliceFloat64:
+		hints.MakeSliceFloat64++
 	case isa.SubOpMakeSliceString:
 		hints.MakeSliceString++
 	case isa.SubOpMakeSliceBool:
 		hints.MakeSliceBool++
-	case isa.SubOpMakeSliceUint:
-		hints.MakeSliceUint++
+	case isa.SubOpMakeSliceUint64:
+		hints.MakeSliceUint64++
 	default:
 	}
 }
@@ -152,7 +152,7 @@ func accumulateTier1Hints(hints *arenaBytecodeHints, subOp uint8) {
 // Takes subOp (uint8) which is the tier-2 sub-opcode byte.
 func accumulateTier2Hints(hints *arenaBytecodeHints, subOp uint8) {
 	switch isa.SubOpcodeTier2(subOp) {
-	case isa.SubOpTier2MakeMap, isa.SubOpTier2AllocStructLiteral:
+	case isa.SubOpTier2MakeMap, isa.SubOpTier2AllocateStructLiteral:
 		hints.makeMapOccurrences++
 		hints.genericBytes += arenaMakeMapAvgBytes
 	default:

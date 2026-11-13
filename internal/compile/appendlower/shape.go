@@ -29,8 +29,8 @@ const (
 	appendArgCount = 2
 )
 
-// MatchShape recognises an identifier assigned a two-argument call to the append
-// builtin. A function that shadows append does not match.
+// MatchShape recognises an identifier assigned a two-argument call to the append builtin.
+// A function that shadows append does not match.
 //
 // Takes info (*types.Info) which resolves the callee; nil matches nothing.
 // Takes leftHandSide (ast.Expr) which is the assignment target.

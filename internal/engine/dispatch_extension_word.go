@@ -20,8 +20,8 @@ package engine
 
 import "pipit.sh/pipit/internal/isa"
 
-// readExtensionWord returns the isa.OpExt word that follows the instruction currently
-// being executed, without advancing the program counter.
+// readExtensionWord returns the isa.OpExtension word that follows the instruction
+// currently being executed, without advancing the program counter.
 //
 // Takes frame (*CallFrame) which provides the bytecode body and program counter.
 //

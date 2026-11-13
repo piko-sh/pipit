@@ -19,6 +19,6 @@
 // Package appendlower checks whether an append assignment can safely update a slice
 // header in place.
 //
-// Variables are tracked by go/types object and the position at which sharing begins.
-// The compiler uses this analysis with its scope stack to select the opcode.
+// Variables are tracked by go/types object and the position at which sharing begins. The
+// compiler uses this analysis with its scope stack to select the opcode.
 package appendlower

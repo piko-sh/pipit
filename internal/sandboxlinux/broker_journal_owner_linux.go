@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
@@ -27,6 +27,7 @@ import (
 	"sync"
 
 	"pipit.sh/pipit/internal/sandboxbroker"
+	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 // journalledOwnerAdmission bounds concurrent journalled broker ownership to one active
@@ -36,11 +37,6 @@ var journalledOwnerAdmission admission
 // filesystemBrokerRecovery tracks the journal, checkpoint and approval stores alongside
 // the worker process for coordinated cleanup.
 type filesystemBrokerRecovery struct {
-	// base is the lifetime context with its cancellation and deadline stripped. Cleanup runs
-	// after cancel() has fired, so it cannot derive a deadline from a live context, yet it
-	// still needs the values the host attached, such as its logger.
-	base context.Context
-
 	// releaseAdmission frees the process-wide admission slot.
 	releaseAdmission func()
 
@@ -140,7 +136,7 @@ func (state *filesystemBrokerRecovery) recover(ctx context.Context, original *Wo
 // Returns original execution failures as well as recovery failures.
 //
 // Safe for concurrent use by multiple goroutines.
-func (owner *FilesystemBroker) closeJournalled() error {
+func (owner *FilesystemBroker) closeJournalled(ctx context.Context) error {
 	state := owner.recovery
 	state.mutex.Lock()
 	state.closed = true
@@ -152,15 +148,15 @@ func (owner *FilesystemBroker) closeJournalled() error {
 	}
 	var execution error
 	if owner.client != nil {
-		execution = owner.client.Close()
+		execution = owner.client.Close(ctx)
 	} else if owner.process != nil {
-		execution = owner.process.Close()
+		execution = owner.process.Close(ctx)
 	}
 	if state.cancel != nil {
 		state.cancel()
 	}
 	state.active.Wait()
-	ctx, cancel := context.WithTimeout(state.base, workerCleanupTimeout)
+	ctx, cancel := sandboxwire.CleanupContext(ctx)
 	defer cancel()
 	if owner.process != nil {
 		if err := owner.process.reapForRecovery(ctx); err != nil {
@@ -247,7 +243,7 @@ func openJournalledFilesystemBroker(ctx context.Context, config WorkerConfig, gr
 	if config.Lifetime < 0 {
 		return nil, ErrInvalidLimits
 	}
-	ctx, cancel := context.WithTimeout(ctx, config.Lifetime)
+	ctx, cancel := context.WithTimeoutCause(ctx, config.Lifetime, sandboxwire.ErrLifetimeEnded)
 	release, err := journalledOwnerAdmission.acquire(ctx)
 	if err != nil {
 		cancel()
@@ -267,7 +263,7 @@ func openJournalledFilesystemBroker(ctx context.Context, config WorkerConfig, gr
 		return nil, err
 	}
 	state := &filesystemBrokerRecovery{
-		base: context.WithoutCancel(ctx), releaseAdmission: release, cancel: cancel,
+		releaseAdmission: release, cancel: cancel,
 		checkpoint: nil, approval: nil,
 		authority: authority, journal: nil, parent: parent, process: nil, result: nil, config: config,
 		mutex: sync.Mutex{}, cleanup: sync.Mutex{}, active: sync.WaitGroup{}, closed: false, complete: false,
@@ -275,23 +271,23 @@ func openJournalledFilesystemBroker(ctx context.Context, config WorkerConfig, gr
 	owner := &FilesystemBroker{process: nil, client: nil, recovery: state}
 	state.journal, err = sandboxbroker.OpenLinuxRecoveryJournal(journalDirectory, bootstrap.StagingNamespace())
 	if err != nil {
-		return owner, errors.Join(err, bootstrap.Close(), owner.Close())
+		return owner, errors.Join(err, bootstrap.Close(), owner.Close(ctx))
 	}
 	if err := authority.ValidateJournal(state.journal); err != nil {
-		return owner, errors.Join(err, bootstrap.Close(), owner.Close())
+		return owner, errors.Join(err, bootstrap.Close(), owner.Close(ctx))
 	}
 	if storage != nil {
 		if err := state.persistCheckpoint(*storage); err != nil {
-			return owner, errors.Join(err, bootstrap.Close(), owner.Close())
+			return owner, errors.Join(err, bootstrap.Close(), owner.Close(ctx))
 		}
 	}
 	owner.process, err = launchFilesystemBroker(ctx, config, bootstrap, parent)
 	if failure := errors.Join(err, bootstrap.Close()); failure != nil {
-		return owner, errors.Join(failure, owner.Close())
+		return owner, errors.Join(failure, owner.Close(ctx))
 	}
 	owner.client, err = sandboxbroker.OpenJournalledFilesystemClient(ctx, owner.process, authority, state.journal)
 	if err != nil {
-		return owner, errors.Join(err, owner.Close())
+		return owner, errors.Join(err, owner.Close(ctx))
 	}
 	return owner, nil
 }

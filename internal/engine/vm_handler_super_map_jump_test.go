@@ -44,10 +44,10 @@ func newFusedMapFrame(t *testing.T) (*VM, *CallFrame, *Registers) {
 	t.Helper()
 	builder := newBytecodeBuilder()
 	builder.numRegisters = wideRegCounts(8)
-	builder.Emit(isa.OpMapIndexOkIntInt, fusedMapValueRegister, fusedMapMapRegister, fusedMapKeyRegister)
+	builder.Emit(isa.OpGetMapInt64Int64Ok, fusedMapValueRegister, fusedMapMapRegister, fusedMapKeyRegister)
 	low, high := isa.SplitOffset(fusedMapMissOffset)
-	builder.body = append(builder.body, isa.NewInstruction(isa.OpExt, fusedMapOkRegister, low, high))
-	builder.Emit(isa.OpNop, 0, 0, 0)
+	builder.body = append(builder.body, isa.NewInstruction(isa.OpExtension, fusedMapOkRegister, low, high))
+	builder.Emit(isa.OpNoOperation, 0, 0, 0)
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 
 	vm, frame, registers := newFramedVM(t, builder.build())
@@ -67,7 +67,7 @@ func TestFusedMapLookupWritesTheValueAndTheOkBitOnAHit(t *testing.T) {
 	}{
 		{
 			name:    "an integer-keyed integer map on its fast path",
-			handler: handleMapIndexOkJumpIfFalseIntInt,
+			handler: handleGetMapInt64Int64OkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int]int{7: 42}) },
 			key:     int64(7),
 			check: func(t *testing.T, registers *Registers) {
@@ -77,7 +77,7 @@ func TestFusedMapLookupWritesTheValueAndTheOkBitOnAHit(t *testing.T) {
 		},
 		{
 			name:    "an int64-keyed int64 map on its fast path",
-			handler: handleMapIndexOkJumpIfFalseIntInt,
+			handler: handleGetMapInt64Int64OkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int64]int64{7: 42}) },
 			key:     int64(7),
 			check: func(t *testing.T, registers *Registers) {
@@ -87,7 +87,7 @@ func TestFusedMapLookupWritesTheValueAndTheOkBitOnAHit(t *testing.T) {
 		},
 		{
 			name:    "a named integer key falls back to reflect",
-			handler: handleMapIndexOkJumpIfFalseIntInt,
+			handler: handleGetMapInt64Int64OkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[namedMapKey]int64{7: 42}) },
 			key:     int64(7),
 			check: func(t *testing.T, registers *Registers) {
@@ -97,7 +97,7 @@ func TestFusedMapLookupWritesTheValueAndTheOkBitOnAHit(t *testing.T) {
 		},
 		{
 			name:    "a string-keyed integer map on its fast path",
-			handler: handleMapIndexOkJumpIfFalseStringInt,
+			handler: handleGetMapStringInt64OkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string]int{"k": 42}) },
 			key:     "k",
 			check: func(t *testing.T, registers *Registers) {
@@ -107,7 +107,7 @@ func TestFusedMapLookupWritesTheValueAndTheOkBitOnAHit(t *testing.T) {
 		},
 		{
 			name:    "a named string key falls back to reflect",
-			handler: handleMapIndexOkJumpIfFalseStringInt,
+			handler: handleGetMapStringInt64OkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[namedStringKey]int64{"k": 42}) },
 			key:     "k",
 			check: func(t *testing.T, registers *Registers) {
@@ -117,7 +117,7 @@ func TestFusedMapLookupWritesTheValueAndTheOkBitOnAHit(t *testing.T) {
 		},
 		{
 			name:    "a string-keyed string map on its fast path",
-			handler: handleMapIndexOkJumpIfFalseStringString,
+			handler: handleGetMapStringStringOkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string]string{"k": "v"}) },
 			key:     "k",
 			check: func(t *testing.T, registers *Registers) {
@@ -127,7 +127,7 @@ func TestFusedMapLookupWritesTheValueAndTheOkBitOnAHit(t *testing.T) {
 		},
 		{
 			name:    "an integer-keyed string map",
-			handler: handleMapIndexOkJumpIfFalseIntString,
+			handler: handleGetMapInt64StringOkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int]string{7: "v"}) },
 			key:     int64(7),
 			check: func(t *testing.T, registers *Registers) {
@@ -137,7 +137,7 @@ func TestFusedMapLookupWritesTheValueAndTheOkBitOnAHit(t *testing.T) {
 		},
 		{
 			name:    "an integer-keyed general map",
-			handler: handleMapIndexOkJumpIfFalseIntGeneral,
+			handler: handleGetMapInt64GeneralOkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int][]string{7: {"v"}}) },
 			key:     int64(7),
 			check: func(t *testing.T, registers *Registers) {
@@ -148,7 +148,7 @@ func TestFusedMapLookupWritesTheValueAndTheOkBitOnAHit(t *testing.T) {
 		},
 		{
 			name:    "a string-keyed general map",
-			handler: handleMapIndexOkJumpIfFalseStringGeneral,
+			handler: handleGetMapStringGeneralOkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string][]string{"k": {"v"}}) },
 			key:     "k",
 			check: func(t *testing.T, registers *Registers) {
@@ -192,7 +192,7 @@ func TestFusedMapLookupTakesTheJumpAndZeroesTheValueOnAMiss(t *testing.T) {
 	}{
 		{
 			name:    "an integer-keyed integer map",
-			handler: handleMapIndexOkJumpIfFalseIntInt,
+			handler: handleGetMapInt64Int64OkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int]int{7: 42}) },
 			key:     int64(99),
 			check: func(t *testing.T, registers *Registers) {
@@ -202,7 +202,7 @@ func TestFusedMapLookupTakesTheJumpAndZeroesTheValueOnAMiss(t *testing.T) {
 		},
 		{
 			name:    "a named integer key on the reflect path",
-			handler: handleMapIndexOkJumpIfFalseIntInt,
+			handler: handleGetMapInt64Int64OkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[namedMapKey]int64{7: 42}) },
 			key:     int64(99),
 			check: func(t *testing.T, registers *Registers) {
@@ -212,7 +212,7 @@ func TestFusedMapLookupTakesTheJumpAndZeroesTheValueOnAMiss(t *testing.T) {
 		},
 		{
 			name:    "a string-keyed integer map",
-			handler: handleMapIndexOkJumpIfFalseStringInt,
+			handler: handleGetMapStringInt64OkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string]int{"k": 42}) },
 			key:     "absent",
 			check: func(t *testing.T, registers *Registers) {
@@ -222,7 +222,7 @@ func TestFusedMapLookupTakesTheJumpAndZeroesTheValueOnAMiss(t *testing.T) {
 		},
 		{
 			name:    "a string-keyed string map",
-			handler: handleMapIndexOkJumpIfFalseStringString,
+			handler: handleGetMapStringStringOkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string]string{"k": "v"}) },
 			key:     "absent",
 			check: func(t *testing.T, registers *Registers) {
@@ -232,7 +232,7 @@ func TestFusedMapLookupTakesTheJumpAndZeroesTheValueOnAMiss(t *testing.T) {
 		},
 		{
 			name:    "an integer-keyed string map",
-			handler: handleMapIndexOkJumpIfFalseIntString,
+			handler: handleGetMapInt64StringOkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int]string{7: "v"}) },
 			key:     int64(99),
 			check: func(t *testing.T, registers *Registers) {
@@ -242,7 +242,7 @@ func TestFusedMapLookupTakesTheJumpAndZeroesTheValueOnAMiss(t *testing.T) {
 		},
 		{
 			name:    "an integer-keyed general map yields the element zero value",
-			handler: handleMapIndexOkJumpIfFalseIntGeneral,
+			handler: handleGetMapInt64GeneralOkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int][]string{7: {"v"}}) },
 			key:     int64(99),
 			check: func(t *testing.T, registers *Registers) {
@@ -253,7 +253,7 @@ func TestFusedMapLookupTakesTheJumpAndZeroesTheValueOnAMiss(t *testing.T) {
 		},
 		{
 			name:    "a string-keyed general map yields the element zero value",
-			handler: handleMapIndexOkJumpIfFalseStringGeneral,
+			handler: handleGetMapStringGeneralOkThenJumpIfFalse,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string][]string{"k": {"v"}}) },
 			key:     "absent",
 			check: func(t *testing.T, registers *Registers) {
@@ -294,7 +294,7 @@ func TestFusedMapLookupOnAnEmptyMapAlwaysMisses(t *testing.T) {
 	registers.General[fusedMapMapRegister] = reflect.ValueOf(map[int]int{})
 	registers.Ints[fusedMapKeyRegister] = 0
 
-	got := handleMapIndexOkJumpIfFalseIntInt(vm, frame, registers, op(fusedMapValueRegister, fusedMapMapRegister, fusedMapKeyRegister))
+	got := handleGetMapInt64Int64OkThenJumpIfFalse(vm, frame, registers, op(fusedMapValueRegister, fusedMapMapRegister, fusedMapKeyRegister))
 
 	require.Equal(t, opContinue, got)
 	require.Equal(t, int64(0), registers.Ints[fusedMapOkRegister])
@@ -308,12 +308,12 @@ func TestFusedMapLookupMissLandsWhereJumpTargetAtSays(t *testing.T) {
 	registers.General[fusedMapMapRegister] = reflect.ValueOf(map[int]int{})
 	registers.Ints[fusedMapKeyRegister] = 0
 
-	handleMapIndexOkJumpIfFalseIntInt(vm, frame, registers, op(fusedMapValueRegister, fusedMapMapRegister, fusedMapKeyRegister))
+	handleGetMapInt64Int64OkThenJumpIfFalse(vm, frame, registers, op(fusedMapValueRegister, fusedMapMapRegister, fusedMapKeyRegister))
 
 	low, high := isa.SplitOffset(fusedMapMissOffset)
 	fused := []isa.Instruction{
-		isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseIntInt, fusedMapValueRegister, fusedMapMapRegister, fusedMapKeyRegister),
-		isa.NewInstruction(isa.OpExt, fusedMapOkRegister, low, high),
+		isa.NewInstruction(isa.OpGetMapInt64Int64OkThenJumpIfFalse, fusedMapValueRegister, fusedMapMapRegister, fusedMapKeyRegister),
+		isa.NewInstruction(isa.OpExtension, fusedMapOkRegister, low, high),
 	}
 	target, ok := program.JumpTargetAt(fused, 0)
 	require.True(t, ok, "the compiler passes must decode the fused branch")
@@ -327,12 +327,12 @@ func TestFusedMapLookupRefusesANonMapRegister(t *testing.T) {
 		handler opcodeHandler
 		name    string
 	}{
-		{name: "the integer to integer form", handler: handleMapIndexOkJumpIfFalseIntInt},
-		{name: "the string to integer form", handler: handleMapIndexOkJumpIfFalseStringInt},
-		{name: "the string to string form", handler: handleMapIndexOkJumpIfFalseStringString},
-		{name: "the integer to string form", handler: handleMapIndexOkJumpIfFalseIntString},
-		{name: "the integer to general form", handler: handleMapIndexOkJumpIfFalseIntGeneral},
-		{name: "the string to general form", handler: handleMapIndexOkJumpIfFalseStringGeneral},
+		{name: "the integer to integer form", handler: handleGetMapInt64Int64OkThenJumpIfFalse},
+		{name: "the string to integer form", handler: handleGetMapStringInt64OkThenJumpIfFalse},
+		{name: "the string to string form", handler: handleGetMapStringStringOkThenJumpIfFalse},
+		{name: "the integer to string form", handler: handleGetMapInt64StringOkThenJumpIfFalse},
+		{name: "the integer to general form", handler: handleGetMapInt64GeneralOkThenJumpIfFalse},
+		{name: "the string to general form", handler: handleGetMapStringGeneralOkThenJumpIfFalse},
 	}
 
 	for _, tt := range handlers {

@@ -62,7 +62,7 @@ func TestScalarCallCopiesArgumentsAndResult(t *testing.T) {
 				Arguments:     []program.VarLocation{intSlot(2)},
 				Returns:       []program.VarLocation{intSlot(0)},
 			})
-			builder.Emit(isa.OpLoadIntConst, 2, 0, 0)
+			builder.Emit(isa.OpLoadInt64Constant, 2, 0, 0)
 			builder.body = append(builder.body, scalarCallSlot(siteIndex))
 			builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
@@ -78,12 +78,12 @@ func TestImmediatelyInvokedCallCapturesTheCallerRegisters(t *testing.T) {
 
 	calleeBuilder := newBytecodeBuilder()
 	calleeBuilder.intRegisters(2).returnInt()
-	calleeBuilder.Emit(isa.OpGetUpvalue, 0, 0, uint8(isa.RegisterInt))
+	calleeBuilder.Emit(isa.OpGetCapturedVariable, 0, 0, uint8(isa.RegisterInt64))
 	calleeBuilder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	callee := calleeBuilder.build()
 	callee.Name = "iife"
 	callee.UpvalueDescriptors = []program.UpvalueDescriptor{
-		{Index: 2, Kind: isa.RegisterInt, IsLocal: true},
+		{Index: 2, Kind: isa.RegisterInt64, IsLocal: true},
 	}
 
 	builder := newBytecodeBuilder()
@@ -94,7 +94,7 @@ func TestImmediatelyInvokedCallCapturesTheCallerRegisters(t *testing.T) {
 		FunctionIndex: calleeIndex,
 		Returns:       []program.VarLocation{intSlot(0)},
 	})
-	builder.Emit(isa.OpLoadIntConst, 2, 0, 0)
+	builder.Emit(isa.OpLoadInt64Constant, 2, 0, 0)
 	builder.body = append(builder.body, iifeCallSlot(siteIndex))
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
@@ -113,14 +113,14 @@ func TestSnapshotRegisterToCellCopiesTheNamedBank(t *testing.T) {
 		inspect func(*testing.T, *program.UpvalueCell)
 	}{
 		{
-			name: "the int bank", kind: isa.RegisterInt, load: func(r *Registers) { r.Ints[1] = 5 },
+			name: "the int bank", kind: isa.RegisterInt64, load: func(r *Registers) { r.Ints[1] = 5 },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
 				require.Equal(t, int64(5), c.IntValue)
 			},
 		},
 		{
-			name: "the float bank", kind: isa.RegisterFloat, load: func(r *Registers) { r.Floats[1] = 1.5 },
+			name: "the float bank", kind: isa.RegisterFloat64, load: func(r *Registers) { r.Floats[1] = 1.5 },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
 				require.InDelta(t, 1.5, c.FloatValue, 0)
@@ -141,14 +141,14 @@ func TestSnapshotRegisterToCellCopiesTheNamedBank(t *testing.T) {
 			},
 		},
 		{
-			name: "the uint bank", kind: isa.RegisterUint, load: func(r *Registers) { r.Uints[1] = 6 },
+			name: "the uint bank", kind: isa.RegisterUint64, load: func(r *Registers) { r.Uints[1] = 6 },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
 				require.Equal(t, uint64(6), c.UintValue)
 			},
 		},
 		{
-			name: "the complex bank", kind: isa.RegisterComplex, load: func(r *Registers) { r.Complex[1] = 2i },
+			name: "the complex bank", kind: isa.RegisterComplex128, load: func(r *Registers) { r.Complex[1] = 2i },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
 				require.Equal(t, 2i, c.ComplexValue)
@@ -163,7 +163,7 @@ func TestSnapshotRegisterToCellCopiesTheNamedBank(t *testing.T) {
 			},
 		},
 		{
-			name: "a typed-slice bank is captured elsewhere", kind: isa.RegisterSliceInt,
+			name: "a typed-slice bank is captured elsewhere", kind: isa.RegisterSliceInt64,
 			load: func(r *Registers) { r.SlicesInt[1] = []int64{1} },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
@@ -384,7 +384,7 @@ func TestReturnHandlerCopiesResultsToTheCaller(t *testing.T) {
 	frame.returnDestination = []program.VarLocation{intSlot(3)}
 	frame.Registers.Ints[0] = 42
 
-	require.Equal(t, opFrameChanged, handleReturn(vm, frame, &frame.Registers, op(1, 0, 0)))
+	require.Equal(t, opFrameChanged, handleReturnBody(vm, frame, &frame.Registers, op(1, 0, 0)))
 	require.Equal(t, caller, vm.FramePointer)
 	require.Equal(t, int64(42), callerRegisters.Ints[3], "the result lands where the site said")
 	require.NotNil(t, callerFrame)
@@ -427,7 +427,7 @@ func TestPackDeferredVariadicArgumentsFillsTheTrailingSlice(t *testing.T) {
 			callee: func() *program.CompiledFunction {
 				callee := program.NewNamedFunction("f")
 				callee.IsVariadic = true
-				callee.ParameterKinds = []isa.RegisterKind{isa.RegisterInt, isa.RegisterGeneral}
+				callee.ParameterKinds = []isa.RegisterKind{isa.RegisterInt64, isa.RegisterGeneral}
 				return callee
 			},
 			arguments: []reflect.Value{reflect.ValueOf(1), reflect.ValueOf(2), reflect.ValueOf(3)},
@@ -636,7 +636,7 @@ func TestRunArgCopyProgramBoxesAcrossBanks(t *testing.T) {
 		Op:                  program.CopyBoxOrUnbox,
 		SourceRegister:      1,
 		DestinationRegister: 0,
-		KindByte:            byte(isa.RegisterInt) | byte(isa.RegisterGeneral)<<4,
+		KindByte:            byte(isa.RegisterInt64) | byte(isa.RegisterGeneral)<<4,
 	}})
 
 	require.Equal(t, int64(5), destination.General[0].Int(), "the boxing entry crosses from the int bank to the general one")
@@ -653,7 +653,7 @@ func TestCopyOneCallArgumentBridgesTheRepresentations(t *testing.T) {
 		inspect         func(*testing.T, *Registers)
 	}{
 		{
-			name: "a matching bank is copied directly", sourceKind: isa.RegisterInt, destinationKind: isa.RegisterInt,
+			name: "a matching bank is copied directly", sourceKind: isa.RegisterInt64, destinationKind: isa.RegisterInt64,
 			load: func(r *Registers) { r.Ints[1] = 4 },
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -669,7 +669,7 @@ func TestCopyOneCallArgumentBridgesTheRepresentations(t *testing.T) {
 			},
 		},
 		{
-			name: "a general value is unboxed into its bank", sourceKind: isa.RegisterGeneral, destinationKind: isa.RegisterInt,
+			name: "a general value is unboxed into its bank", sourceKind: isa.RegisterGeneral, destinationKind: isa.RegisterInt64,
 			load: func(r *Registers) { r.General[1] = reflect.ValueOf(int64(7)) },
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -677,7 +677,7 @@ func TestCopyOneCallArgumentBridgesTheRepresentations(t *testing.T) {
 			},
 		},
 		{
-			name: "a non-zero comparison result becomes true", sourceKind: isa.RegisterInt, destinationKind: isa.RegisterBool,
+			name: "a non-zero comparison result becomes true", sourceKind: isa.RegisterInt64, destinationKind: isa.RegisterBool,
 			load: func(r *Registers) { r.Ints[1] = 1 },
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -685,7 +685,7 @@ func TestCopyOneCallArgumentBridgesTheRepresentations(t *testing.T) {
 			},
 		},
 		{
-			name: "a zero comparison result becomes false", sourceKind: isa.RegisterInt, destinationKind: isa.RegisterBool,
+			name: "a zero comparison result becomes false", sourceKind: isa.RegisterInt64, destinationKind: isa.RegisterBool,
 			load: func(r *Registers) { r.Ints[1] = 0 },
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -693,7 +693,7 @@ func TestCopyOneCallArgumentBridgesTheRepresentations(t *testing.T) {
 			},
 		},
 		{
-			name: "a bool becomes the int bank's encoding", sourceKind: isa.RegisterBool, destinationKind: isa.RegisterInt,
+			name: "a bool becomes the int bank's encoding", sourceKind: isa.RegisterBool, destinationKind: isa.RegisterInt64,
 			load: func(r *Registers) { r.Bools[1] = true },
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()

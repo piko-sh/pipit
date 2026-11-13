@@ -41,15 +41,15 @@ func TestScalarAppendHandlersGrowTheirSlice(t *testing.T) {
 		want    any
 	}{
 		{
-			name: "an int element onto an int slice", handler: handleAppendInt, source: []int64{1},
+			name: "an int element onto an int slice", handler: handleAppendInt64, source: []int64{1},
 			load: func(r *Registers) { r.Ints[2] = 2 }, want: []int64{1, 2},
 		},
 		{
-			name: "an int element onto a named int slice", handler: handleAppendInt, source: namedInts{1},
+			name: "an int element onto a named int slice", handler: handleAppendInt64, source: namedInts{1},
 			load: func(r *Registers) { r.Ints[2] = 2 }, want: namedInts{1, 2},
 		},
 		{
-			name: "a float element", handler: handleAppendFloat, source: []float64{1.5},
+			name: "a float element", handler: handleAppendFloat64, source: []float64{1.5},
 			load: func(r *Registers) { r.Floats[2] = 2.5 }, want: []float64{1.5, 2.5},
 		},
 		{
@@ -57,7 +57,7 @@ func TestScalarAppendHandlersGrowTheirSlice(t *testing.T) {
 			load: func(r *Registers) { r.Strings[2] = "b" }, want: []string{"a", "b"},
 		},
 		{
-			name: "a bool element", handler: handleAppendBool, source: []bool{true},
+			name: "a bool element", handler: handleAppendBoolWideBody, source: []bool{true},
 			load: func(r *Registers) { r.Bools[2] = false }, want: []bool{true, false},
 		},
 	}
@@ -85,10 +85,10 @@ func TestScalarAppendHandlersSeedAnUnsetDestination(t *testing.T) {
 		load    func(*Registers)
 		want    any
 	}{
-		{name: "an int element", handler: handleAppendInt, load: func(r *Registers) { r.Ints[2] = 2 }, want: []int{2}},
-		{name: "a float element", handler: handleAppendFloat, load: func(r *Registers) { r.Floats[2] = 2.5 }, want: []float64{2.5}},
+		{name: "an int element", handler: handleAppendInt64, load: func(r *Registers) { r.Ints[2] = 2 }, want: []int{2}},
+		{name: "a float element", handler: handleAppendFloat64, load: func(r *Registers) { r.Floats[2] = 2.5 }, want: []float64{2.5}},
 		{name: "a string element", handler: handleAppendString, load: func(r *Registers) { r.Strings[2] = "b" }, want: []string{"b"}},
-		{name: "a bool element", handler: handleAppendBool, load: func(r *Registers) { r.Bools[2] = true }, want: []bool{true}},
+		{name: "a bool element", handler: handleAppendBoolWideBody, load: func(r *Registers) { r.Bools[2] = true }, want: []bool{true}},
 	}
 
 	for _, tt := range tests {
@@ -115,11 +115,11 @@ func TestScalarAppendInPlaceFormReusesTheDestination(t *testing.T) {
 		want    any
 	}{
 		{
-			name: "an int element", handler: handleAppendInt, source: []int64{1},
+			name: "an int element", handler: handleAppendInt64, source: []int64{1},
 			load: func(r *Registers) { r.Ints[2] = 2 }, want: []int64{1, 2},
 		},
 		{
-			name: "a float element", handler: handleAppendFloat, source: []float64{1.5},
+			name: "a float element", handler: handleAppendFloat64, source: []float64{1.5},
 			load: func(r *Registers) { r.Floats[2] = 2.5 }, want: []float64{1.5, 2.5},
 		},
 		{
@@ -127,7 +127,7 @@ func TestScalarAppendInPlaceFormReusesTheDestination(t *testing.T) {
 			load: func(r *Registers) { r.Strings[2] = "b" }, want: []string{"a", "b"},
 		},
 		{
-			name: "a bool element", handler: handleAppendBool, source: []bool{true},
+			name: "a bool element", handler: handleAppendBoolWideBody, source: []bool{true},
 			load: func(r *Registers) { r.Bools[2] = false }, want: []bool{true, false},
 		},
 	}
@@ -154,7 +154,7 @@ func TestScalarAppendRefusesToPassTheAllocationCap(t *testing.T) {
 	registers.General[1] = reflect.ValueOf([]int64{1, 2})
 	registers.Ints[2] = 3
 
-	got := handleAppendInt(vm, frame, registers, op(0, 1, 2))
+	got := handleAppendInt64(vm, frame, registers, op(0, 1, 2))
 	requireEvalError(t, vm, got, fault.ErrAllocationLimit)
 }
 
@@ -168,19 +168,19 @@ func TestByteAppendFastFormsBuildTheBuffer(t *testing.T) {
 		want    []byte
 	}{
 		{
-			name: "onto an existing byte slice", handler: handleAppendByteFast,
+			name: "onto an existing byte slice", handler: handleAppendByte,
 			source: reflect.ValueOf([]byte{1}), want: []byte{1, 2},
 		},
 		{
-			name: "onto an unset register", handler: handleAppendByteFast,
+			name: "onto an unset register", handler: handleAppendByte,
 			source: reflect.Value{}, want: []byte{2},
 		},
 		{
-			name: "the in-place form onto an existing slice", handler: handleAppendByteFastInPlace,
+			name: "the in-place form onto an existing slice", handler: handleAppendByteInPlace,
 			source: reflect.ValueOf([]byte{1}), want: []byte{1, 2},
 		},
 		{
-			name: "the in-place form onto an unset register", handler: handleAppendByteFastInPlace,
+			name: "the in-place form onto an unset register", handler: handleAppendByteInPlace,
 			source: reflect.Value{}, want: []byte{2},
 		},
 	}
@@ -211,7 +211,7 @@ func TestByteAppendFastFormsHandleOtherElementTypes(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(namedBytes{1})
 		registers.Uints[2] = 2
 
-		require.Equal(t, opContinue, handleAppendByteFast(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAppendByte(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, namedBytes{1, 2}, registers.General[0].Interface())
 	})
 
@@ -222,7 +222,7 @@ func TestByteAppendFastFormsHandleOtherElementTypes(t *testing.T) {
 		registers.General[1] = reflect.ValueOf([]byte{1})
 		registers.Uints[2] = 2
 
-		require.Equal(t, opContinue, handleAppendByteFastInPlace(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAppendByteInPlace(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, []byte{1, 2}, registers.General[0].Interface())
 	})
 
@@ -234,7 +234,7 @@ func TestByteAppendFastFormsHandleOtherElementTypes(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(&backing)
 		registers.Uints[2] = 2
 
-		require.Equal(t, opContinue, handleAppendByteFastInPlace(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAppendByteInPlace(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, []byte{1, 2}, backing, "the caller's slice must see the appended byte")
 	})
 
@@ -245,7 +245,7 @@ func TestByteAppendFastFormsHandleOtherElementTypes(t *testing.T) {
 		registers.General[1] = reflect.ValueOf((*[]byte)(nil))
 		registers.Uints[2] = 2
 
-		got := handleAppendByteFastInPlace(vm, frame, registers, op(0, 1, 2))
+		got := handleAppendByteInPlace(vm, frame, registers, op(0, 1, 2))
 		requireRuntimePanic(t, vm, got, "nil pointer dereference")
 	})
 
@@ -257,7 +257,7 @@ func TestByteAppendFastFormsHandleOtherElementTypes(t *testing.T) {
 		registers.General[1] = reflect.ValueOf([]byte{1, 2})
 		registers.Uints[2] = 3
 
-		got := handleAppendByteFast(vm, frame, registers, op(0, 1, 2))
+		got := handleAppendByte(vm, frame, registers, op(0, 1, 2))
 		requireEvalError(t, vm, got, fault.ErrAllocationLimit)
 	})
 }
@@ -334,7 +334,7 @@ func TestUintAppendSubOpCoversEveryUnsignedWidth(t *testing.T) {
 			registers.General[2] = tt.source
 			registers.Uints[3] = 2
 
-			require.Equal(t, opContinue, handleSubOpAppendUint(vm, frame, registers, op(0, 1, 2)))
+			require.Equal(t, opContinue, handleAppendUint64Wide(vm, frame, registers, op(0, 1, 2)))
 			require.Equal(t, 2, frame.ProgramCounter, "the element word must be stepped over")
 			require.Equal(t, tt.want, registers.General[1].Interface())
 		})
@@ -349,7 +349,7 @@ func TestUintAppendSubOpRefusesToPassTheAllocationCap(t *testing.T) {
 	registers.General[2] = reflect.ValueOf([]byte{1, 2})
 	registers.Uints[3] = 3
 
-	got := handleSubOpAppendUint(vm, frame, registers, op(0, 1, 2))
+	got := handleAppendUint64Wide(vm, frame, registers, op(0, 1, 2))
 	requireEvalError(t, vm, got, fault.ErrAllocationLimit)
 }
 
@@ -435,7 +435,7 @@ func TestByteSpreadInPlaceAppendsWholeSlices(t *testing.T) {
 		registers.General[1] = reflect.ValueOf([]byte("ab"))
 		registers.General[2] = reflect.ValueOf([]byte("cd"))
 
-		require.Equal(t, opContinue, handleSubOpAppendByteSpreadInPlace(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAppendSpreadByteInPlace(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, []byte("abcd"), registers.General[1].Interface())
 	})
 
@@ -447,7 +447,7 @@ func TestByteSpreadInPlaceAppendsWholeSlices(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(&backing)
 		registers.General[2] = reflect.ValueOf([]byte("cd"))
 
-		require.Equal(t, opContinue, handleSubOpAppendByteSpreadInPlace(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAppendSpreadByteInPlace(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, []byte("abcd"), backing, "the caller's slice must see the appended bytes")
 	})
 
@@ -457,7 +457,7 @@ func TestByteSpreadInPlaceAppendsWholeSlices(t *testing.T) {
 		vm, frame, registers := newStandardVM(t)
 		registers.General[2] = reflect.ValueOf([]byte("cd"))
 
-		require.Equal(t, opContinue, handleSubOpAppendByteSpreadInPlace(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAppendSpreadByteInPlace(vm, frame, registers, op(0, 1, 2)))
 	})
 
 	t.Run("a source that is not a byte slice falls back", func(t *testing.T) {
@@ -467,7 +467,7 @@ func TestByteSpreadInPlaceAppendsWholeSlices(t *testing.T) {
 		registers.General[1] = reflect.ValueOf([]byte("ab"))
 		registers.General[2] = reflect.ValueOf([]int{1})
 
-		require.Equal(t, opContinue, handleSubOpAppendByteSpreadInPlace(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAppendSpreadByteInPlace(vm, frame, registers, op(0, 1, 2)))
 	})
 
 	t.Run("a nil pointer destination falls back", func(t *testing.T) {
@@ -477,7 +477,7 @@ func TestByteSpreadInPlaceAppendsWholeSlices(t *testing.T) {
 		registers.General[1] = reflect.ValueOf((*[]byte)(nil))
 		registers.General[2] = reflect.ValueOf([]byte("cd"))
 
-		require.Equal(t, opContinue, handleSubOpAppendByteSpreadInPlace(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAppendSpreadByteInPlace(vm, frame, registers, op(0, 1, 2)))
 	})
 
 	t.Run("the cap is honoured", func(t *testing.T) {
@@ -488,7 +488,7 @@ func TestByteSpreadInPlaceAppendsWholeSlices(t *testing.T) {
 		registers.General[1] = reflect.ValueOf([]byte("ab"))
 		registers.General[2] = reflect.ValueOf([]byte("cd"))
 
-		got := handleSubOpAppendByteSpreadInPlace(vm, frame, registers, op(0, 1, 2))
+		got := handleAppendSpreadByteInPlace(vm, frame, registers, op(0, 1, 2))
 		requireEvalError(t, vm, got, fault.ErrAllocationLimit)
 	})
 }
@@ -504,7 +504,7 @@ func TestStarByteAppendWritesThroughThePointer(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(&backing)
 		registers.Uints[2] = 'c'
 
-		require.Equal(t, opContinue, handleSubOpStarAppendByteFast(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAppendByteViaPointer(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, []byte("abc"), backing)
 	})
 
@@ -516,7 +516,7 @@ func TestStarByteAppendWritesThroughThePointer(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(&backing)
 		registers.General[2] = reflect.ValueOf([]byte("cd"))
 
-		require.Equal(t, opContinue, handleSubOpStarAppendByteSpread(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAppendSpreadByteViaPointer(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, []byte("abcd"), backing)
 	})
 
@@ -528,7 +528,7 @@ func TestStarByteAppendWritesThroughThePointer(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(&backing)
 		registers.General[2] = reflect.ValueOf([]int{1})
 
-		require.Equal(t, opContinue, handleSubOpStarAppendByteSpread(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAppendSpreadByteViaPointer(vm, frame, registers, op(0, 1, 2)))
 	})
 
 	t.Run("the cap is honoured", func(t *testing.T) {
@@ -540,7 +540,7 @@ func TestStarByteAppendWritesThroughThePointer(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(&backing)
 		registers.Uints[2] = 'c'
 
-		got := handleSubOpStarAppendByteFast(vm, frame, registers, op(0, 1, 2))
+		got := handleAppendByteViaPointer(vm, frame, registers, op(0, 1, 2))
 		requireEvalError(t, vm, got, fault.ErrAllocationLimit)
 	})
 }
@@ -553,7 +553,7 @@ func TestStarByteAppendFallbackNamesTheBrokenOperand(t *testing.T) {
 
 		vm, frame, registers := newStandardVM(t)
 
-		got := handleSubOpStarAppendByteFastFallback(vm, frame, registers, op(0, 1, 2))
+		got := handleAppendByteViaPointerFallback(vm, frame, registers, op(0, 1, 2))
 		requireRuntimePanic(t, vm, got, "nil pointer dereference")
 	})
 
@@ -563,7 +563,7 @@ func TestStarByteAppendFallbackNamesTheBrokenOperand(t *testing.T) {
 		vm, frame, registers := newStandardVM(t)
 		registers.General[1] = reflect.ValueOf([]byte("ab"))
 
-		require.Panics(t, func() { handleSubOpStarAppendByteFastFallback(vm, frame, registers, op(0, 1, 2)) },
+		require.Panics(t, func() { handleAppendByteViaPointerFallback(vm, frame, registers, op(0, 1, 2)) },
 			"the compiler only emits the star form for a *[]byte register")
 	})
 
@@ -573,7 +573,7 @@ func TestStarByteAppendFallbackNamesTheBrokenOperand(t *testing.T) {
 		vm, frame, registers := newStandardVM(t)
 		registers.General[1] = reflect.ValueOf((*[]byte)(nil))
 
-		require.Panics(t, func() { handleSubOpStarAppendByteFastFallback(vm, frame, registers, op(0, 1, 2)) })
+		require.Panics(t, func() { handleAppendByteViaPointerFallback(vm, frame, registers, op(0, 1, 2)) })
 	})
 
 	t.Run("a live pointer passes the defensive checks", func(t *testing.T) {
@@ -583,6 +583,6 @@ func TestStarByteAppendFallbackNamesTheBrokenOperand(t *testing.T) {
 		backing := []byte("ab")
 		registers.General[1] = reflect.ValueOf(&backing)
 
-		require.Equal(t, opContinue, handleSubOpStarAppendByteFastFallback(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAppendByteViaPointerFallback(vm, frame, registers, op(0, 1, 2)))
 	})
 }

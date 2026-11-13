@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerSubOpLenString sets ints[B] = len(strings[C]) for the tier-1 string-length sub-op.
-TEXT ·handlerSubOpLenString(SB), NOSPLIT|NOFRAME, $0
+// handlerLengthString sets ints[B] = len(strings[C]) for the tier-1 string-length sub-op.
+TEXT ·handlerLengthString(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -37,3 +37,32 @@ TEXT ·handlerSubOpLenString(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    8(SI)(BX*1), CX
 	MOVQ    CX, (R8)(AX*8)
 	DISPATCH_NEXT()
+
+// handlerLengthGeneral sets ints[B] = len(general[C]) for a slice value. Every other kind, and an invalid value, falls back to handlerPathBShimLengthGeneral.
+TEXT ·handlerLengthGeneral(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, CX
+	SHRQ    $24, CX
+	MOVQ    CTX_GENERALS_BASE(R15), DI
+	LEAQ    (CX)(CX*2), AX
+	LEAQ    (DI)(AX*8), SI
+	MOVQ    0(SI), AX
+	TESTQ   AX, AX
+	JZ      length_shim
+	MOVQ    16(SI), BX
+	MOVQ    BX, CX
+	ANDQ    $FLAG_KIND_MASK, CX
+	CMPQ    CX, $REFLECT_SLICE
+	JNE     length_shim
+	TESTQ   $FLAG_INDIR, BX
+	JZ      length_shim
+	MOVQ    8(SI), AX
+	TESTQ   AX, AX
+	JZ      length_shim
+	MOVQ    8(AX), CX
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	MOVQ    CX, (R8)(AX*8)
+	DISPATCH_NEXT()
+length_shim:
+	JMP     ·handlerPathBShimLengthGeneral(SB)

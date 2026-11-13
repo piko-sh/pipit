@@ -41,8 +41,8 @@ TEXT ·handlerAddInt32(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubInt32 sets ints[A] = int64(int32(ints[B] - ints[C])).
-TEXT ·handlerSubInt32(SB), NOSPLIT|NOFRAME, $0
+// handlerSubtractInt32 sets ints[A] = int64(int32(ints[B] - ints[C])).
+TEXT ·handlerSubtractInt32(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -57,8 +57,8 @@ TEXT ·handlerSubInt32(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerMulInt32 sets ints[A] = int64(int32(ints[B] * ints[C])).
-TEXT ·handlerMulInt32(SB), NOSPLIT|NOFRAME, $0
+// handlerMultiplyInt32 sets ints[A] = int64(int32(ints[B] * ints[C])).
+TEXT ·handlerMultiplyInt32(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -73,8 +73,8 @@ TEXT ·handlerMulInt32(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerAddInt32Const sets ints[A] = int64(int32(ints[B] + intConstants[C])).
-TEXT ·handlerAddInt32Const(SB), NOSPLIT|NOFRAME, $0
+// handlerAddInt32Constant sets ints[A] = int64(int32(ints[B] + intConstants[C])).
+TEXT ·handlerAddInt32Constant(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -89,8 +89,8 @@ TEXT ·handlerAddInt32Const(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubInt32Const sets ints[A] = int64(int32(ints[B] - intConstants[C])).
-TEXT ·handlerSubInt32Const(SB), NOSPLIT|NOFRAME, $0
+// handlerSubtractInt32Constant sets ints[A] = int64(int32(ints[B] - intConstants[C])).
+TEXT ·handlerSubtractInt32Constant(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -121,4 +121,76 @@ TEXT ·handlerAddUint32(SB), NOSPLIT|NOFRAME, $0
 	MOVD (R4)(R3<<3), R5
 	MOVWU R5, R5
 	MOVD R5, (R4)(R3<<3)
+	DISPATCH_NEXT()
+
+// handlerSubtractUint32 sets uints[A] = uint64(uint32(uints[B] - uints[C])).
+TEXT ·handlerSubtractUint32(SB), NOSPLIT|NOFRAME, $0
+	LSR  $8, R0, R3
+	AND  $0xFF, R3, R3
+	LSR  $16, R0, R4
+	AND  $0xFF, R4, R4
+	LSR  $24, R0, R5
+	MOVD CTX_UINTS_BASE(R19), R8
+	MOVD (R8)(R4<<3), R6
+	MOVD (R8)(R5<<3), R7
+	SUB  R7, R6, R6
+	MOVD R6, (R8)(R3<<3)
+	MOVD CTX_UINTS_BASE(R19), R4
+	MOVD (R4)(R3<<3), R5
+	MOVWU R5, R5
+	MOVD R5, (R4)(R3<<3)
+	DISPATCH_NEXT()
+
+// handlerMultiplyUint32 sets uints[A] = uint64(uint32(uints[B] * uints[C])).
+TEXT ·handlerMultiplyUint32(SB), NOSPLIT|NOFRAME, $0
+	LSR  $8, R0, R3
+	AND  $0xFF, R3, R3
+	LSR  $16, R0, R4
+	AND  $0xFF, R4, R4
+	LSR  $24, R0, R5
+	MOVD CTX_UINTS_BASE(R19), R8
+	MOVD (R8)(R4<<3), R6
+	MOVD (R8)(R5<<3), R7
+	MUL  R7, R6, R6
+	MOVD R6, (R8)(R3<<3)
+	MOVD CTX_UINTS_BASE(R19), R4
+	MOVD (R4)(R3<<3), R5
+	MOVWU R5, R5
+	MOVD R5, (R4)(R3<<3)
+	DISPATCH_NEXT()
+
+// handlerAddUint32Constant sets uints[B] = uint64(uint32(uints[C] + uintConstants[ext wide index])).
+TEXT ·handlerAddUint32Constant(SB), NOSPLIT|NOFRAME, $0
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	LSR  $24, R0, R4
+	MOVWU (R22)(R20<<2), R5
+	LSR  $8, R5, R5
+	AND  $0xFFFF, R5, R5
+	MOVD CTX_UINT_CONSTS_BASE(R19), R6
+	MOVD (R6)(R5<<3), R5
+	MOVD CTX_UINTS_BASE(R19), R6
+	MOVD (R6)(R4<<3), R7
+	ADD  R5, R7, R7
+	MOVWU R7, R7
+	MOVD R7, (R6)(R3<<3)
+	ADD  $1, R20, R20
+	DISPATCH_NEXT()
+
+// handlerSubtractUint32Constant sets uints[B] = uint64(uint32(uints[C] - uintConstants[ext wide index])).
+TEXT ·handlerSubtractUint32Constant(SB), NOSPLIT|NOFRAME, $0
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	LSR  $24, R0, R4
+	MOVWU (R22)(R20<<2), R5
+	LSR  $8, R5, R5
+	AND  $0xFFFF, R5, R5
+	MOVD CTX_UINT_CONSTS_BASE(R19), R6
+	MOVD (R6)(R5<<3), R5
+	MOVD CTX_UINTS_BASE(R19), R6
+	MOVD (R6)(R4<<3), R7
+	SUB  R5, R7, R7
+	MOVWU R7, R7
+	MOVD R7, (R6)(R3<<3)
+	ADD  $1, R20, R20
 	DISPATCH_NEXT()

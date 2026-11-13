@@ -74,7 +74,7 @@ func TestServeSource(t *testing.T) {
 				fixtureMessage(t, sandboxwire.Run, 1, tt.request),
 				fixtureMessage(t, sandboxwire.Run, 2, Request{Kind: "execute", Source: "", Entrypoint: ""}),
 			)
-			require.NoError(t, Serve(stream))
+			require.NoError(t, Serve(t.Context(), stream))
 			codec, err := sandboxwire.New(bytes.NewReader(stream.output.Bytes()), io.Discard, sandboxwire.Limits{})
 			require.NoError(t, err)
 			kinds := []sandboxwire.Kind{sandboxwire.Hello, sandboxwire.Ready, sandboxwire.Result}
@@ -122,15 +122,15 @@ func TestServeRejectsInvalidProtocol(t *testing.T) {
 		{config, fixtureMessage(t, sandboxwire.Run, 1, Request{Kind: "expression", Source: "1", Entrypoint: "main"})},
 		{config, fixtureMessage(t, sandboxwire.Run, 1, Request{Kind: "file", Source: "package main", Entrypoint: ""})},
 	} {
-		require.ErrorIs(t, Serve(sourceFixture(t, messages...)), sandboxwire.ErrProtocol, "invalid protocol accepted")
+		require.ErrorIs(t, Serve(t.Context(), sourceFixture(t, messages...)), sandboxwire.ErrProtocol, "invalid protocol accepted")
 	}
 }
 
 func TestServeClosesBeforeSource(t *testing.T) {
 	t.Parallel()
 	stream := sourceFixture(t, fixtureMessage(t, sandboxwire.Close, 0, struct{}{}))
-	require.NoError(t, Serve(stream))
-	require.ErrorIs(t, Serve(nil), sandboxwire.ErrProtocol, "nil transport accepted")
+	require.NoError(t, Serve(t.Context(), stream))
+	require.ErrorIs(t, Serve(t.Context(), nil), sandboxwire.ErrProtocol, "nil transport accepted")
 }
 
 func fixtureMessage(t *testing.T, kind sandboxwire.Kind, identity uint64, payload any) sandboxwire.Message {

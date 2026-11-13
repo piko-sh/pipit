@@ -88,8 +88,12 @@ const (
 
 // model holds the REPL's UI and interpreter state. Must not be copied by value.
 type model struct {
-	// ctx threads cancellation from the parent context.
-	ctx context.Context
+	// submitSource submits source to the session under the context the REPL was started
+	// with.
+	submitSource func(source string) (any, error)
+
+	// submitCaptured submits source as submitSource does, capturing what it prints.
+	submitCaptured func(source string) (string, any, error)
 
 	// theme supplies the colour and style settings for rendering.
 	theme *styles.Theme
@@ -155,7 +159,8 @@ func newModel(ctx context.Context, session *pipit.Session, theme *styles.Theme, 
 	historyEntries := loadHistory(historyPath)
 
 	return &model{
-		ctx:            ctx,
+		submitSource:   func(source string) (any, error) { return session.Submit(ctx, source) },
+		submitCaptured: func(source string) (string, any, error) { return submitCapturing(ctx, session, source) },
 		session:        session,
 		theme:          theme,
 		input:          input,
@@ -363,7 +368,7 @@ func (m *model) handleMeta(input string) {
 			m.appendTranscript(m.theme.Error.Render(err.Error()))
 			return
 		}
-		result, err := m.session.Submit(m.ctx, string(body))
+		result, err := m.submitSource(string(body))
 		if err != nil {
 			m.appendTranscript(m.theme.Error.Render(err.Error()))
 			return
@@ -394,7 +399,7 @@ func (m *model) submit(input string) {
 		return
 	}
 
-	captured, result, err := submitCapturing(m.ctx, m.session, input)
+	captured, result, err := m.submitCaptured(input)
 	if text := strings.TrimRight(captured, "\n"); text != "" {
 		m.appendTranscript(text)
 	}

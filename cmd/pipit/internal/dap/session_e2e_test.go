@@ -21,7 +21,6 @@ package dap
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -72,7 +71,7 @@ func startDAPClient(t *testing.T) *dapClient {
 	clientIn, serverOut := io.Pipe()
 	srv := newServer(ServerOptions{Stdin: serverIn, Stdout: serverOut, Stderr: &bytes.Buffer{}, Log: nil, Symbols: nil})
 	client := &dapClient{toServer: clientOut, incoming: make(chan dap.Message, 256), seq: 0, loopDone: make(chan error, 1)}
-	go func() { client.loopDone <- srv.serve(context.Background()) }()
+	go func() { client.loopDone <- srv.serve(t.Context()) }()
 	var readers sync.WaitGroup
 	readers.Go(func() {
 		reader := bufio.NewReader(clientIn)

@@ -39,29 +39,53 @@ const (
 	// runners) up to this cap.
 	GoroutineJoinScheduleCap = 10 * time.Second
 
+	// defaultGoroutineJoinUnwindCap bounds how long the join keeps waiting while a VM of the
+	// execution runs its pending defers under the abort unwinding (vm_abort_unwind.go), such
+	// as a goroutine the join's own cancellation stopped, unless
+	// VMLimits.GoroutineJoinUnwindCap sets the bound.
+	defaultGoroutineJoinUnwindCap = 10 * time.Second
+
 	// goroutineJoinPollInterval is how often the join re-examines the tracker's counters
 	// while waiting.
 	goroutineJoinPollInterval = time.Millisecond
 )
 
 // JoinSpawnedGoroutines cancels and waits for the execution's goroutines, counting any
-// still running after GoroutineJoinGrace as leaked so the Service is not reused. The call
-// is idempotent and a no-op on nested or child VMs.
+// still running after GoroutineJoinGrace as leaked so the Service is not reused.
+//
+// The call is idempotent and a no-op on nested or child VMs. The main run has returned,
+// so the VM's own context watcher is stopped first. Cancelling with ErrMainReturned would
+// otherwise start it on a goroutine of its own only to flag a run that is over.
 //
 // Returns errGoroutineJoinTimeout wrapping the straggler count when the grace period
-// elapses, or nil when every goroutine has exited.
+// elapses, the fault.ErrLockAbandoned report when the execution abandoned a lock, or nil
+// when every goroutine has exited and no lock was abandoned.
 func (vm *VM) JoinSpawnedGoroutines() error {
 	if vm.goroutinesJoined || vm.executionCancel == nil {
 		return vm.goroutineJoinError
 	}
 	vm.goroutinesJoined = true
+	vm.FinishWatcher()
 	vm.executionCancel(fault.ErrMainReturned)
+	vm.goroutineJoinError = vm.waitForSpawnedGoroutines()
+	if vm.goroutineJoinError == nil {
+		vm.goroutineJoinError = vm.settleAbandonedLocks()
+	}
+	return vm.goroutineJoinError
+}
+
+// waitForSpawnedGoroutines waits for the execution's goroutines once it has cancelled
+// them, counting any still running after GoroutineJoinGrace as leaked.
+//
+// Returns errGoroutineJoinTimeout wrapping the straggler count when the grace period
+// elapses, or nil when every goroutine has exited.
+func (vm *VM) waitForSpawnedGoroutines() error {
 	tracker := vm.Limits.Tracker
 	if tracker == nil || tracker.GoroutineCount.Load() == 0 {
 		return nil
 	}
 	released := vm.releaseAroundBlock()
-	joined := WaitForGoroutines(tracker, GoroutineJoinGrace)
+	joined := waitForGoroutines(tracker, GoroutineJoinGrace, vm.Limits.goroutineJoinUnwindCap())
 	vm.reacquireAfterBlock(released)
 	if joined {
 		return nil
@@ -69,8 +93,7 @@ func (vm *VM) JoinSpawnedGoroutines() error {
 	stragglers := int64(tracker.GoroutineCount.Load())
 	tracker.LeakedGoroutines.Add(stragglers)
 	vm.goroutinesLeaked = true
-	vm.goroutineJoinError = fmt.Errorf("%w: %d still running", fault.ErrGoroutineJoinTimeout, stragglers)
-	return vm.goroutineJoinError
+	return fmt.Errorf("%w: %d still running", fault.ErrGoroutineJoinTimeout, stragglers)
 }
 
 // NewExecutionContext derives the cancellable context that a top-level execution and
@@ -83,15 +106,26 @@ func NewExecutionContext(ctx context.Context) (context.Context, context.CancelCa
 }
 
 // WaitForGoroutines waits on the tracker's join group until every registered goroutine
-// has exited or the grace period elapses without progress. The deadline is pushed out
-// whenever a child exits, and while goroutines are still waiting to be scheduled (bounded
-// by GoroutineJoinScheduleCap), so only goroutines that are genuinely stuck exhaust it.
+// has exited or the grace period elapses without progress.
 //
 // Takes tracker (*ResourceTracker) which owns the join group.
 // Takes grace (time.Duration) which bounds the wait since the last progress.
 //
 // Returns true when every registered goroutine exited before the grace ran out.
 func WaitForGoroutines(tracker *ResourceTracker, grace time.Duration) bool {
+	return waitForGoroutines(tracker, grace, defaultGoroutineJoinUnwindCap)
+}
+
+// waitForGoroutines is WaitForGoroutines with the bound on waiting for unwinding VMs
+// given.
+//
+// Takes tracker (*ResourceTracker) which owns the join group.
+// Takes grace (time.Duration) which bounds the wait since the last progress.
+// Takes unwindCap (time.Duration) which bounds, from the start of the join, how long
+// unwinding VMs keep pushing the deadline out.
+//
+// Returns true when every registered goroutine exited before the grace ran out.
+func waitForGoroutines(tracker *ResourceTracker, grace, unwindCap time.Duration) bool {
 	if tracker.GoroutineCount.Load() == 0 {
 		return true
 	}
@@ -106,7 +140,8 @@ func WaitForGoroutines(tracker *ResourceTracker, grace time.Duration) bool {
 			return true
 		}
 		awaitingScheduler := tracker.GoroutinesUnscheduled.Load() > 0 && now.Sub(started) < GoroutineJoinScheduleCap
-		if count < lastCount || awaitingScheduler {
+		unwinding := tracker.unwinding.Load() > 0 && now.Sub(started) < unwindCap
+		if count < lastCount || awaitingScheduler || unwinding {
 			lastCount = count
 			deadline = now.Add(grace)
 		}
@@ -118,8 +153,11 @@ func WaitForGoroutines(tracker *ResourceTracker, grace time.Duration) bool {
 }
 
 // stoppedBecauseMainReturned reports whether a child goroutine's dispatch error is the
-// expected consequence of the execution being cancelled after its main function returned,
-// in which case it must not be recorded as a goroutine failure.
+// expected consequence of the execution being cancelled after its main function returned.
+//
+// Such a stop runs the goroutine's pending defers (unwindsAfterRun), as every stop by
+// cancellation does, and is not recorded as a goroutine failure, unless the unwinding was
+// left blocked in native code.
 //
 // Takes err (error) which is the child's dispatch error.
 //

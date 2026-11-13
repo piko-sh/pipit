@@ -64,14 +64,22 @@ func ProvideCallFrameOffsets() *asm.CallFrameOffsets {
 	var frame CallFrame
 	var compiledFunctionForOffsets program.CompiledFunction
 	var structLiteralEntryForOffsets program.StructLiteralEntry
+	var routeStateForOffsets revokedEpochRouteState
 	offsets := &asm.CallFrameOffsets{
-		Size:                           unsafe.Sizeof(frame),
-		RegsLastAllocMask:              unsafe.Offsetof(frame.Registers) + unsafe.Offsetof(frame.Registers.lastAllocMask),
-		Function:                       unsafe.Offsetof(frame.Function),
-		FunctionStructLayoutTable:      unsafe.Offsetof(compiledFunctionForOffsets.StructLayoutTable),
-		FunctionStructLayoutTableLen:   unsafe.Offsetof(compiledFunctionForOffsets.StructLayoutTable) + offsetSliceLength,
-		FunctionTypeTable:              unsafe.Offsetof(compiledFunctionForOffsets.TypeTable),
-		FunctionTypeTableLen:           unsafe.Offsetof(compiledFunctionForOffsets.TypeTable) + offsetSliceLength,
+		Size:                         unsafe.Sizeof(frame),
+		RegsLastAllocMask:            unsafe.Offsetof(frame.Registers) + unsafe.Offsetof(frame.Registers.lastAllocMask),
+		Function:                     unsafe.Offsetof(frame.Function),
+		FunctionStructLayoutTable:    unsafe.Offsetof(compiledFunctionForOffsets.StructLayoutTable),
+		FunctionStructLayoutTableLen: unsafe.Offsetof(compiledFunctionForOffsets.StructLayoutTable) + offsetSliceLength,
+		FunctionTypeTable:            unsafe.Offsetof(compiledFunctionForOffsets.TypeTable),
+		FunctionTypeTableLen:         unsafe.Offsetof(compiledFunctionForOffsets.TypeTable) + offsetSliceLength,
+		FunctionFieldStoreGrants:     unsafe.Offsetof(compiledFunctionForOffsets.FieldStoreArenaSafePCs),
+		RouteLocalBlind:              unsafe.Offsetof(routeStateForOffsets.revokedLocalBlind),
+		RouteNoteSeq:                 unsafe.Offsetof(routeStateForOffsets.noteSeq),
+		RouteNotesUntraced: unsafe.Offsetof(routeStateForOffsets.revokedEpochNotes) +
+			unsafe.Offsetof(routeStateForOffsets.revokedEpochNotes.byCause) + uintptr(handOffUntracedContainer)*unsafe.Sizeof(int64(0)),
+		RouteNotesBlind: unsafe.Offsetof(routeStateForOffsets.revokedEpochNotes) +
+			unsafe.Offsetof(routeStateForOffsets.revokedEpochNotes.blind),
 		FunctionResultKinds:            unsafe.Offsetof(compiledFunctionForOffsets.ResultKinds),
 		FunctionResultKindsLen:         unsafe.Offsetof(compiledFunctionForOffsets.ResultKinds) + offsetSliceLength,
 		FunctionStructLiteralTableBase: unsafe.Offsetof(compiledFunctionForOffsets.StructLiteralTableBase),
@@ -103,7 +111,25 @@ func ProvideCallFrameOffsets() *asm.CallFrameOffsets {
 		}(),
 	}
 	populateCallFrameRegisterBankOffsets(&frame, offsets)
+	populateGlobalStoreOffsets(offsets)
 	return offsets
+}
+
+// populateGlobalStoreOffsets fills the offsets GET_GLOBAL's handler reads a package
+// variable through: the GlobalStore's banks and shared flag, and the function's global
+// bases.
+//
+// Takes offsets (*asm.CallFrameOffsets) which receives the field positions.
+func populateGlobalStoreOffsets(offsets *asm.CallFrameOffsets) {
+	var compiledFunction program.CompiledFunction
+	var globals GlobalStore
+	offsets.FunctionGlobalBases = unsafe.Offsetof(compiledFunction.GlobalBases)
+	offsets.GlobalStoreShared = unsafe.Offsetof(globals.shared)
+	offsets.GlobalStoreInts = unsafe.Offsetof(globals.ints)
+	offsets.GlobalStoreFloats = unsafe.Offsetof(globals.floats)
+	offsets.GlobalStoreBools = unsafe.Offsetof(globals.bools)
+	offsets.GlobalStoreUints = unsafe.Offsetof(globals.uints)
+	offsets.GlobalStoreGeneral = unsafe.Offsetof(globals.general)
 }
 
 // ProvideASMCallInfoOffsets returns the size and field offsets of the runtime AsmCallInfo
@@ -231,6 +257,8 @@ func populateDispatchCallStackOffsets(ctx *dispatchContext, offsets *asm.Dispatc
 	offsets.ArenaGenericBytesSlabHeader = unsafe.Offsetof(ctx.arenaGenericBytesSlabHeader)
 	offsets.ArenaGenericBytesIndexPointer = unsafe.Offsetof(ctx.arenaGenericBytesIndexPointer)
 	offsets.ArenaGenericBytesCharged = unsafe.Offsetof(ctx.arenaGenericBytesCharged)
+	offsets.ArenaRouteState = unsafe.Offsetof(ctx.arenaRouteState)
+	offsets.Globals = unsafe.Offsetof(ctx.globals)
 	offsets.AsmCallInfoBasesPtr = unsafe.Offsetof(ctx.asmCallInfoBasesPointer)
 	offsets.DispatchSavesPtr = unsafe.Offsetof(ctx.dispatchSavesPointer)
 }

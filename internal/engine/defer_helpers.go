@@ -46,29 +46,76 @@ func (vm *VM) allocateDeferredFrameRegisters(numRegs [isa.NumRegisterKinds]uint3
 
 // executeNativeDeferredCall runs a deferred call whose target is a native Go callable (a
 // reflect.MakeFunc result, a bound method on a native type, or a function value imported
-// from the symbol registry). Recovers panics from the native call and records them on vm
-// so the outer dispatch loop can continue unwinding.
+// from the symbol registry).
 //
 // Takes d (deferredCall) which specifies the deferred call record containing
 // nativeFunction and arguments.
 func (vm *VM) executeNativeDeferredCall(d deferredCall) {
+	if vm.enterUnwindNative() {
+		defer vm.leaveUnwindNative()
+	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			vm.recordRecoveredPanic(recovered)
-			vm.panicUnwound = nil
-			vm.panicking = true
+			vm.absorbNativeDeferredPanic(recovered)
 		}
 	}()
 	target := d.nativeFunction
 	if !target.IsValid() {
 		return
 	}
+	if !d.spread && len(d.arguments) == 0 && vm.waitDeferredSyncCall(target) {
+		return
+	}
 	arguments := coerceDeferredCallArguments(vm, target, d.arguments, d.spread)
+	sink, callee := vm.calleeAnySink(target)
+	if err := checkAnySinkArguments(vm, sink, target, callee, arguments, d.spread); err != nil {
+		vm.absorbNativeDeferredPanic(err)
+		return
+	}
+	if err := checkNativeFunctionArguments(target, arguments, d.spread); err != nil {
+		vm.absorbNativeDeferredPanic(err)
+		return
+	}
 	if d.spread {
 		target.CallSlice(arguments)
 		return
 	}
 	target.Call(arguments)
+}
+
+// absorbNativeDeferredPanic turns a panic a deferred native call raised into the VM's
+// recoverable panic state, except an unwinding abort, which is raised again.
+//
+// Takes recovered (any) which is the recovered value, not nil.
+//
+// Panics with the abort when recovered is an unwinding abort.
+func (vm *VM) absorbNativeDeferredPanic(recovered any) {
+	if value, _ := unwrapCallbackPanic(recovered); isUnwindingAbort(value) {
+		panic(value)
+	}
+	vm.recordRecoveredPanic(recovered)
+	vm.panicUnwound = nil
+	vm.panicking = true
+}
+
+// waitDeferredSyncCall performs a deferred blocking sync method with no arguments (a
+// method value such as wg.Wait) as an interruptible wait.
+//
+// Takes target (reflect.Value) which is the deferred function.
+//
+// Returns bool which is true when target was such a method and the wait ran.
+func (vm *VM) waitDeferredSyncCall(target reflect.Value) bool {
+	wait := decodeSyncWait(target, reflect.Value{})
+	if wait.kind == syncWaitNone {
+		return false
+	}
+	released := vm.releaseAroundBlock()
+	result := vm.waitInterruptibly(wait)
+	vm.reacquireAfterBlock(released)
+	if result != opContinue && vm.evalError == nil {
+		vm.evalError = errBlockingOpUnblocked
+	}
+	return true
 }
 
 // coerceDeferredCallArguments applies interface-adapter coercion at defer execution.
@@ -123,5 +170,7 @@ func coerceDeferredCallArguments(vm *VM, target reflect.Value, arguments []refle
 		}
 		out[i] = coerceReflectArgument(vm, out[i], parameterType, argumentTypeContext{staticTypeName: "", staticTypeString: "", skipInterfaceAdapter: false, keepClosures: false})
 	}
+	sink, _ := vm.calleeAnySink(target)
+	prepareLooseNativeArguments(vm, sink, targetType, out, spread)
 	return out
 }

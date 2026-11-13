@@ -30,6 +30,8 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
+const commentColumn = len("0000 A ") + isa.DisplayLabelWidth + len("   0   0   0    ")
+
 const pkasmHeader = "; pkasm - pipit bytecode assembly\n" +
 	"; dispatch: A assembly, S in-loop shim call to Go, X dedicated exit to Go, G generic exit to Go\n\n"
 
@@ -52,16 +54,16 @@ func TestDisassembleAssemblyEmptyFileSetPrintsOnlyTheHeader(t *testing.T) {
 
 func TestDisassembleAssemblyListsRootVarInitAndChildren(t *testing.T) {
 	t.Parallel()
-	grandchild := &program.CompiledFunction{Name: "", Body: []isa.Instruction{isa.NewInstruction(isa.OpLoadIntConst, 0, 0, 0)}}
+	grandchild := &program.CompiledFunction{Name: "", Body: []isa.Instruction{isa.NewInstruction(isa.OpLoadInt64Constant, 0, 0, 0)}}
 	child := &program.CompiledFunction{
 		Name:      "helper",
-		Body:      []isa.Instruction{isa.NewInstruction(isa.OpLoadIntConst, 0, 0, 0)},
+		Body:      []isa.Instruction{isa.NewInstruction(isa.OpLoadInt64Constant, 0, 0, 0)},
 		Functions: []*program.CompiledFunction{grandchild},
 	}
-	varinit := &program.CompiledFunction{Name: "varinit", Body: []isa.Instruction{isa.NewInstruction(isa.OpLoadIntConst, 0, 0, 0)}}
+	varinit := &program.CompiledFunction{Name: "varinit", Body: []isa.Instruction{isa.NewInstruction(isa.OpLoadInt64Constant, 0, 0, 0)}}
 	root := &program.CompiledFunction{
 		Name:                 "root",
-		Body:                 []isa.Instruction{isa.NewInstruction(isa.OpAddInt, 0, 1, 2)},
+		Body:                 []isa.Instruction{isa.NewInstruction(isa.OpAddInt64, 0, 1, 2)},
 		Functions:            []*program.CompiledFunction{child},
 		VariableInitFunction: varinit,
 	}
@@ -76,7 +78,7 @@ func TestDisassembleAssemblyListsRootVarInitAndChildren(t *testing.T) {
 	require.Less(t, strings.Index(out, "<root>"), strings.Index(out, "<varinit>"))
 	require.Less(t, strings.Index(out, "<varinit>"), strings.Index(out, "helper"))
 	require.Less(t, strings.Index(out, "function helper"), strings.Index(out, "<anonymous>"))
-	require.Contains(t, out, fmt.Sprintf("%04d A %-26s %3d %3d %3d", 0, isa.InstructionDisplayName(root.Body[0]), 0, 1, 2))
+	require.Contains(t, out, fmt.Sprintf("%04d A %-*s %3d %3d %3d", 0, isa.DisplayLabelWidth, isa.InstructionDisplayName(root.Body[0]), 0, 1, 2))
 }
 
 func wide(op isa.Opcode, a uint8, index uint16) isa.Instruction {
@@ -97,8 +99,8 @@ func annotatedFunction() *program.CompiledFunction {
 		DebugVarTable:    &program.DebugVarTable{Entries: nil},
 		Name:             "main",
 		SourceFile:       "main.go",
-		ParameterKinds:   []isa.RegisterKind{isa.RegisterInt},
-		ResultKinds:      []isa.RegisterKind{isa.RegisterInt, isa.RegisterString},
+		ParameterKinds:   []isa.RegisterKind{isa.RegisterInt64},
+		ResultKinds:      []isa.RegisterKind{isa.RegisterInt64, isa.RegisterString},
 		IsVariadic:       true,
 		IntConstants:     []int64{1, -2},
 		FloatConstants:   []float64{1.5},
@@ -116,9 +118,9 @@ func annotatedFunction() *program.CompiledFunction {
 			{NativeRegister: 1},
 		},
 		Body: []isa.Instruction{
-			isa.NewInstruction(isa.OpLoadIntConst, 0, 0, 0), isa.NewInstruction(isa.OpAddInt, 0, 0, 1), wideTier1(isa.SubOpCall, 0), wideTier1(isa.SubOpCall, 1), wideTier1(isa.SubOpTailCall, 2), wideTier1(isa.SubOpCallIIFE, 7), wideTier1(isa.SubOpCallNative, 3), wideTier1(isa.SubOpCallNative, 4), wideTier1(isa.SubOpCallNative, 5), wideTier1(isa.SubOpCallNative, 9), wideTier1(isa.SubOpCallMethod, 1), wideTier1(isa.SubOpCallMethodInlineable, 1), isa.NewTier1Instruction(isa.SubOpCallBuiltin, 0, 0), wide(isa.OpMakeClosure, 0, 0), wide(isa.OpMakeClosure, 0, 1), wide(isa.OpMakeClosure, 0, 5)},
+			isa.NewInstruction(isa.OpLoadInt64Constant, 0, 0, 0), isa.NewInstruction(isa.OpAddInt64, 0, 0, 1), wideTier1(isa.SubOpCall, 0), wideTier1(isa.SubOpCall, 1), wideTier1(isa.SubOpTailCall, 2), wideTier1(isa.SubOpCallIIFE, 7), wideTier1(isa.SubOpCallNative, 3), wideTier1(isa.SubOpCallNative, 4), wideTier1(isa.SubOpCallNative, 5), wideTier1(isa.SubOpCallNative, 9), wideTier1(isa.SubOpCallMethod, 1), wideTier1(isa.SubOpCallMethodInlineable, 1), isa.NewTier1Instruction(isa.SubOpCallBuiltin, 0, 0), wide(isa.OpMakeClosure, 0, 0), wide(isa.OpMakeClosure, 0, 1), wide(isa.OpMakeClosure, 0, 5)},
 	}
-	compiledFunction.NumRegisters[isa.RegisterInt] = 2
+	compiledFunction.NumRegisters[isa.RegisterInt64] = 2
 	compiledFunction.NumRegisters[isa.RegisterGeneral] = 1
 	positions := make([]program.SourcePosition, len(compiledFunction.Body))
 	positions[0] = pos(0, 1, 1)
@@ -140,9 +142,9 @@ func TestDisassembleFunctionAssemblyHeaderAndConstants(t *testing.T) {
 	for _, line := range []string{
 		"; function main\n",
 		";   source:    main.go\n",
-		";   registers: int=2 general=1\n",
-		";   params:    (int)\n",
-		";   returns:   (int, string)\n",
+		";   registers: int64=2 general=1\n",
+		";   params:    (int64)\n",
+		";   returns:   (int64, string)\n",
 		";   variadic:  true\n",
 		"; constants:\n",
 		";   ints:    [0]=1  [1]=-2\n",
@@ -161,8 +163,8 @@ func TestDisassembleFunctionAssemblySourceAnnotations(t *testing.T) {
 	compiledFunction := annotatedFunction()
 	out := debug.DisassembleFunctionAssembly(compiledFunction)
 
-	fileChange := func(file string, line int) string { return fmt.Sprintf("%52s; %s:%d\n", "", file, line) }
-	sameFile := func(line int) string { return fmt.Sprintf("%52s; :%d\n", "", line) }
+	fileChange := func(file string, line int) string { return fmt.Sprintf("%*s; %s:%d\n", commentColumn, "", file, line) }
+	sameFile := func(line int) string { return fmt.Sprintf("%*s; :%d\n", commentColumn, "", line) }
 
 	require.Equal(t, 1, strings.Count(out, fileChange("main.go", 1)), "the first instruction names its file")
 	require.Equal(t, 1, strings.Count(out, sameFile(2)), "a line change within the file omits the name")
@@ -172,7 +174,7 @@ func TestDisassembleFunctionAssemblySourceAnnotations(t *testing.T) {
 
 	instruction := func(pc int) string {
 		instr := compiledFunction.Body[pc]
-		return fmt.Sprintf("%04d %c %-26s %3d %3d %3d", pc, expectedDispatchMarker(instr), isa.InstructionDisplayName(instr), instr.A, instr.B, instr.C)
+		return fmt.Sprintf("%04d %c %-*s %3d %3d %3d", pc, expectedDispatchMarker(instr), isa.DisplayLabelWidth, isa.InstructionDisplayName(instr), instr.A, instr.B, instr.C)
 	}
 	require.Less(t, strings.Index(out, fileChange("main.go", 1)), strings.Index(out, instruction(0)))
 	require.Less(t, strings.Index(out, instruction(1)), strings.Index(out, sameFile(2)))
@@ -240,7 +242,7 @@ func TestDisassembleFunctionAssemblyMinimalFunction(t *testing.T) {
 }
 
 func expectedDispatchMarker(instr isa.Instruction) byte {
-	if instr.Op == isa.OpExt {
+	if instr.Op == isa.OpExtension {
 		return ' '
 	}
 	spec, ok := isa.SpecForInstruction(instr)
@@ -260,12 +262,13 @@ func TestDisassembleAssemblyMarksHowEachInstructionDispatches(t *testing.T) {
 		instruction isa.Instruction
 		wantMarker  byte
 	}{
-		{name: "an assembly body", instruction: isa.NewInstruction(isa.OpAddInt, 0, 1, 2), wantMarker: 'A'},
+		{name: "an assembly body", instruction: isa.NewInstruction(isa.OpAddInt64, 0, 1, 2), wantMarker: 'A'},
 		{name: "an in-loop shim call to Go", instruction: isa.NewInstruction(isa.OpMakeClosure, 0, 0, 0), wantMarker: 'S'},
 		{name: "a shim reached through a sub-opcode", instruction: isa.NewTier1Instruction(isa.SubOpResetSharedCell, 0, 0), wantMarker: 'S'},
-		{name: "a dedicated exit to Go", instruction: isa.NewInstruction(isa.OpMapIndex, 0, 1, 2), wantMarker: 'X'},
+		{name: "a dedicated exit to Go", instruction: isa.NewInstruction(isa.OpGetMap, 0, 1, 2), wantMarker: 'X'},
 		{name: "the generic exit to Go", instruction: isa.NewTier1Instruction(isa.SubOpCallNative, 0, 0), wantMarker: 'G'},
-		{name: "an extension word", instruction: isa.NewInstruction(isa.OpExt, 0, 0, 0), wantMarker: ' '},
+		{name: "an extension word", instruction: isa.NewInstruction(isa.OpExtension, 0, 0, 0), wantMarker: ' '},
+		{name: "a no-op the loop skips in assembly", instruction: isa.NewInstruction(isa.OpNoOperation, 0, 0, 0), wantMarker: 'A'},
 	}
 
 	for _, tt := range tests {
@@ -274,7 +277,7 @@ func TestDisassembleAssemblyMarksHowEachInstructionDispatches(t *testing.T) {
 
 			out := debug.DisassembleFunctionAssembly(&program.CompiledFunction{Name: "f", Body: []isa.Instruction{tt.instruction}})
 
-			require.Contains(t, out, fmt.Sprintf("0000 %c %-26s", tt.wantMarker, isa.InstructionDisplayName(tt.instruction)))
+			require.Contains(t, out, fmt.Sprintf("0000 %c %-*s", tt.wantMarker, isa.DisplayLabelWidth, isa.InstructionDisplayName(tt.instruction)))
 		})
 	}
 }
@@ -283,14 +286,61 @@ func TestDisassembleAssemblyCountsDispatchPathsPerFunction(t *testing.T) {
 	t.Parallel()
 
 	body := []isa.Instruction{
-		isa.NewInstruction(isa.OpAddInt, 0, 1, 2),
-		isa.NewInstruction(isa.OpAddInt, 0, 1, 2),
+		isa.NewInstruction(isa.OpAddInt64, 0, 1, 2),
+		isa.NewInstruction(isa.OpAddInt64, 0, 1, 2),
 		isa.NewInstruction(isa.OpMakeClosure, 0, 0, 0),
-		isa.NewInstruction(isa.OpExt, 0, 0, 0),
-		isa.NewInstruction(isa.OpMapIndex, 0, 1, 2),
+		isa.NewInstruction(isa.OpExtension, 0, 0, 0),
+		isa.NewInstruction(isa.OpGetMap, 0, 1, 2),
 		isa.NewTier1Instruction(isa.SubOpCallNative, 0, 0),
 	}
 	out := debug.DisassembleFunctionAssembly(&program.CompiledFunction{Name: "f", Body: body})
 
 	require.Contains(t, out, ";   dispatch:  asm=2 shim=1 exit=1 go=1\n")
+}
+
+func TestDisassembleAssemblyKeepsTheLongestLabelInsideItsColumn(t *testing.T) {
+	t.Parallel()
+	var longest isa.OpSpec
+	for _, row := range isa.AllSpecs() {
+		if len(row.Name) > len(longest.Name) {
+			longest = row
+		}
+	}
+	instruction := isa.NewInstruction(isa.Opcode(longest.Code), 0, 0, 0)
+	switch longest.Tier {
+	case isa.TierSub1:
+		instruction = isa.NewInstruction(isa.OpDrillTier1, longest.Code, 0, 0)
+	case isa.TierSub2:
+		instruction = isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), longest.Code, 0)
+	case isa.TierSub3:
+		instruction = isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DrillTier3), longest.Code)
+	case isa.TierMain:
+	}
+	out := debug.DisassembleFunctionAssembly(&program.CompiledFunction{Name: "f", Body: []isa.Instruction{instruction}})
+	label := isa.InstructionDisplayName(instruction)
+	require.Contains(t, label, longest.Name)
+	for line := range strings.SplitSeq(out, "\n") {
+		if !strings.HasPrefix(line, "0000 ") {
+			continue
+		}
+		require.Equal(t, label, strings.TrimRight(line[len("0000 A "):len("0000 A ")+isa.DisplayLabelWidth], " "),
+			"the label must fit its column")
+		operands := fmt.Sprintf("%4d%4d%4d", instruction.A, instruction.B, instruction.C)
+		require.Equal(t, operands, line[len("0000 A ")+isa.DisplayLabelWidth:][:len(operands)],
+			"the operand columns must start right after the label column")
+		return
+	}
+	require.Fail(t, "no instruction line in the disassembly", out)
+}
+
+func TestDisassembleAssemblyOfNoFileSetIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, debug.DisassembleAssembly(nil))
+}
+
+func TestDisassembleFunctionAssemblyOfNoFunctionIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, debug.DisassembleFunctionAssembly(nil))
 }

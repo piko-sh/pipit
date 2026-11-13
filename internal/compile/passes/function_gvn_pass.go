@@ -21,6 +21,7 @@ package passes
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
@@ -43,9 +44,16 @@ const (
 	// invalidated.
 	gvnNoDefiningPC = -1
 
+	// gvnFirstUnseenValue is the first name given to the value of a register read before any
+	// definition of it was seen.
+	gvnFirstUnseenValue = -2
+
 	// gvnBankIndexInvalid is the sentinel returned by gvnBankForArithmetic when the opcode
 	// does not classify into one of the tracked banks.
 	gvnBankIndexInvalid = -1
+
+	// noJumpEntry marks a word no jump lands on.
+	noJumpEntry = -1
 )
 
 const (
@@ -81,22 +89,26 @@ type gvnState struct {
 	// perPCValueNum records the canonical value number assigned to each PC.
 	perPCValueNum []int
 
+	// rewritten lists the computations the scan replaced with a move.
+	rewritten []int
+
+	// nextUnseenValue is the name the next register read before any definition of it will be
+	// given.
+	nextUnseenValue int
+
 	// regLastDef holds the last-defining PC for every tracked register slot, indexed by bank
-	// then register.
+	// then register, or the name of the value the register held when it was first read.
 	regLastDef [gvnRegisterTrackedBanks][gvnRegisterBankSize]int
 }
 
 // newGvnState builds an empty GVN state sized for a function body of bodyLen
 // instructions.
 //
-// Every regLastDef and perPCValueNum entry is seeded to gvnNoDefiningPC so the first read
-// of any register before any write returns "no value number".
-//
 // Takes bodyLen (int) which is the instruction count used to size the value tables.
 //
 // Returns the freshly initialised *gvnState.
 func newGvnState(bodyLen int) *gvnState {
-	state := &gvnState{valueTable: make(map[gvnValueKey]int, bodyLen),
+	state := &gvnState{valueTable: make(map[gvnValueKey]int, bodyLen), nextUnseenValue: gvnFirstUnseenValue, rewritten: nil,
 		perPCValueNum: make([]int, bodyLen), regLastDef: [gvnRegisterTrackedBanks][gvnRegisterBankSize]int{}}
 	for bank := range gvnRegisterTrackedBanks {
 		for reg := range gvnRegisterBankSize {
@@ -111,16 +123,13 @@ func newGvnState(bodyLen int) *gvnState {
 
 // updateRegLastDef refreshes the regLastDef table for the destination of inst.
 //
-// When gvnInstructionDest reports a tracked-bank destination, the dest's last-defining PC
-// becomes this PC. For other ops, every tracked register that
-// instructionWritesRegisterInBank reports as written has its last-defining PC cleared to
-// gvnNoDefiningPC, preventing stale value numbers from leaking past spills, reloads, or
-// unmodelled writes.
-//
 // Takes inst (instruction) which is the instruction whose destination effects update the
 // table.
 // Takes pc (int) which is the program counter assigned as the new last-defining PC.
 func (state *gvnState) updateRegLastDef(inst isa.Instruction, pc int) {
+	if state.followMove(inst, pc) {
+		return
+	}
 	if bank, reg, ok := gvnInstructionDest(inst); ok {
 		state.regLastDef[bank][reg] = pc
 		if pc >= 0 && pc < len(state.perPCValueNum) {
@@ -128,29 +137,96 @@ func (state *gvnState) updateRegLastDef(inst isa.Instruction, pc int) {
 		}
 		return
 	}
+	if !instructionWritesNoOperand(inst) {
+		state.forgetWrittenRegisters(inst)
+	}
+}
+
+// forgetWrittenRegisters drops the last definition of every register an instruction the
+// pass does not model may write.
+//
+// Takes inst (isa.Instruction) which is the instruction.
+func (state *gvnState) forgetWrittenRegisters(inst isa.Instruction) {
 	for bank := range gvnRegisterTrackedBanks {
 		role, ok := gvnBankToRole(bank)
 		if !ok {
 			continue
 		}
-		for reg := range gvnRegisterBankSize {
-			if state.regLastDef[bank][reg] == gvnNoDefiningPC {
-				continue
+		writes := registersWrittenInBank(inst, role)
+		if writes.any {
+			for reg := range gvnRegisterBankSize {
+				state.regLastDef[bank][reg] = gvnNoDefiningPC
 			}
-			if instructionWritesRegisterInBank(inst, role, uint8(reg)) {
+			continue
+		}
+		for _, reg := range writes.registers() {
+			state.regLastDef[bank][reg] = gvnNoDefiningPC
+		}
+	}
+}
+
+// followMove gives the destination of a register move the value number of its source.
+//
+// Takes inst (isa.Instruction) which is the instruction at pc.
+// Takes pc (int) which becomes the destination's last-defining PC.
+//
+// Returns bool which is false when the instruction is not such a move.
+func (state *gvnState) followMove(inst isa.Instruction, pc int) bool {
+	bank, destination, source, ok := gvnMoveWithinBank(inst)
+	if !ok {
+		return false
+	}
+	copied, known := gvnLookupValueNumber(state, source, bank)
+	if !known {
+		return false
+	}
+	state.regLastDef[bank][destination] = pc
+	state.perPCValueNum[pc] = copied
+	return true
+}
+
+// jumpEntries records, for each word a jump lands on, the lowest and the highest word
+// that jumps there.
+type jumpEntries struct {
+	// lowest holds, per word, the lowest jumping word, or noJumpEntry.
+	lowest []int
+
+	// highest holds, per word, the highest jumping word, or noJumpEntry.
+	highest []int
+}
+
+// forgetWhatAJumpInBypasses drops, on reaching a word a jump lands on, every earlier
+// value the scan can no longer vouch for.
+//
+// A jump from a later word drops every value. A forward jump drops values and register
+// definitions after its lowest source. Earlier definitions and registers only read so far
+// are kept.
+//
+// Takes entries (jumpEntries) which records the jump sources of each word.
+// Takes pc (int) which is the word the scan has reached.
+func (state *gvnState) forgetWhatAJumpInBypasses(entries jumpEntries, pc int) {
+	if entries.lowest[pc] == noJumpEntry {
+		return
+	}
+	if entries.highest[pc] > pc {
+		state.forgetEverything()
+		return
+	}
+	lowest := entries.lowest[pc]
+	maps.DeleteFunc(state.valueTable, func(_ gvnValueKey, candidatePC int) bool { return candidatePC > lowest })
+	for bank := range gvnRegisterTrackedBanks {
+		for reg := range gvnRegisterBankSize {
+			if state.regLastDef[bank][reg] > lowest {
 				state.regLastDef[bank][reg] = gvnNoDefiningPC
 			}
 		}
 	}
 }
 
-// clearOnCall wipes every value-table entry and resets every register's last-defining PC.
-// Called when the analysis encounters any call opcode, mirroring the alias analysis's
-// "calls go wild" rule.
-func (state *gvnState) clearOnCall(_ int) {
-	for k := range state.valueTable {
-		delete(state.valueTable, k)
-	}
+// forgetEverything wipes every value-table entry and resets every register's
+// last-defining PC.
+func (state *gvnState) forgetEverything() {
+	clear(state.valueTable)
 	for bank := range gvnRegisterTrackedBanks {
 		for reg := range gvnRegisterBankSize {
 			state.regLastDef[bank][reg] = gvnNoDefiningPC
@@ -190,8 +266,40 @@ type gvnValueKey struct {
 	operand1 int
 }
 
+// instructionWritesNoOperand reports whether an instruction writes no register.
+//
+// Takes inst (isa.Instruction) which is the instruction.
+//
+// Returns bool which is false for a shape that is not described or has writes it does not
+// describe.
+func instructionWritesNoOperand(inst isa.Instruction) bool {
+	shape := isa.ShapeForInstruction(inst)
+	return shape.Flags&isa.ShapeFlagDescribed != 0 && shape.Flags&isa.ShapeFlagOpaqueWrites == 0 &&
+		shape.Writes == ([isa.NumInstructionOperands]bool{})
+}
+
+// jumpEntriesOf builds the jump-entry record of a body.
+//
+// Takes body ([]isa.Instruction) which is the instruction stream.
+//
+// Returns jumpEntries which holds the lowest and highest jump source of each target.
+func jumpEntriesOf(body []isa.Instruction) jumpEntries {
+	entries := jumpEntries{lowest: make([]int, len(body)), highest: make([]int, len(body))}
+	for pc := range body {
+		entries.lowest[pc], entries.highest[pc] = noJumpEntry, noJumpEntry
+	}
+	for _, edge := range controlFlowEdgesOf(body).jumps {
+		if entries.lowest[edge.to] == noJumpEntry || edge.from < entries.lowest[edge.to] {
+			entries.lowest[edge.to] = edge.from
+		}
+		entries.highest[edge.to] = max(entries.highest[edge.to], edge.from)
+	}
+	return entries
+}
+
 // RunFunctionGvn rewrites later equal-value computations as MOVE from an earlier
-// dominator-validated definition. Skips functions over 2000 instructions.
+// dominator-validated definition, then removes each such move whose reads can take the
+// earlier register instead.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function to optimise.
 //
@@ -201,7 +309,7 @@ func RunFunctionGvn(ctx context.Context, compiledFunction *program.CompiledFunct
 }
 
 // runFunctionGvn is RunFunctionGvn with an optional shared analysis supplying the
-// dominator table and the jump-target set; nil computes both privately.
+// dominator table and the jump-target set. Nil computes both privately.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
@@ -225,13 +333,21 @@ func runFunctionGvn(ctx context.Context, compiledFunction *program.CompiledFunct
 		return nil
 	}
 	state := newGvnState(len(body))
+	entries := jumpEntriesOf(body)
 	for pc := range body {
 		if pc&program.OptimisationLoopCheckMask == 0 {
 			if err := ctx.Err(); err != nil {
 				return fmt.Errorf("runFunctionGvn cancelled: %w", err)
 			}
 		}
+		state.forgetWhatAJumpInBypasses(entries, pc)
 		applyGvnAtPC(compiledFunction, body, pc, dom, state)
+	}
+	if len(state.rewritten) > 0 && analysis == nil {
+		analysis = newFunctionAnalysis(compiledFunction)
+	}
+	for _, pc := range state.rewritten {
+		propagateGvnCopy(compiledFunction, analysis, pc)
 	}
 	eliminateMovesAcrossDominatedJumps(compiledFunction, body, dom, jumpTargetsFor(analysis, body))
 	return nil
@@ -251,7 +367,7 @@ func runFunctionGvn(ctx context.Context, compiledFunction *program.CompiledFunct
 func applyGvnAtPC(compiledFunction *program.CompiledFunction, body []isa.Instruction, pc int, dom *functionDominators, state *gvnState) {
 	inst := body[pc]
 	if IsCallInstruction(inst) {
-		state.clearOnCall(pc)
+		state.forgetEverything()
 		return
 	}
 	key, ok := computeGvnValueKey(inst, state)
@@ -259,6 +375,7 @@ func applyGvnAtPC(compiledFunction *program.CompiledFunction, body []isa.Instruc
 		candidatePC, found := state.valueTable[key]
 		if found && gvnRewriteIfSafe(compiledFunction, body, pc, candidatePC, dom, state) {
 			state.recordRewrite(inst, pc, candidatePC)
+			state.rewritten = append(state.rewritten, pc)
 			return
 		}
 		state.valueTable[key] = pc
@@ -342,19 +459,15 @@ func gvnBankToRole(bank int) (isa.OperandRole, bool) {
 // computeGvnValueKey returns the value-key for inst when inst is a pure value-producing
 // opcode whose result depends only on the observed values of its operand registers.
 //
-// Commutative ops (isa.OpAddInt, isa.OpMulInt, isa.OpAddUint, isa.OpMulUint,
-// isa.OpAddFloat, isa.OpMulFloat) sort their operand value-numbers so the key is
-// invariant under operand-order swaps.
-//
 // Takes inst (instruction) which is the instruction whose value key is required.
 // Takes state (*gvnState) which is the per-function GVN state used to resolve operand
 // value numbers.
 //
 // Returns the computed gvnValueKey when inst is modelled precisely, and a boolean true
-// when a key was produced; false for opcodes outside the model.
+// when a key was produced. It returns false for opcodes outside the model.
 func computeGvnValueKey(inst isa.Instruction, state *gvnState) (gvnValueKey, bool) {
 	switch inst.Op {
-	case isa.OpAddInt, isa.OpMulInt, isa.OpAddUint, isa.OpMulUint, isa.OpAddFloat, isa.OpMulFloat:
+	case isa.OpAddInt64, isa.OpMultiplyInt64, isa.OpAddUint64, isa.OpMultiplyUint64, isa.OpAddFloat64, isa.OpMultiplyFloat64:
 		left, leftOK := gvnLookupValueNumber(state, inst.B, gvnBankForArithmetic(inst.Op))
 		right, rightOK := gvnLookupValueNumber(state, inst.C, gvnBankForArithmetic(inst.Op))
 		if !leftOK || !rightOK {
@@ -364,14 +477,14 @@ func computeGvnValueKey(inst isa.Instruction, state *gvnState) (gvnValueKey, boo
 			left, right = right, left
 		}
 		return gvnValueKey{op: inst.Op, operand0: left, operand1: right}, true
-	case isa.OpSubInt, isa.OpSubUint, isa.OpSubFloat, isa.OpDivInt, isa.OpDivUint, isa.OpDivFloat:
+	case isa.OpSubtractInt64, isa.OpSubtractUint64, isa.OpSubtractFloat64, isa.OpDivideInt64, isa.OpDivideUint64, isa.OpDivideFloat64:
 		left, leftOK := gvnLookupValueNumber(state, inst.B, gvnBankForArithmetic(inst.Op))
 		right, rightOK := gvnLookupValueNumber(state, inst.C, gvnBankForArithmetic(inst.Op))
 		if !leftOK || !rightOK {
 			return gvnValueKey{}, false
 		}
 		return gvnValueKey{op: inst.Op, operand0: left, operand1: right}, true
-	case isa.OpAddIntConst, isa.OpSubIntConst, isa.OpMulIntConst:
+	case isa.OpAddInt64Constant, isa.OpSubtractInt64Constant, isa.OpMultiplyInt64Constant:
 		source, ok := gvnLookupValueNumber(state, inst.B, gvnBankIndexInt)
 		if !ok {
 			return gvnValueKey{}, false
@@ -388,15 +501,17 @@ func computeGvnValueKey(inst isa.Instruction, state *gvnState) (gvnValueKey, boo
 // Takes reg (uint8) which is the register slot.
 // Takes bank (int) which is the bank index.
 //
-// Returns the canonical value number and true, or (0, false) when the register has not
-// been written within the visible scope.
+// Returns int which is the canonical value number.
+// Returns bool which is false when the bank is not tracked.
 func gvnLookupValueNumber(state *gvnState, reg uint8, bank int) (int, bool) {
 	if bank < 0 || bank >= gvnRegisterTrackedBanks {
 		return 0, false
 	}
 	def := state.regLastDef[bank][reg]
 	if def == gvnNoDefiningPC {
-		return 0, false
+		def = state.nextUnseenValue
+		state.nextUnseenValue--
+		state.regLastDef[bank][reg] = def
 	}
 	if def < 0 || def >= len(state.perPCValueNum) {
 		return def, true
@@ -415,11 +530,11 @@ func gvnLookupValueNumber(state *gvnState, reg uint8, bank int) (int, bool) {
 // Returns the bank index, or gvnBankIndexInvalid when op is not arithmetic.
 func gvnBankForArithmetic(op isa.Opcode) int {
 	switch op {
-	case isa.OpAddInt, isa.OpSubInt, isa.OpMulInt, isa.OpDivInt:
+	case isa.OpAddInt64, isa.OpSubtractInt64, isa.OpMultiplyInt64, isa.OpDivideInt64:
 		return gvnBankIndexInt
-	case isa.OpAddUint, isa.OpSubUint, isa.OpMulUint, isa.OpDivUint:
+	case isa.OpAddUint64, isa.OpSubtractUint64, isa.OpMultiplyUint64, isa.OpDivideUint64:
 		return gvnBankIndexUint
-	case isa.OpAddFloat, isa.OpSubFloat, isa.OpMulFloat, isa.OpDivFloat:
+	case isa.OpAddFloat64, isa.OpSubtractFloat64, isa.OpMultiplyFloat64, isa.OpDivideFloat64:
 		return gvnBankIndexFloat
 	default:
 	}
@@ -437,19 +552,43 @@ func gvnBankForArithmetic(op isa.Opcode) int {
 // when inst writes a tracked register; false otherwise.
 func gvnInstructionDest(inst isa.Instruction) (int, uint8, bool) {
 	switch inst.Op {
-	case isa.OpAddInt, isa.OpSubInt, isa.OpMulInt, isa.OpDivInt, isa.OpRemInt,
-		isa.OpAddIntConst, isa.OpSubIntConst, isa.OpMulIntConst,
-		isa.OpLoadIntConst:
+	case isa.OpAddInt64, isa.OpSubtractInt64, isa.OpMultiplyInt64, isa.OpDivideInt64, isa.OpRemainderInt64,
+		isa.OpAddInt64Constant, isa.OpSubtractInt64Constant, isa.OpMultiplyInt64Constant,
+		isa.OpLoadInt64Constant:
 		return gvnBankIndexInt, inst.A, true
-	case isa.OpAddUint, isa.OpSubUint, isa.OpMulUint, isa.OpDivUint, isa.OpRemUint,
-		isa.OpLoadUintConst:
+	case isa.OpAddUint64, isa.OpSubtractUint64, isa.OpMultiplyUint64, isa.OpDivideUint64, isa.OpRemainderUint64,
+		isa.OpLoadUint64Constant:
 		return gvnBankIndexUint, inst.A, true
-	case isa.OpAddFloat, isa.OpSubFloat, isa.OpMulFloat, isa.OpDivFloat,
-		isa.OpLoadFloatConst:
+	case isa.OpAddFloat64, isa.OpSubtractFloat64, isa.OpMultiplyFloat64, isa.OpDivideFloat64,
+		isa.OpLoadFloat64Constant:
 		return gvnBankIndexFloat, inst.A, true
 	default:
 	}
 	return 0, 0, false
+}
+
+// gvnMoveWithinBank recognises a register move the pass can follow.
+//
+// Takes inst (isa.Instruction) which is the instruction.
+//
+// Returns bank (int) which is the bank both registers are in.
+// Returns destination (uint8) which is the register written.
+// Returns source (uint8) which is the register read.
+// Returns ok (bool) which is true for a move of an int, uint or float register.
+func gvnMoveWithinBank(inst isa.Instruction) (bank int, destination, source uint8, ok bool) {
+	if inst.Op != isa.OpDrillTier1 {
+		return 0, 0, 0, false
+	}
+	switch isa.SubOpcode(inst.A) {
+	case isa.SubOpMoveInt64:
+		return gvnBankIndexInt, inst.B, inst.C, true
+	case isa.SubOpMoveUint64:
+		return gvnBankIndexUint, inst.B, inst.C, true
+	case isa.SubOpMoveFloat64:
+		return gvnBankIndexFloat, inst.B, inst.C, true
+	default:
+		return 0, 0, 0, false
+	}
 }
 
 // gvnEmitMoveForBank returns the same-bank move instruction for the given GVN bank. The
@@ -465,11 +604,11 @@ func gvnInstructionDest(inst isa.Instruction) (int, uint8, bool) {
 func gvnEmitMoveForBank(bank int, destination, source uint8) (isa.Instruction, bool) {
 	switch bank {
 	case gvnBankIndexInt:
-		return isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpMoveInt), destination, source), true
+		return isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpMoveInt64), destination, source), true
 	case gvnBankIndexUint:
-		return isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpMoveUint), destination, source), true
+		return isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpMoveUint64), destination, source), true
 	case gvnBankIndexFloat:
-		return isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpMoveFloat), destination, source), true
+		return isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpMoveFloat64), destination, source), true
 	}
 	return isa.Instruction{}, false
 }

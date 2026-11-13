@@ -26,6 +26,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type fmtWriterProbe struct {
+	write func(fmt.State)
+}
+
+func (p fmtWriterProbe) Format(state fmt.State, _ rune) {
+	p.write(state)
+}
+
 func scriptPointType(t *testing.T) reflect.Type {
 	t.Helper()
 
@@ -195,7 +203,7 @@ func TestGoSyntaxRendererQualifiesPointersAndNonStructs(t *testing.T) {
 		want  string
 	}{
 		{name: "a pointer is marked with an ampersand", value: pointer, want: `&main.Point{X:1, Y:"a"}`},
-		{name: "a nil pointer prints as a parenthesised nil", value: reflect.Zero(reflect.PointerTo(pointType)), want: "(nil)"},
+		{name: "a nil pointer prints as its type and nil", value: reflect.Zero(reflect.PointerTo(pointType)), want: "(*main.Point)(nil)"},
 		{name: "a value that is not a struct falls through", value: reflect.ValueOf(3), want: "3"},
 		{name: "a struct with no sentinel keeps reflect's name", value: reflect.ValueOf(identityNone{}), want: `engine.identityNone{A:0, B:""}`},
 	}
@@ -307,4 +315,58 @@ func TestFmtRendererForWrapsTheValueWithItsTypeName(t *testing.T) {
 	renderer := fmtRendererFor(vm, point)
 	require.Equal(t, point.Interface(), renderer.underlying.Interface())
 	require.Equal(t, "Point", renderer.typeName, "the wrapper carries the name the method table is keyed by")
+}
+
+func TestRenderingAScriptPointerCycleStopsAtTheFirstNestedPointer(t *testing.T) {
+	if !inChildProcessTest(t) {
+		t.Parallel()
+
+		output := runChildProcessTest(t)
+		require.Contains(t, output, "go-syntax: &engine.node{Next:(*engine.node)(0x", "a nested pointer prints as its type and address, as fmt prints it")
+		require.Contains(t, output, "Items:[]*engine.fmtCycleNode{(*engine.fmtCycleNode)(0x", "a slice of pointers is left to fmt, which prints addresses")
+		require.Contains(t, output, "default: &{0x", "the default verb prints a nested pointer as its address")
+		require.Contains(t, output, "verbose: &{Next:0x")
+		return
+	}
+
+	node := &fmtCycleNode{}
+	node.Next = node
+	node.Items = []*fmtCycleNode{node}
+	node.Any = node
+	value := pipitFmtValue{underlying: reflect.ValueOf(node), vm: nil, typeName: ""}
+	t.Logf("go-syntax: %s", fmt.Sprintf("%#v", value))
+	t.Logf("default: %s", fmt.Sprintf("%v", value))
+	t.Logf("verbose: %s", fmt.Sprintf("%+v", value))
+	nested := pipitFmtValue{underlying: reflect.ValueOf([]any{node, []any{node}}), vm: nil, typeName: ""}
+	t.Logf("container: %s", fmt.Sprintf("%#v %v", nested, nested))
+}
+
+func TestRenderingStopsAtTheDepthCap(t *testing.T) {
+	t.Parallel()
+
+	point := scriptPointValue(t, 1, "a")
+	slice := reflect.ValueOf([]any{point.Interface()})
+	mapValue := reflect.ValueOf(map[string]any{"a": point.Interface()})
+	beyond := fmtRenderDepthCap + 1
+	renderer := pipitFmtRenderer{vm: nil}
+
+	tests := []struct {
+		write func(fmt.State)
+		name  string
+	}{
+		{name: "a struct", write: func(state fmt.State) { renderer.writeStructPipitSafe(state, point, false, beyond) }},
+		{name: "a slice", write: func(state fmt.State) { renderer.writeSlicePipitSafe(state, slice, false, beyond) }},
+		{name: "a map", write: func(state fmt.State) { renderer.writeMapPipitSafe(state, mapValue, false, beyond) }},
+		{name: "a struct in go syntax", write: func(state fmt.State) { writeStructGoSyntax(state, point, beyond) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, fmtRenderDepthMarker, fmt.Sprint(fmtWriterProbe{write: tt.write}),
+				"past the cap the renderer writes the marker instead of descending")
+		})
+	}
+	require.Equal(t, "{1 a}", fmt.Sprint(fmtWriterProbe{write: func(state fmt.State) { renderer.writeStructPipitSafe(state, point, false, fmtRenderDepthCap) }}),
+		"at the cap the value is still written")
 }

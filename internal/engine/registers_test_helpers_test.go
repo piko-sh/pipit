@@ -22,12 +22,12 @@ import "pipit.sh/pipit/internal/isa"
 
 func testRegCounts() [isa.NumRegisterKinds]uint32 {
 	var counts [isa.NumRegisterKinds]uint32
-	counts[isa.RegisterInt] = 4
-	counts[isa.RegisterFloat] = 4
+	counts[isa.RegisterInt64] = 4
+	counts[isa.RegisterFloat64] = 4
 	counts[isa.RegisterString] = 4
 	counts[isa.RegisterGeneral] = 4
 	counts[isa.RegisterBool] = 4
-	counts[isa.RegisterUint] = 4
-	counts[isa.RegisterComplex] = 4
+	counts[isa.RegisterUint64] = 4
+	counts[isa.RegisterComplex128] = 4
 	return counts
 }

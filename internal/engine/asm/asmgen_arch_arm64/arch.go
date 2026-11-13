@@ -24,10 +24,10 @@ import (
 	core "piko.sh/asmgen/asmgen_arch_arm64"
 )
 
-// eqUintConstJumpFalseSkipWords is the number of words after the primary word of
-// isa.SubOpEqUintConstJumpFalse (the extension word plus the trailing no-ops), as an
-// immediate for the program-counter adjustment.
-const eqUintConstJumpFalseSkipWords = "2"
+// equalUint64ImmediateThenJumpIfFalseSkipWords is the number of words after the primary
+// word of isa.SubOpEqualUint64ImmediateThenJumpIfFalse (the extension word plus the
+// trailing no-ops), as an immediate for the program-counter adjustment.
+const equalUint64ImmediateThenJumpIfFalseSkipWords = "2"
 
 const (
 	// macroDivByZeroExit is the DIV_BY_ZERO_EXIT() dispatch macro invocation that records
@@ -86,6 +86,12 @@ const (
 	// labelBoundsFail names the shared bounds-check failure trampoline emitted at the foot
 	// of the dispatch file.
 	labelBoundsFail = "bounds_fail"
+
+	// labelByteRunOfTwo skips the extension words of a two-store byte run.
+	labelByteRunOfTwo = "run_of_two"
+
+	// labelByteRunOfThree skips the third extension word of a byte run.
+	labelByteRunOfThree = "run_of_three"
 
 	// labelWriteBarrierFallback is the out-of-line tail a write-barrier guard jumps to while
 	// the barrier is on.
@@ -269,12 +275,12 @@ func (*BytecodeARM64Arch) EmitTypedSliceFloatGet(e *asmgen.Emitter, contextOffse
 	emitTypedSliceTailARM64(e)
 }
 
-// EmitTypedSliceIntGetDirect implements BytecodeArchPort.
+// EmitGetSliceInt64Element implements BytecodeArchPort.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 // Takes contextOffset (string) which is the byte offset of the slicesInt bank base
 // pointer within the dispatchContext.
-func (*BytecodeARM64Arch) EmitTypedSliceIntGetDirect(e *asmgen.Emitter, contextOffset string) {
+func (*BytecodeARM64Arch) EmitGetSliceInt64Element(e *asmgen.Emitter, contextOffset string) {
 	emitTypedSliceIntDirectHeaderARM64(e, contextOffset, "$16")
 	emitTypedSliceIntDirectIndexARM64(e, "$24")
 	inst5(e, asmarm64.OperationCompare, "R7, R8")
@@ -286,15 +292,13 @@ func (*BytecodeARM64Arch) EmitTypedSliceIntGetDirect(e *asmgen.Emitter, contextO
 	emitTypedSliceIntDirectTailARM64(e)
 }
 
-// EmitTypedSliceIntSetDirect implements BytecodeArchPort.
-//
-// Emits the tier-0 body for slicesInt[A][ints[B]] = ints[C] with bounds check. See
-// EmitTypedSliceIntGetDirect for the tier-0 conventions.
+// EmitSetSliceInt64Element emits the tier-0 body for slicesInt[A][ints[B]] = ints[C] with
+// bounds check.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 // Takes contextOffset (string) which is the byte offset of the slicesInt bank base
 // pointer within the dispatchContext.
-func (*BytecodeARM64Arch) EmitTypedSliceIntSetDirect(e *asmgen.Emitter, contextOffset string) {
+func (*BytecodeARM64Arch) EmitSetSliceInt64Element(e *asmgen.Emitter, contextOffset string) {
 	emitTypedSliceIntDirectHeaderARM64(e, contextOffset, "$8")
 	emitTypedSliceIntDirectIndexARM64(e, "$16")
 	inst5(e, asmarm64.OperationCompare, "R7, R8")
@@ -305,15 +309,13 @@ func (*BytecodeARM64Arch) EmitTypedSliceIntSetDirect(e *asmgen.Emitter, contextO
 	emitTypedSliceIntDirectTailARM64(e)
 }
 
-// EmitTypedSliceIntGetDirectUnchecked implements BytecodeArchPort.
-//
-// Bounds-elided variant of EmitTypedSliceIntGetDirect: the compiler's BCE pass only emits
-// the unchecked opcode when a dominating comparison proves the index in range.
+// EmitGetSliceInt64ElementUnchecked is the bounds-elided variant of
+// EmitGetSliceInt64Element.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 // Takes contextOffset (string) which is the byte offset of the slicesInt bank base
 // pointer within the dispatchContext.
-func (*BytecodeARM64Arch) EmitTypedSliceIntGetDirectUnchecked(e *asmgen.Emitter, contextOffset string) {
+func (*BytecodeARM64Arch) EmitGetSliceInt64ElementUnchecked(e *asmgen.Emitter, contextOffset string) {
 	emitTypedSliceIntDirectHeaderARM64(e, contextOffset, "$16")
 	emitTypedSliceIntDirectIndexARM64(e, "$24")
 	inst5(e, asmarm64.OperationMove64Bits, "(R6)(R8<<3), R9")
@@ -323,14 +325,13 @@ func (*BytecodeARM64Arch) EmitTypedSliceIntGetDirectUnchecked(e *asmgen.Emitter,
 	e.Instruction(macroDispatchNext)
 }
 
-// EmitTypedSliceIntSetDirectUnchecked implements BytecodeArchPort.
-//
-// Bounds-elided variant of EmitTypedSliceIntSetDirect for BCE-proven sites.
+// EmitSetSliceInt64ElementUnchecked is the bounds-elided variant of
+// EmitSetSliceInt64Element for BCE-proven sites.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 // Takes contextOffset (string) which is the byte offset of the slicesInt bank base
 // pointer within the dispatchContext.
-func (*BytecodeARM64Arch) EmitTypedSliceIntSetDirectUnchecked(e *asmgen.Emitter, contextOffset string) {
+func (*BytecodeARM64Arch) EmitSetSliceInt64ElementUnchecked(e *asmgen.Emitter, contextOffset string) {
 	emitTypedSliceIntDirectHeaderARM64(e, contextOffset, "$8")
 	emitTypedSliceIntDirectIndexARM64(e, "$16")
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$24, R0, R3")
@@ -339,100 +340,13 @@ func (*BytecodeARM64Arch) EmitTypedSliceIntSetDirectUnchecked(e *asmgen.Emitter,
 	e.Instruction(macroDispatchNext)
 }
 
-// EmitSliceIndexStructFieldScalar implements BytecodeArchPort.
-//
-// Takes e (*asmgen.Emitter) which receives the emitted instructions.
-// Takes kindA (string) which is the primary accepted layout Kind byte immediate.
-// Takes kindB (string) which is the secondary accepted layout Kind byte immediate.
-// Takes destIsFloat (bool) which selects the float bank destination over ints.
-// Takes shimSymbol (string) which is the fallback shim handler name.
-//
-//nolint:revive // function-length: one handler listing; registers stay live end to end
-func (*BytecodeARM64Arch) EmitSliceIndexStructFieldScalar(e *asmgen.Emitter, kindA, kindB string, destIsFloat bool, shimSymbol string) {
-	inst5(e, asmarm64.OperationMove32BitsUnsigned, "(R22)(R20<<2), R3")
-	inst5(e, asmarm64.OperationLogicalShiftRight, "$8, R3, R3")
-	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFFFF, R3, R3")
-	inst5(e, asmarm64.OperationMove64Bits, "CTX_FRAME_POINTER(R19), R4")
-	inst5(e, asmarm64.OperationMove64Bits, "$CALLFRAME_SIZE, R5")
-	inst5(e, asmarm64.OperationMultiply, "R5, R4, R4")
-	inst5(e, asmarm64.OperationMove64Bits, "CTX_CSTACK_BASE(R19), R5")
-	inst5(e, asmarm64.OperationAdd, "R4, R5, R5")
-	inst5(e, asmarm64.OperationMove64Bits, "CF_FUNCTION(R5), R10")
-	inst5(e, asmarm64.OperationMove64Bits, "FN_STRUCT_LAYOUT_TABLE_LEN(R10), R4")
-	inst5(e, asmarm64.OperationCompare, "R4, R3")
-	inst5(e, asmarm64.OperationBranchIfHigherOrSame, "sif_shim")
-	inst5(e, asmarm64.OperationMove64Bits, "FN_STRUCT_LAYOUT_TABLE(R10), R5")
-	inst5(e, asmarm64.OperationLogicalShiftLeft, "$4, R3, R3")
-	inst5(e, asmarm64.OperationAdd, "R3, R5, R5")
-	inst5(e, asmarm64.OperationMove8BitsUnsigned, "OFF_LAYOUT_KIND(R5), R6")
-	inst5(e, asmarm64.OperationCompare, kindA+", R6")
-	if kindB != "" {
-		inst5(e, asmarm64.OperationBranchIfEqual, "sif_kind_ok")
-		inst5(e, asmarm64.OperationCompare, kindB+", R6")
-	}
-	inst5(e, asmarm64.OperationBranchIfNotEqual, "sif_shim")
-	if kindB != "" {
-		e.Label("sif_kind_ok")
-	}
-	inst5(e, asmarm64.OperationLogicalShiftRight, "$16, R0, R3")
-	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R3, R3")
-	inst5(e, asmarm64.OperationMove64Bits, "$24, R4")
-	inst5(e, asmarm64.OperationMultiply, "R4, R3, R4")
-	inst5(e, asmarm64.OperationMove64Bits, "CTX_GENERALS_BASE(R19), R6")
-	inst5(e, asmarm64.OperationAdd, "R4, R6, R6")
-	inst5(e, asmarm64.OperationMove64Bits, "0(R6), R7")
-	inst5(e, asmarm64.OperationCompareAndBranchIfZero, "R7, sif_shim")
-	inst5(e, asmarm64.OperationMove64Bits, "16(R6), R8")
-	inst5(e, asmarm64.OperationBitwiseAnd, "$0x1F, R8, R8")
-	inst5(e, asmarm64.OperationCompare, "$23, R8")
-	inst5(e, asmarm64.OperationBranchIfNotEqual, "sif_shim")
-	inst5(e, asmarm64.OperationMove64Bits, "8(R6), R6")
-	inst5(e, asmarm64.OperationMove64Bits, "48(R7), R7")
-	inst5(e, asmarm64.OperationMove16BitsUnsigned, "OFF_LAYOUT_TYPE_INDEX(R5), R3")
-	inst5(e, asmarm64.OperationMove64Bits, "FN_TYPE_TABLE_LEN(R10), R4")
-	inst5(e, asmarm64.OperationCompare, "R4, R3")
-	inst5(e, asmarm64.OperationBranchIfHigherOrSame, "sif_shim")
-	inst5(e, asmarm64.OperationMove64Bits, "FN_TYPE_TABLE(R10), R4")
-	inst5(e, asmarm64.OperationLogicalShiftLeft, "$4, R3, R3")
-	inst5(e, asmarm64.OperationAdd, "R3, R4, R4")
-	inst5(e, asmarm64.OperationMove64Bits, "8(R4), R4")
-	inst5(e, asmarm64.OperationCompare, "R4, R7")
-	inst5(e, asmarm64.OperationBranchIfNotEqual, "sif_shim")
-	inst5(e, asmarm64.OperationMove64Bits, "0(R7), R4")
-	inst5(e, asmarm64.OperationLogicalShiftRight, "$24, R0, R3")
-	inst5(e, asmarm64.OperationMove64Bits, "(R23)(R3<<3), R3")
-	inst5(e, asmarm64.OperationMove64Bits, "8(R6), R8")
-	inst5(e, asmarm64.OperationCompare, "R8, R3")
-	inst5(e, asmarm64.OperationBranchIfHigherOrSame, "sif_shim")
-	inst5(e, asmarm64.OperationMultiply, "R3, R4, R4")
-	inst5(e, asmarm64.OperationMove64Bits, "(R6), R6")
-	inst5(e, asmarm64.OperationCompareAndBranchIfZero, "R6, sif_shim")
-	inst5(e, asmarm64.OperationAdd, "R4, R6, R6")
-	inst5(e, asmarm64.OperationMove32BitsUnsigned, "OFF_LAYOUT_OFFSET(R5), R7")
-	inst5(e, asmarm64.OperationAdd, "R7, R6, R6")
-	inst5(e, asmarm64.OperationMove64Bits, "(R6), R7")
-	inst5(e, asmarm64.OperationLogicalShiftRight, "$8, R0, R3")
-	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R3, R3")
-	if destIsFloat {
-		inst5(e, asmarm64.OperationMove64Bits, "R7, (R24)(R3<<3)")
-	} else {
-		inst5(e, asmarm64.OperationMove64Bits, "R7, (R23)(R3<<3)")
-	}
-	inst5(e, asmarm64.OperationAdd, "$1, R20, R20")
-	e.Instruction(macroDispatchNext)
-	e.Label("sif_shim")
-	inst5(e, asmarm64.OperationBranch, "·"+shimSymbol+"(SB)")
-}
-
-// EmitDerefSliceIntAccess implements BytecodeArchPort.
-//
-// arm64 twin of the amd64 implementation: pointer-resolved int-slice element access with
-// live bounds check; unsupported shapes and out-of-range indexes fall back to the shim.
+// EmitElementInt64ViaPointerAccess performs pointer-resolved int-slice element access
+// with live bounds check.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 // Takes isSet (bool) which selects the write-side operand roles and store.
 // Takes shimSymbol (string) which is the fallback shim handler name.
-func (*BytecodeARM64Arch) EmitDerefSliceIntAccess(e *asmgen.Emitter, isSet bool, shimSymbol string) {
+func (*BytecodeARM64Arch) EmitElementInt64ViaPointerAccess(e *asmgen.Emitter, isSet bool, shimSymbol string) {
 	ptrShift, idxShift := "$16", "$24"
 	if isSet {
 		ptrShift, idxShift = "$8", "$16"
@@ -476,12 +390,12 @@ func (*BytecodeARM64Arch) EmitDerefSliceIntAccess(e *asmgen.Emitter, isSet bool,
 	inst5(e, asmarm64.OperationBranch, "·"+shimSymbol+"(SB)")
 }
 
-// EmitGetStructFieldGeneralPointerT0 implements BytecodeArchPort.
+// EmitGetStructFieldGeneralPointer implements BytecodeArchPort.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 //
-//nolint:revive // function-length: one handler listing; registers stay live end to end
-func (*BytecodeARM64Arch) EmitGetStructFieldGeneralPointerT0(e *asmgen.Emitter) {
+//nolint:revive // function-length. One handler listing keeps registers live end to end
+func (*BytecodeARM64Arch) EmitGetStructFieldGeneralPointer(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationMove64Bits, "$runtime·writeBarrier(SB), R3")
 	inst5(e, asmarm64.OperationMove8BitsUnsigned, "(R3), R3")
 	inst5(e, asmarm64.OperationCompareAndBranchIfNotZero, "R3, sf_shim")
@@ -549,15 +463,15 @@ func (*BytecodeARM64Arch) EmitGetStructFieldGeneralPointerT0(e *asmgen.Emitter) 
 	inst5(e, asmarm64.OperationMove64Bits, "R7, 16(R6)")
 	inst5(e, asmarm64.OperationBranch, "gp_done")
 	e.Label("sf_shim")
-	inst5(e, asmarm64.OperationBranch, "·handlerPathBShimGetStructFieldGeneralT0(SB)")
+	inst5(e, asmarm64.OperationBranch, "·handlerPathBShimGetStructFieldGeneral(SB)")
 }
 
-// EmitGetStructFieldRawPointerT0 implements BytecodeArchPort.
+// EmitGetStructFieldRawPointer implements BytecodeArchPort.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 //
-//nolint:revive // function-length: one handler listing; registers stay live end to end
-func (*BytecodeARM64Arch) EmitGetStructFieldRawPointerT0(e *asmgen.Emitter) {
+//nolint:revive // function-length. One handler listing keeps registers live end to end
+func (*BytecodeARM64Arch) EmitGetStructFieldRawPointer(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationMove64Bits, "$runtime·writeBarrier(SB), R3")
 	inst5(e, asmarm64.OperationMove8BitsUnsigned, "(R3), R3")
 	inst5(e, asmarm64.OperationCompareAndBranchIfNotZero, "R3, rp_shim")
@@ -627,17 +541,14 @@ func (*BytecodeARM64Arch) EmitGetStructFieldRawPointerT0(e *asmgen.Emitter) {
 	e.Label("rp_done")
 	e.Instruction(macroDispatchNext)
 	e.Label("rp_shim")
-	inst5(e, asmarm64.OperationBranch, "·handlerPathBShimGetStructFieldRawPointerT0(SB)")
+	inst5(e, asmarm64.OperationBranch, "·handlerPathBShimGetStructFieldRawPointer(SB)")
 }
 
-// EmitEqGeneral implements BytecodeArchPort.
-//
-// arm64 twin of the amd64 implementation: fast general-equality arms (both invalid,
-// differing type words, pointer-identity kinds) with everything else falling back to the
-// Go shim.
+// EmitEqualGeneral provides fast general-equality arms (both invalid, differing type
+// words, pointer-identity kinds) with everything else falling back to the Go shim.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (*BytecodeARM64Arch) EmitEqGeneral(e *asmgen.Emitter) {
+func (*BytecodeARM64Arch) EmitEqualGeneral(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$16, R0, R3")
 	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R3, R3")
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$24, R0, R4")
@@ -693,7 +604,7 @@ func (*BytecodeARM64Arch) EmitEqGeneral(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationMove64Bits, "R4, (R23)(R3<<3)")
 	e.Instruction(macroDispatchNext)
 	e.Label("eqg_shim")
-	inst5(e, asmarm64.OperationBranch, "·handlerPathBShimEqGeneral(SB)")
+	inst5(e, asmarm64.OperationBranch, "·handlerPathBShimEqualGeneral(SB)")
 }
 
 // EmitWriteBarrierGuard runs body while the runtime write barrier is off and otherwise
@@ -802,22 +713,19 @@ func (*BytecodeARM64Arch) EmitTestNilJump(e *asmgen.Emitter, jumpWhenNil bool) {
 	e.Instruction(macroDispatchNext)
 }
 
-// EmitStructFieldScalarGetT0 implements BytecodeArchPort.
-//
-// Tier-0 fast path for the scalar struct-field GET family: dest[A] = *(receiverBase +
-// layout[C].Offset). Shape gates and fallback semantics mirror the amd64 implementation;
-// unsupported shapes branch to the wide tier-2 shim.
+// EmitStructFieldScalarGet emits the tier-0 fast path for the scalar struct-field GET
+// family.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 // Takes kindA (string) which is the primary accepted layout Kind byte (e.g. "$6" Int64).
 // Takes kindB (string) which is the secondary accepted Kind byte, or "" when the family
 // has only one.
 // Takes bank (string) which names the destination bank ("ints", "floats", "uints",
-// "bools"); the mapping to pinned registers / context bases and width-correct move forms
+// "bools"). The mapping to pinned registers / context bases and width-correct move forms
 // lives in structFieldBankARM64.
 // Takes shimSymbol (string) which is the fallback shim, e.g.
-// "handlerPathBShimGetStructFieldIntT0".
-func (*BytecodeARM64Arch) EmitStructFieldScalarGetT0(e *asmgen.Emitter, kindA, kindB, bank, shimSymbol string) {
+// "handlerPathBShimGetStructFieldInt64".
+func (*BytecodeARM64Arch) EmitStructFieldScalarGet(e *asmgen.Emitter, kindA, kindB, bank, shimSymbol string) {
 	spec := structFieldBankARM64(bank)
 	emitStructFieldCommonPrologueARM64(e, kindA, kindB, "$16")
 	inst5(e, spec.fieldLoadOp, "(R6), R9")
@@ -829,18 +737,15 @@ func (*BytecodeARM64Arch) EmitStructFieldScalarGetT0(e *asmgen.Emitter, kindA, k
 	inst5(e, asmarm64.OperationBranch, "·"+shimSymbol+"(SB)")
 }
 
-// EmitStructFieldScalarSetT0 implements BytecodeArchPort.
-//
-// Tier-0 fast path for the scalar struct-field SET family: *(receiverBase +
-// layout[C].Offset) = source[B]. Scalar stores carry no pointers so no write barrier is
-// required. Shape gates mirror EmitStructFieldScalarGetT0.
+// EmitStructFieldScalarSet emits the tier-0 fast path for the scalar struct-field SET
+// family.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 // Takes kindA (string) which is the primary accepted layout Kind byte.
 // Takes kindB (string) which is the secondary accepted layout Kind byte.
-// Takes bank (string) which names the source bank as in EmitStructFieldScalarGetT0.
+// Takes bank (string) which names the source bank as in EmitStructFieldScalarGet.
 // Takes shimSymbol (string) which is the fallback shim symbol.
-func (*BytecodeARM64Arch) EmitStructFieldScalarSetT0(e *asmgen.Emitter, kindA, kindB, bank, shimSymbol string) {
+func (*BytecodeARM64Arch) EmitStructFieldScalarSet(e *asmgen.Emitter, kindA, kindB, bank, shimSymbol string) {
 	spec := structFieldBankARM64(bank)
 	emitStructFieldCommonPrologueARM64(e, kindA, kindB, "$8")
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$16, R0, R3")
@@ -852,13 +757,10 @@ func (*BytecodeARM64Arch) EmitStructFieldScalarSetT0(e *asmgen.Emitter, kindA, k
 	inst5(e, asmarm64.OperationBranch, "·"+shimSymbol+"(SB)")
 }
 
-// EmitLoadUintConst implements BytecodeArchPort.
-//
-// Tier-0 body for uints[A] = uintConstants[B|(C<<8)]. Pool indexes are compiler-generated
-// so no bounds check is emitted, mirroring the int-const loader.
+// EmitLoadUint64Constant emits the tier-0 body for uints[A] = uintConstants[B|(C<<8)].
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (*BytecodeARM64Arch) EmitLoadUintConst(e *asmgen.Emitter) {
+func (*BytecodeARM64Arch) EmitLoadUint64Constant(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$8, R0, R3")
 	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R3, R3")
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$16, R0, R4")
@@ -870,48 +772,16 @@ func (*BytecodeARM64Arch) EmitLoadUintConst(e *asmgen.Emitter) {
 	e.Instruction(macroDispatchNext)
 }
 
-// EmitLoadUintConstSmall implements BytecodeArchPort.
-//
-// Tier-1 body for uints[B] = uint64(C), the immediate small-constant loader.
+// EmitLoadUint64Immediate emits the tier-1 body for uints[B] = uint64(C), the immediate
+// small-constant loader.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (*BytecodeARM64Arch) EmitLoadUintConstSmall(e *asmgen.Emitter) {
+func (*BytecodeARM64Arch) EmitLoadUint64Immediate(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$16, R0, R3")
 	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R3, R3")
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$24, R0, R4")
 	inst5(e, asmarm64.OperationMove64Bits, "CTX_UINTS_BASE(R19), R5")
 	inst5(e, asmarm64.OperationMove64Bits, "R4, (R5)(R3<<3)")
-	e.Instruction(macroDispatchNext)
-}
-
-// EmitUintConstArith implements BytecodeArchPort.
-//
-// Tier-1 body for uints[B] = uints[C] op uintConstants[ext.A|(ext.B<<8)], consuming the
-// extension word (PC is advanced past it before DISPATCH_NEXT).
-//
-// Takes e (*asmgen.Emitter) which receives the emitted instructions.
-// Takes operation (string) which selects the instruction: "add", "sub", or "and".
-func (*BytecodeARM64Arch) EmitUintConstArith(e *asmgen.Emitter, operation string) {
-	inst5(e, asmarm64.OperationLogicalShiftRight, "$16, R0, R3")
-	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R3, R3")
-	inst5(e, asmarm64.OperationLogicalShiftRight, "$24, R0, R4")
-	inst5(e, asmarm64.OperationMove32BitsUnsigned, "(R22)(R20<<2), R5")
-	inst5(e, asmarm64.OperationLogicalShiftRight, "$8, R5, R5")
-	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFFFF, R5, R5")
-	inst5(e, asmarm64.OperationMove64Bits, "CTX_UINT_CONSTS_BASE(R19), R6")
-	inst5(e, asmarm64.OperationMove64Bits, "(R6)(R5<<3), R5")
-	inst5(e, asmarm64.OperationMove64Bits, "CTX_UINTS_BASE(R19), R6")
-	inst5(e, asmarm64.OperationMove64Bits, "(R6)(R4<<3), R7")
-	switch operation {
-	case "add":
-		inst5(e, asmarm64.OperationAdd, "R5, R7, R7")
-	case "sub":
-		inst5(e, asmarm64.OperationSubtract, "R5, R7, R7")
-	case "and":
-		inst5(e, asmarm64.OperationBitwiseAnd, "R5, R7, R7")
-	}
-	inst5(e, asmarm64.OperationMove64Bits, "R7, (R6)(R3<<3)")
-	inst5(e, asmarm64.OperationAdd, "$1, R20, R20")
 	e.Instruction(macroDispatchNext)
 }
 
@@ -1046,18 +916,25 @@ func (*BytecodeARM64Arch) EmitTypedSliceByteGet(e *asmgen.Emitter, contextOffset
 	emitTypedSliceTailARM64(e)
 }
 
-// EmitTypedSliceByteSet implements BytecodeArchPort.
+// EmitTypedSliceByteGetInt emits a bounds-checked byte load into the int register bank.
 //
-// Emits the bounds-checked element-store body for a tier-1 umbrella sub-op of the form
-// slicesByte[B][ints[C]] = byte(uints[ext.A]). The source uint64 is loaded with MOVD and
-// only the low byte is stored via MOVB.
+// Takes e (*asmgen.Emitter) which receives the emitted instructions.
+// Takes contextOffset (string) which is the byte offset of the slicesByte bank base
+// pointer within the dispatchContext.
+func (*BytecodeARM64Arch) EmitTypedSliceByteGetInt(e *asmgen.Emitter, contextOffset string) {
+	emitTypedSliceGetPrologueARM64(e, contextOffset)
+	inst5(e, asmarm64.OperationMove8BitsUnsigned, "(R6)(R8), R7")
+	inst5(e, asmarm64.OperationMove64Bits, "R7, (R23)(R3<<3)")
+	emitTypedSliceTailARM64(e)
+}
+
+// EmitTypedSliceByteSet emits a bounds-checked byte store.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 // Takes contextOffset (string) which is the byte offset of the slicesByte bank base
 // pointer within the dispatchContext.
 func (*BytecodeARM64Arch) EmitTypedSliceByteSet(e *asmgen.Emitter, contextOffset string) {
-	emitTypedSliceSetPrologueARM64(e, contextOffset)
-	emitPeekExtensionWordAFieldARM64(e, "R3")
+	emitTypedSliceByteSetPrologueARM64(e, contextOffset)
 	inst5(e, asmarm64.OperationMove64Bits, "CTX_UINTS_BASE(R19), R5")
 	inst5(e, asmarm64.OperationLogicalShiftLeft, "$3, R3, R3")
 	inst5(e, asmarm64.OperationAdd, "R3, R5, R10")
@@ -1066,15 +943,15 @@ func (*BytecodeARM64Arch) EmitTypedSliceByteSet(e *asmgen.Emitter, contextOffset
 	emitTypedSliceTailARM64(e)
 }
 
-// EmitTypedSliceByteSlice implements BytecodeArchPort.
+// EmitSliceSliceByte implements BytecodeArchPort.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 // Takes contextOffset (string) which is the byte offset of the slicesByte bank base
 // pointer within the dispatchContext.
-func (*BytecodeARM64Arch) EmitTypedSliceByteSlice(e *asmgen.Emitter, contextOffset string) {
-	emitTypedSliceByteSliceExtractARM64(e)
-	emitTypedSliceByteSliceLoadAndBoundsARM64(e, contextOffset)
-	emitTypedSliceByteSliceWriteHeaderARM64(e, contextOffset)
+func (*BytecodeARM64Arch) EmitSliceSliceByte(e *asmgen.Emitter, contextOffset string) {
+	emitSliceSliceByteExtractARM64(e)
+	emitSliceSliceByteLoadAndBoundsARM64(e, contextOffset)
+	emitSliceSliceByteWriteHeaderARM64(e, contextOffset)
 	emitTypedSliceTailARM64(e)
 }
 
@@ -1114,8 +991,8 @@ func (*BytecodeARM64Arch) EmitTypedSliceMove(e *asmgen.Emitter, contextOffset st
 // pointer within the dispatchContext.
 // Takes elementSizeShift (uint8) which is the log2 of the element stride.
 func (*BytecodeARM64Arch) EmitTypedSliceSliceSlice(e *asmgen.Emitter, contextOffset string, elementSizeShift uint8) {
-	emitTypedSliceByteSliceExtractARM64(e)
-	emitTypedSliceByteSliceLoadAndBoundsARM64(e, contextOffset)
+	emitSliceSliceByteExtractARM64(e)
+	emitSliceSliceByteLoadAndBoundsARM64(e, contextOffset)
 	emitTypedSliceSliceSliceWriteHeaderARM64(e, contextOffset, elementSizeShift)
 	emitTypedSliceTailARM64(e)
 }
@@ -1170,10 +1047,10 @@ func (*BytecodeARM64Arch) EmitTypedRangeNextByte(e *asmgen.Emitter, contextOffse
 	e.Instruction(macroDispatchNext)
 }
 
-// EmitRangeCheckUintJumpFalse implements BytecodeArchPort.
+// EmitInRangeUint64ThenJumpIfFalse implements BytecodeArchPort.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (*BytecodeARM64Arch) EmitRangeCheckUintJumpFalse(e *asmgen.Emitter) {
+func (*BytecodeARM64Arch) EmitInRangeUint64ThenJumpIfFalse(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$24, R0, R3")
 	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R3, R3")
 
@@ -1212,10 +1089,10 @@ func (*BytecodeARM64Arch) EmitRangeCheckUintJumpFalse(e *asmgen.Emitter) {
 	e.Instruction(macroDispatchNext)
 }
 
-// EmitEqUintConstJumpFalse implements BytecodeArchPort.
+// EmitEqualUint64ImmediateThenJumpIfFalse implements BytecodeArchPort.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-func (*BytecodeARM64Arch) EmitEqUintConstJumpFalse(e *asmgen.Emitter) {
+func (*BytecodeARM64Arch) EmitEqualUint64ImmediateThenJumpIfFalse(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$16, R0, R3")
 	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R3, R3")
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$24, R0, R6")
@@ -1226,12 +1103,12 @@ func (*BytecodeARM64Arch) EmitEqUintConstJumpFalse(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationCompare, "R6, R5")
 	inst5(e, asmarm64.OperationBranchIfNotEqual, "eqUintConstTakeJump")
 
-	inst5(e, asmarm64.OperationAdd, "$"+eqUintConstJumpFalseSkipWords+", R20, R20")
+	inst5(e, asmarm64.OperationAdd, "$"+equalUint64ImmediateThenJumpIfFalseSkipWords+", R20, R20")
 	inst5(e, asmarm64.OperationBranch, "eqUintConstDispatch")
 
 	e.Label("eqUintConstTakeJump")
 	inst5(e, asmarm64.OperationMove32BitsUnsigned, "(R22)(R20<<2), R8")
-	inst5(e, asmarm64.OperationAdd, "$"+eqUintConstJumpFalseSkipWords+", R20, R20")
+	inst5(e, asmarm64.OperationAdd, "$"+equalUint64ImmediateThenJumpIfFalseSkipWords+", R20, R20")
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$8, R8, R8")
 	inst5(e, asmarm64.OperationLogicalShiftLeft, "$48, R8, R8")
 	inst5(e, asmarm64.OperationArithmeticShiftRight, "$48, R8, R8")

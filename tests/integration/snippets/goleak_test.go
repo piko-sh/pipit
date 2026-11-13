@@ -25,10 +25,12 @@ import (
 	"os"
 	"testing"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/leakcheck"
 )
 
 func TestMain(m *testing.M) {
+	app.SetLicenceCheckerStrictForTest(true)
 	cacheDir, err := os.MkdirTemp("", "pipit-parity-gocache-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "parity: creating shared GOCACHE:", err)

@@ -32,19 +32,19 @@ import (
 )
 
 type typedSubSliceKind struct {
-	bank func(*Registers) reflect.Value
-	elem reflect.Type
-	name string
+	bank  func(*Registers) reflect.Value
+	elem  reflect.Type
+	name  string
 	subOp isa.SubOpcode
 }
 
 var typedSubSliceKinds = []typedSubSliceKind{
-	{name: "int", subOp: isa.SubOpSliceSliceIntDirect, elem: reflect.TypeFor[int64](), bank: func(r *Registers) reflect.Value { return reflect.ValueOf(r.SlicesInt) }},
-	{name: "float", subOp: isa.SubOpSliceSliceFloatDirect, elem: reflect.TypeFor[float64](), bank: func(r *Registers) reflect.Value { return reflect.ValueOf(r.slicesFloat) }},
-	{name: "string", subOp: isa.SubOpSliceSliceStringDirect, elem: reflect.TypeFor[string](), bank: func(r *Registers) reflect.Value { return reflect.ValueOf(r.slicesString) }},
-	{name: "bool", subOp: isa.SubOpSliceSliceBoolDirect, elem: reflect.TypeFor[bool](), bank: func(r *Registers) reflect.Value { return reflect.ValueOf(r.slicesBool) }},
-	{name: "uint", subOp: isa.SubOpSliceSliceUintDirect, elem: reflect.TypeFor[uint64](), bank: func(r *Registers) reflect.Value { return reflect.ValueOf(r.slicesUint) }},
-	{name: "byte", subOp: isa.SubOpSliceByteSlice, elem: reflect.TypeFor[byte](), bank: func(r *Registers) reflect.Value { return reflect.ValueOf(r.slicesByte) }},
+	{name: "int", subOp: isa.SubOpSliceSliceInt64, elem: reflect.TypeFor[int64](), bank: func(r *Registers) reflect.Value { return reflect.ValueOf(r.SlicesInt) }},
+	{name: "float", subOp: isa.SubOpSliceSliceFloat64, elem: reflect.TypeFor[float64](), bank: func(r *Registers) reflect.Value { return reflect.ValueOf(r.slicesFloat) }},
+	{name: "string", subOp: isa.SubOpSliceSliceString, elem: reflect.TypeFor[string](), bank: func(r *Registers) reflect.Value { return reflect.ValueOf(r.slicesString) }},
+	{name: "bool", subOp: isa.SubOpSliceSliceBool, elem: reflect.TypeFor[bool](), bank: func(r *Registers) reflect.Value { return reflect.ValueOf(r.slicesBool) }},
+	{name: "uint", subOp: isa.SubOpSliceSliceUint64, elem: reflect.TypeFor[uint64](), bank: func(r *Registers) reflect.Value { return reflect.ValueOf(r.slicesUint) }},
+	{name: "byte", subOp: isa.SubOpSliceSliceByte, elem: reflect.TypeFor[byte](), bank: func(r *Registers) reflect.Value { return reflect.ValueOf(r.slicesByte) }},
 }
 
 func runTypedSubSliceOnce(t *testing.T, kind typedSubSliceKind, flags uint8, low, high int64, source reflect.Value) (*Registers, int64, int64) {
@@ -52,9 +52,9 @@ func runTypedSubSliceOnce(t *testing.T, kind typedSubSliceKind, flags uint8, low
 	builder := newBytecodeBuilder()
 	builder.numRegisters = wideRegCounts(8)
 	builder.Emit(isa.OpDrillTier1, uint8(kind.subOp), 1, 0)
-	builder.body = append(builder.body, isa.NewInstruction(isa.OpExt, flags, 2, 3))
+	builder.body = append(builder.body, isa.NewInstruction(isa.OpExtension, flags, 2, 3))
 	if flags&isa.SliceMaxBitFlag != 0 {
-		builder.body = append(builder.body, isa.NewInstruction(isa.OpExt, 4, 0, 0))
+		builder.body = append(builder.body, isa.NewInstruction(isa.OpExtension, 4, 0, 0))
 	}
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 	vm, _, registers := newFramedVM(t, builder.build())

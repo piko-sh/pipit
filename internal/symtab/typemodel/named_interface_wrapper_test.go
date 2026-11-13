@@ -116,3 +116,17 @@ func TestNamedInterfaceWrapperEmbeddedDelegation(t *testing.T) {
 
 	require.True(t, wrapper.Comparable(), "interfaces are comparable")
 }
+
+func TestAWrapperIteratesTheMethodsItReports(t *testing.T) {
+	t.Parallel()
+
+	wrapper := NewNamedInterfaceWrapper(reflect.TypeFor[any](), NewNamedInterfaceType("example.com/p", "Namer", []string{"Alias", "Name"}))
+	var names []string
+	for method := range wrapper.Methods() {
+		names = append(names, method.Name)
+	}
+	require.Equal(t, []string{"Alias", "Name"}, names)
+	for range wrapper.Methods() {
+		break
+	}
+}

@@ -19,6 +19,7 @@
 package symtab
 
 import (
+	"context"
 	"fmt"
 	"go/types"
 	"maps"
@@ -104,9 +105,24 @@ type SymbolRegistry struct {
 	// when it is exported only through an alias in a facade package.
 	hostNamedTypes map[hostNamedTypeKey]reflect.Type
 
+	// rejectedTypesPackages holds, per import path, the error RegisterTypesPackage rejected
+	// a pre-built package with; Import returns it for that path.
+	rejectedTypesPackages map[string]error
+
+	// scriptPackages holds the import paths registered for interpreted packages (compiled
+	// local imports and loaded modules), which HasHostPackage does not count as host
+	// packages.
+	scriptPackages map[string]struct{}
+
 	// synthesising tracks packages currently being synthesised to prevent infinite recursion
 	// when cross-package named types reference each other.
 	synthesising map[string]bool
+
+	// namedCompositeQuota is charged for every named composite type a compile or a bytecode
+	// load against this registry adds to the process (typemodel.NamedCompositeQuota). An
+	// embedder that replaces the registry carries one quota across, so the quota stays per
+	// interpreter.
+	namedCompositeQuota *typemodel.NamedCompositeQuota
 
 	// synthesisDepth tracks the current nesting depth of Import calls triggered by
 	// cross-package type resolution. Acts as a safety net to prevent stack overflow from
@@ -117,6 +133,19 @@ type SymbolRegistry struct {
 	mu sync.RWMutex
 }
 
+// pendingNamedType holds a named type whose underlying type has not yet been resolved
+// because it may reference other types in the same package.
+type pendingNamedType struct {
+	// elementReflectType is the element reflect.Type (the T in *T).
+	elementReflectType reflect.Type
+
+	// ptrRT is the pointer reflect.Type (*T).
+	ptrRT reflect.Type
+
+	// named is the forward-declared go/types named type.
+	named *types.Named
+}
+
 // NewSymbolRegistry constructs a SymbolRegistry seeded with the supplied per-package
 // exports. Typed-nil pointer symbols are recorded as the canonical owner of their element
 // reflect.Type so reflect-based dispatch can attribute methods to their declaring
@@ -124,19 +153,31 @@ type SymbolRegistry struct {
 //
 // Takes exports (SymbolExports) which maps import path to name to value.
 //
+// Every function registered is also recorded with policy.RecordNativeSymbols, so the
+// capability gates know it by the identity it is registered under rather than by the name
+// the Go runtime gives its code.
+//
 // Returns a fully initialised registry ready for Lookup, Scoped, or SynthesiseAll calls.
 func NewSymbolRegistry(exports SymbolExports) *SymbolRegistry {
 	r := &SymbolRegistry{symbols: make(map[string]map[string]reflect.Value, len(exports)),
-		synthesised:    make(map[string]*types.Package),
-		reflectToTypes: make(map[reflect.Type]types.Type),
-		typeOwners:     make(map[reflect.Type]string),
-		hostNamedTypes: nil,
-		synthesising:   make(map[string]bool), protectedPackages: nil, synthesisDepth: 0, mu: sync.RWMutex{}}
+		synthesised:           make(map[string]*types.Package),
+		reflectToTypes:        make(map[reflect.Type]types.Type),
+		typeOwners:            make(map[reflect.Type]string),
+		hostNamedTypes:        nil,
+		rejectedTypesPackages: nil,
+		scriptPackages:        nil,
+		synthesising:          make(map[string]bool),
+		protectedPackages:     nil,
+		synthesisDepth:        0,
+		namedCompositeQuota:   typemodel.NewNamedCompositeQuota(typemodel.DefaultNamedCompositeQuota),
+		mu:                    sync.RWMutex{},
+	}
 
 	for packagePath, symbols := range exports {
 		packageSymbols := make(map[string]reflect.Value, len(symbols))
 		maps.Copy(packageSymbols, symbols)
 		r.symbols[packagePath] = packageSymbols
+		policy.RecordNativeSymbols(packagePath, packageSymbols)
 
 		for _, value := range symbols {
 			rt := value.Type()
@@ -149,15 +190,44 @@ func NewSymbolRegistry(exports SymbolExports) *SymbolRegistry {
 	return r
 }
 
+// NamedCompositeQuota returns the quota charged for the named composite types compiles
+// and loads against this registry add to the process.
+//
+// Returns *typemodel.NamedCompositeQuota which is nil for a nil registry, which charges
+// nothing beyond the process-wide cap.
+//
+// Concurrent access acquires r.mu in read mode.
+func (r *SymbolRegistry) NamedCompositeQuota() *typemodel.NamedCompositeQuota {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.namedCompositeQuota
+}
+
+// SetNamedCompositeQuota replaces the quota, so an interpreter that builds a new registry
+// keeps charging the one quota it was given.
+//
+// Takes quota (*typemodel.NamedCompositeQuota) which is the interpreter's quota. Nil
+// charges nothing beyond the process-wide cap.
+//
+// Concurrent access acquires r.mu in write mode.
+func (r *SymbolRegistry) SetNamedCompositeQuota(quota *typemodel.NamedCompositeQuota) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.namedCompositeQuota = quota
+}
+
 // SynthesiseAll eagerly synthesises go/types.Package shells for every registered import
 // path. Populates the synthesised cache so later type-checking against host symbols has
 // no per-call cost.
-func (r *SymbolRegistry) SynthesiseAll() {
+func (r *SymbolRegistry) SynthesiseAll(ctx context.Context) {
 	for importPath := range r.symbols {
 		if _, ok := r.synthesised[importPath]; ok {
 			continue
 		}
-		_, _ = r.Import(importPath)
+		_, _ = r.Import(ctx, importPath)
 	}
 }
 
@@ -238,6 +308,39 @@ func (r *SymbolRegistry) HasPackage(packagePath string) bool {
 	return ok
 }
 
+// MarkScriptPackage records that packagePath is an interpreted package, compiled from
+// source or loaded from a module, rather than a host package.
+//
+// Takes packagePath (string) which is the import path.
+//
+// Concurrent access acquires the registry write lock for the duration of the call.
+func (r *SymbolRegistry) MarkScriptPackage(packagePath string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.scriptPackages == nil {
+		r.scriptPackages = make(map[string]struct{})
+	}
+	r.scriptPackages[packagePath] = struct{}{}
+}
+
+// HasHostPackage reports whether packagePath is registered as a host package, one a
+// symbol provider supplies rather than one the interpreter compiled or loaded.
+//
+// Takes packagePath (string) which is the import path.
+//
+// Returns bool which is true for a registered package not marked as interpreted.
+//
+// Concurrent access acquires the registry read lock for the duration of the call.
+func (r *SymbolRegistry) HasHostPackage(packagePath string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if _, script := r.scriptPackages[packagePath]; script {
+		return false
+	}
+	_, ok := r.symbols[packagePath]
+	return ok
+}
+
 // AllPackages returns the import paths of every package currently registered, in
 // unspecified order.
 //
@@ -274,6 +377,7 @@ func (r *SymbolRegistry) RegisterPackage(packagePath string, symbols map[string]
 
 	r.symbols[packagePath] = symbols
 	r.hostNamedTypes = nil
+	policy.RecordNativeSymbols(packagePath, symbols)
 
 	for _, value := range symbols {
 		rt := value.Type()
@@ -299,6 +403,7 @@ func (r *SymbolRegistry) OverlayPackage(packagePath string, overlay map[string]r
 		return
 	}
 	r.hostNamedTypes = nil
+	policy.RecordNativeSymbols(packagePath, overlay)
 	existing, ok := r.symbols[packagePath]
 	if !ok {
 		merged := make(map[string]reflect.Value, len(overlay))
@@ -430,14 +535,26 @@ func (r *SymbolRegistry) ProtectPackage(packagePath string) {
 // Takes packagePath (string) which is the import path.
 // Takes pkg (*types.Package) which is the pre-synthesised package.
 //
+// Returns error wrapping ErrTypesPackageLayout when the package was rejected.
+//
 // Concurrency: acquires the registry write lock for the duration of the call.
-func (r *SymbolRegistry) RegisterTypesPackage(packagePath string, pkg *types.Package) {
+func (r *SymbolRegistry) RegisterTypesPackage(packagePath string, pkg *types.Package) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if err := r.checkTypesPackageLayoutLocked(packagePath, pkg); err != nil {
+		if r.rejectedTypesPackages == nil {
+			r.rejectedTypesPackages = make(map[string]error)
+		}
+		r.rejectedTypesPackages[packagePath] = err
+		delete(r.synthesised, packagePath)
+		return err
+	}
+	delete(r.rejectedTypesPackages, packagePath)
 	r.synthesised[packagePath] = pkg
 
 	r.remapReflectTypesToPackage(packagePath, pkg)
+	return nil
 }
 
 // SnapshotTypesPackages returns a shallow copy of all registered go/types.Packages keyed
@@ -455,19 +572,18 @@ func (r *SymbolRegistry) SnapshotTypesPackages() map[string]*types.Package {
 	return out
 }
 
-// Import returns the go/types.Package for importPath.
-//
-// Synthesises one from the registered reflect.Values on first call and caches the result.
-// The "unsafe" package is special-cased to types.Unsafe.
+// Import resolves importPath to a go/types package, synthesising it from the registered
+// symbols on first use, under ctx, whose logger receives the warnings synthesis gives. A
+// type check reaches it through Importer.
 //
 // Takes importPath (string) which is the import path to resolve.
 //
 // Returns *types.Package which is the synthesised or cached package.
 // Returns error when importPath is not registered or synthesis fails.
 //
-// Concurrency: acquires the registry write lock briefly to publish the synthesised
-// package; reads use the read lock.
-func (r *SymbolRegistry) Import(importPath string) (*types.Package, error) {
+// Concurrent access acquires the registry write lock briefly to publish the synthesised
+// package. Reads use the read lock.
+func (r *SymbolRegistry) Import(ctx context.Context, importPath string) (*types.Package, error) {
 	if importPath == policy.PkgUnsafe {
 		return types.Unsafe, nil
 	}
@@ -476,6 +592,10 @@ func (r *SymbolRegistry) Import(importPath string) (*types.Package, error) {
 	if pkg, ok := r.synthesised[importPath]; ok {
 		r.mu.RUnlock()
 		return pkg, nil
+	}
+	if err, rejected := r.rejectedTypesPackages[importPath]; rejected {
+		r.mu.RUnlock()
+		return nil, err
 	}
 	r.mu.RUnlock()
 
@@ -511,7 +631,7 @@ func (r *SymbolRegistry) Import(importPath string) (*types.Package, error) {
 		r.mu.Unlock()
 	}()
 
-	pkg := r.synthesisePackage(importPath, exports)
+	pkg := r.synthesisePackage(ctx, importPath, exports)
 
 	r.mu.Lock()
 	r.synthesised[importPath] = pkg
@@ -542,12 +662,18 @@ func (r *SymbolRegistry) Scoped(allowlist []string) *SymbolRegistry {
 	packageWildcards, symbolEntries := classifyAllowlistEntries(allowlist)
 
 	scoped := &SymbolRegistry{symbols: make(map[string]map[string]reflect.Value),
-		synthesised:       r.synthesised,
-		reflectToTypes:    r.reflectToTypes,
-		typeOwners:        r.typeOwners,
-		hostNamedTypes:    nil,
-		synthesising:      make(map[string]bool),
-		protectedPackages: r.protectedPackages, synthesisDepth: 0, mu: sync.RWMutex{}}
+		synthesised:           r.synthesised,
+		rejectedTypesPackages: r.rejectedTypesPackages,
+		scriptPackages:        r.scriptPackages,
+		reflectToTypes:        r.reflectToTypes,
+		typeOwners:            r.typeOwners,
+		hostNamedTypes:        nil,
+		synthesising:          make(map[string]bool),
+		protectedPackages:     r.protectedPackages,
+		synthesisDepth:        0,
+		namedCompositeQuota:   r.namedCompositeQuota,
+		mu:                    sync.RWMutex{},
+	}
 	for packagePath, packageSymbols := range r.symbols {
 		_, wildcardOK := packageWildcards[packagePath]
 		nameSet, nameSetOK := symbolEntries[packagePath]
@@ -623,17 +749,20 @@ func (r *SymbolRegistry) packageNameLocked(importPath string) string {
 // Takes exports (map[string]reflect.Value) which contains the registered reflect symbols.
 //
 // Returns *types.Package which is the completed synthesised package.
-func (r *SymbolRegistry) synthesisePackage(importPath string, exports map[string]reflect.Value) *types.Package {
+func (r *SymbolRegistry) synthesisePackage(ctx context.Context, importPath string, exports map[string]reflect.Value) *types.Package {
 	pkg := types.NewPackage(importPath, r.PackageName(importPath))
 
 	converter := &reflectTypeConverter{seen: make(map[reflect.Type]types.Type),
-		pkg:        pkg,
-		registry:   r,
+		pkg:      pkg,
+		registry: r,
+		importForeign: func(foreignPath string) (*types.Package, error) {
+			return r.Import(ctx, foreignPath)
+		},
 		localTypes: make(map[reflect.Type]bool), depth: 0}
 
 	r.registerNamedTypes(pkg, exports, converter)
-	r.registerLinkedGenericTypes(pkg, exports)
-	r.registerNativeBackedGenericTypes(pkg, exports, converter)
+	r.registerLinkedGenericTypes(ctx, pkg, exports)
+	r.registerNativeBackedGenericTypes(ctx, pkg, exports, converter)
 	r.registerFunctionsAndVariables(pkg, exports, converter)
 
 	pkg.MarkComplete()
@@ -738,19 +867,6 @@ func (*SymbolRegistry) registerFunctionsAndVariables(
 			scope.Insert(typeObject)
 		}
 	}
-}
-
-// pendingNamedType holds a named type whose underlying type has not yet been resolved
-// because it may reference other types in the same package.
-type pendingNamedType struct {
-	// elementReflectType is the element reflect.Type (the T in *T).
-	elementReflectType reflect.Type
-
-	// ptrRT is the pointer reflect.Type (*T).
-	ptrRT reflect.Type
-
-	// named is the forward-declared go/types named type.
-	named *types.Named
 }
 
 // classifyAllowlistEntries splits an allowlist into the set of whole-package wildcard

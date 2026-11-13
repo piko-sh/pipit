@@ -62,47 +62,62 @@ func useMapFastLinkname() bool {
 	return false
 }
 
-// mapSetStringIntProbeFirst returns false so callers materialise the key and store via
+// setMapStringInt64ProbeFirst returns false so callers materialise the key and store via
 // reflect.
 //
-// Returns false unconditionally on the safe build.
-func mapSetStringIntProbeFirst(_ *VM, _ reflect.Value, _ string, _ int64) bool {
+// Returns bool which is always false on the safe build.
+func setMapStringInt64ProbeFirst(_ *VM, _ reflect.Value, _ string, _ int64) bool {
 	return false
 }
 
-// mapAddStringIntProbeFirst returns false so callers materialise the key and store via
-// reflect.
-//
-// Returns false unconditionally on the safe build.
-func mapAddStringIntProbeFirst(_ *VM, _ reflect.Value, _ string, _ int64) bool {
-	return false
-}
-
-// mapSetStringStringProbeFirst returns false so callers materialise the key and store via
-// reflect.
-//
-// Returns false unconditionally on the safe build.
-func mapSetStringStringProbeFirst(_ *VM, _ reflect.Value, _, _ string) bool {
-	return false
-}
-
-// mapSetStringGeneralProbeFirst returns false so callers materialise the key and store
+// addToMapStringInt64ProbeFirst returns false so callers materialise the key and store
 // via reflect.
 //
-// Returns false unconditionally on the safe build.
-func mapSetStringGeneralProbeFirst(_ *VM, _ reflect.Value, _ string, _ reflect.Value) bool {
+// Returns bool which is always false on the safe build.
+func addToMapStringInt64ProbeFirst(_ *VM, _ reflect.Value, _ string, _ int64) bool {
+	return false
+}
+
+// setMapStringStringProbeFirst returns false so callers materialise the key and store via
+// reflect.
+//
+// Returns bool which is always false on the safe build.
+func setMapStringStringProbeFirst(_ *VM, _ reflect.Value, _, _ string) bool {
+	return false
+}
+
+// setMapStringGeneralProbeFirst returns false so callers materialise the key and store
+// via reflect.
+//
+// Returns bool which is always false on the safe build.
+func setMapStringGeneralProbeFirst(_ *VM, _ reflect.Value, _ mapAccessCacheEntry, _ string, _ reflect.Value) bool {
+	return false
+}
+
+// setMapInt64BoxedFast reports false so callers take the reflect path.
+//
+// Returns bool which is always false on the safe build.
+func setMapInt64BoxedFast(_ reflect.Value, _ reflect.Type, _ int64, _ reflect.Value) bool {
 	return false
 }
 
 // mapSetFast64PointerKeyed reports false so callers take the reflect path.
 //
-// Takes vm (*VM) which owns the arena; ignored in this build.
-// Takes m (reflect.Value) which is the destination map; ignored in this build.
-// Takes elemType (reflect.Type) which is the map's element type; ignored in this build.
-// Takes key (int64) which is the key value; ignored in this build.
-// Takes rawValue (reflect.Value) which is the value to store; ignored in this build.
+// Takes vm (*VM) which owns the arena.
+// Takes m (reflect.Value) which is the destination map.
+// Takes elemType (reflect.Type) which is the map's element type.
+// Takes key (int64) which is the key value.
+// Takes rawValue (reflect.Value) which is the value to store.
 //
-// Returns false unconditionally on the safe build.
+// Returns bool which is always false on the safe build.
 func mapSetFast64PointerKeyed(*VM, reflect.Value, reflect.Type, int64, reflect.Value) bool {
+	return false
+}
+
+// appendStringInLocalMapSlot returns false so callers run the lookup, the append and the
+// store as separate steps.
+//
+// Returns bool which is always false on the safe build.
+func appendStringInLocalMapSlot(_ *VM, _ *CallFrame, _ reflect.Value, _, _ string) bool {
 	return false
 }

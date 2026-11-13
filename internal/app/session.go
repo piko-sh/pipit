@@ -25,7 +25,6 @@ import (
 
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/engine/program"
-	"pipit.sh/pipit/internal/logging"
 )
 
 // SessionDeclKind classifies a session-scope declaration so the session can perform
@@ -176,7 +175,10 @@ func (sess *Session) SetStderr(writer io.Writer) {
 // Returns error when preprocessing, classification, type-checking, compilation, or
 // execution fails.
 func (sess *Session) Submit(ctx context.Context, code string) (any, error) {
-	ctx = logging.ContextWithLogger(ctx, sess.service.config.logger)
+	var bindErr error
+	if ctx, bindErr = sess.service.bindLogger(ctx); bindErr != nil {
+		return nil, bindErr
+	}
 	ctx, endDebug := sess.service.beginDebugExecution(ctx)
 	result, err := sess.submit(ctx, code)
 	endDebug(err)

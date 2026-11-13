@@ -46,8 +46,8 @@ const (
 	spillRetryMargin = 2
 )
 
-// registerRetryCheck enables PIPIT_REGISTER_RETRY_CHECK=1 verification that recompiling
-// a discarded body produces identical bytecode.
+// registerRetryCheck enables PIPIT_REGISTER_RETRY_CHECK=1 verification that recompiling a
+// discarded body produces identical bytecode.
 var registerRetryCheck = os.Getenv("PIPIT_REGISTER_RETRY_CHECK") != ""
 
 // registerSettings are the register-allocation choices one attempt at a body compiles
@@ -56,8 +56,8 @@ type registerSettings struct {
 	// spillLimits lowers the spill threshold per bank where active.
 	spillLimits [isa.NumRegisterKinds]scope.LoweredLimit
 
-	// compactArguments releases temporaries beneath call arguments by moving the
-	// arguments down.
+	// compactArguments releases temporaries beneath call arguments by moving the arguments
+	// down.
 	compactArguments bool
 }
 
@@ -130,13 +130,13 @@ func (c *Compiler) applyRegisterSettings(settings registerSettings) {
 	c.Scopes.Alloc.SetSpillLimits(settings.spillLimits)
 }
 
-// notePressure records register demand for the innermost overflowing statement.
-// Variables the statement reads cannot contribute freed registers because spilling them
-// requires a reload.
+// notePressure records register demand for the innermost overflowing statement. Variables
+// the statement reads cannot contribute freed registers because spilling them requires a
+// reload.
 //
 // Takes usage (*scope.StatementUsage) which is how the statement used the registers.
-// Takes sitesBefore ([isa.NumRegisterKinds]int) which is overflowSites when the
-// statement began.
+// Takes sitesBefore ([isa.NumRegisterKinds]int) which is overflowSites when the statement
+// began.
 func (c *Compiler) notePressure(usage *scope.StatementUsage, sitesBefore [isa.NumRegisterKinds]int) {
 	for kind := range isa.NumRegisterKinds {
 		if usage.Peak[kind] <= scope.AddressableRegisters || c.pressure.overflowSites[kind] != sitesBefore[kind] {
@@ -253,8 +253,8 @@ func (c *Compiler) compileNestedBodyWithRetry(ctx context.Context, unit retryUni
 // retryBody recompiles a body with tighter register settings until it fits or no retry
 // can help, then finishes the kept attempt.
 //
-// Retries restore body state and discard created closures. Successful nested settings
-// are reused on later parent attempts to avoid multiplying retries with nesting depth.
+// Retries restore body state and discard created closures. Successful nested settings are
+// reused on later parent attempts to avoid multiplying retries with nesting depth.
 //
 // Takes unit (retryUnit) which is the body.
 // Takes attempt (bodyAttempt) which compiles one attempt.
@@ -262,6 +262,7 @@ func (c *Compiler) compileNestedBodyWithRetry(ctx context.Context, unit retryUni
 //
 // Returns error from the kept attempt, its finish, or cancellation.
 func (c *Compiler) retryBody(ctx context.Context, unit retryUnit, attempt bodyAttempt, finish func(*Compiler) error) error {
+	ctx, logger := logging.From(ctx)
 	checkpoint := program.CaptureBodyCheckpoint(unit.function)
 	key := keptSettingsKey{node: unit.node, substitutions: substitutionsIdentity(unit.substitutions)}
 	settings, remembered := c.keptRegisterSettings[key]
@@ -269,10 +270,11 @@ func (c *Compiler) retryBody(ctx context.Context, unit retryUnit, attempt bodyAt
 		start := len(c.RootFunction.Functions)
 		sub, err := attempt(settings)
 		if err != nil {
-			if sub != nil {
-				c.discardCreatedFunctions(sub.createdFunctions, start)
+			if sub == nil {
+				return err
 			}
-			return err
+			c.discardCreatedFunctions(sub.createdFunctions, start)
+			return sub.withStickyCause(err)
 		}
 		next, retry := sub.retrySettings(attemptNumber, settings, remembered)
 		if !retry {
@@ -284,7 +286,7 @@ func (c *Compiler) retryBody(ctx context.Context, unit retryUnit, attempt bodyAt
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		logging.LoggerFrom(ctx).Debug("recompiling body under register pressure",
+		logger.Debug("recompiling body under register pressure",
 			"function", unit.function.Name, "attempt", attemptNumber+1,
 			"compactArguments", next.compactArguments, "spillLimits", next.spillLimits)
 		settings = next
@@ -334,9 +336,9 @@ func (c *Compiler) registerCreatedFunction(function *program.CompiledFunction) (
 	return index, nil
 }
 
-// discardCreatedFunctions removes abandoned closures, preserving complete
-// specialisations shared through the cache. Trailing slots are truncated no further
-// than start, and remaining slots become reusable stand-ins.
+// discardCreatedFunctions removes abandoned closures, preserving complete specialisations
+// shared through the cache. Trailing slots are truncated no further than start, and
+// remaining slots become reusable stand-ins.
 //
 // Takes created ([]uint16) which are the indices the attempt created.
 // Takes start (int) which is the table's length when the attempt began.

@@ -82,6 +82,11 @@ func isPipitMakeFunctionClosure(reflectedFunction reflect.Value) bool {
 // type by wrapping the argument in a pipit-side adapter, or an invalid reflect.Value when
 // no adapter is applicable.
 //
+// Only an interface with methods gets an adapter, because native code asked for those
+// methods and the adapter carries the script's. A value bound for `any` is passed as
+// itself, so native code sees its real type and memory. The natives that look methods up
+// on an `any` operand prepare it by their sink (prepareAnySinkArgument).
+//
 // Takes vm (*VM) which provides access to the method registry.
 // Takes argument (reflect.Value) which is the value being passed through
 // coerceReflectArgument.
@@ -95,11 +100,7 @@ func tryBuildInterfaceAdapter(vm *VM, argument reflect.Value, expectedType refle
 	if vm == nil || vm.rootFunction == nil || expectedType == nil {
 		return reflect.Value{}
 	}
-	if expectedType.Kind() != reflect.Interface {
-		return reflect.Value{}
-	}
-	allowAny := expectedType.NumMethod() == 0
-	if !allowAny && !IsSupportedAdapterInterface(expectedType) {
+	if expectedType.Kind() != reflect.Interface || expectedType.NumMethod() == 0 || !IsSupportedAdapterInterface(expectedType) {
 		return reflect.Value{}
 	}
 	if !argument.IsValid() {
@@ -109,10 +110,7 @@ func tryBuildInterfaceAdapter(vm *VM, argument reflect.Value, expectedType refle
 	if typeName == "" {
 		return reflect.Value{}
 	}
-	if !allowAny {
-		return buildAdapterForInterface(vm, argument, expectedType, typeName)
-	}
-	return buildAnyInterfaceAdapter(vm, argument, typeName)
+	return buildAdapterForInterface(vm, argument, expectedType, typeName)
 }
 
 // resolveAdapterTypeName determines the source-level type name used to look up adapter
@@ -129,7 +127,7 @@ func resolveAdapterTypeName(vm *VM, argument reflect.Value, typeCtx argumentType
 	if argument.Kind() == reflect.Pointer && argument.Type().Elem().Kind() == reflect.Pointer {
 		return ""
 	}
-	if info, ok := typemodel.LookupNamedScalarPoolInfo(argument.Type()); ok {
+	if info, ok := typemodel.LookupNamedTypeInfo(argument.Type()); ok {
 		return info.BareName
 	}
 	if !isPipitSynthesisedReflectType(argument.Type()) && typeCtx.staticTypeName != "" {
@@ -209,31 +207,4 @@ func buildExtendedAdapterForInterface(vm *VM, argument reflect.Value, expectedTy
 		return buildHeapInterfaceAdapterIfRegistered(vm, argument, typeName)
 	}
 	return buildRegisteredAdapter(vm, argument, expectedType, typeName)
-}
-
-// buildAnyInterfaceAdapter tries each adapter builder in turn for an empty-interface
-// (any) parameter, returning the first applicable adapter or the Stringer adapter as the
-// final fallback.
-//
-// Takes vm (*VM) which provides the method registry.
-// Takes argument (reflect.Value) which is the value being wrapped.
-// Takes typeName (string) which is the source-level type name.
-//
-// Returns the first applicable wrapped reflect.Value, or an invalid reflect.Value when no
-// adapter applies.
-func buildAnyInterfaceAdapter(vm *VM, argument reflect.Value, typeName string) reflect.Value {
-	builders := []func(*VM, reflect.Value, string) reflect.Value{
-		buildScannerAdapterIfRegistered,
-		buildErrorAdapterIfRegistered,
-		buildMarshalerAdapterIfRegistered,
-		buildUnmarshalerAdapterIfRegistered,
-		buildReaderAdapterIfRegistered,
-		buildWriterAdapterIfRegistered,
-	}
-	for _, builder := range builders {
-		if adapter := builder(vm, argument, typeName); adapter.IsValid() {
-			return adapter
-		}
-	}
-	return buildStringerAdapterIfRegistered(vm, argument, typeName)
 }

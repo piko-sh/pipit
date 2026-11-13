@@ -21,7 +21,6 @@
 package bench
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -181,13 +180,13 @@ func run() int {
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			service := app.NewService()
-			cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": bm.source})
+			cfs, err := service.CompileFileSet(b.Context(), map[string]string{"main.go": bm.source})
 			require.NoError(b, err)
 
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
-				_, err = service.ExecuteEntrypoint(context.Background(), cfs, "run")
+				_, err = service.ExecuteEntrypoint(b.Context(), cfs, "run")
 				if err != nil {
 					require.NoError(b, err)
 				}
@@ -242,13 +241,13 @@ func run() int { return recurse(1000) }
 	for _, d := range depths {
 		b.Run(d.name, func(b *testing.B) {
 			service := app.NewService()
-			cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": d.source})
+			cfs, err := service.CompileFileSet(b.Context(), map[string]string{"main.go": d.source})
 			require.NoError(b, err)
 
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
-				_, err = service.ExecuteEntrypoint(context.Background(), cfs, "run")
+				_, err = service.ExecuteEntrypoint(b.Context(), cfs, "run")
 				if err != nil {
 					require.NoError(b, err)
 				}

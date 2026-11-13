@@ -86,13 +86,52 @@ func validateFunctionTypes(ctx context.Context, function *schemagen.CompiledFunc
 	}, 0, payloadLen, budget); err != nil {
 		return err
 	}
-	return validateTypeEntries(ctx, function.TypeNamesLength(), func(index int) *schemagen.TypeDescriptor {
+	if err := validateTypeEntries(ctx, function.TypeNamesLength(), func(index int) *schemagen.TypeDescriptor {
 		var entry schemagen.TypeNameEntry
 		if !function.TypeNames(&entry, index) {
 			return nil
 		}
 		return entry.TypeDescriptor(nil)
-	}, 0, payloadLen, budget)
+	}, 0, payloadLen, budget); err != nil {
+		return err
+	}
+	if err := validateTypeEntries(ctx, function.ReceiverMethodsLength(), func(index int) *schemagen.TypeDescriptor {
+		var entry schemagen.ReceiverMethodEntry
+		if !function.ReceiverMethods(&entry, index) {
+			return nil
+		}
+		return entry.ReceiverTypeDescriptor(nil)
+	}, 0, payloadLen, budget); err != nil {
+		return err
+	}
+	return validateLinkedTypeArgs(ctx, function, payloadLen, budget)
+}
+
+// validateLinkedTypeArgs checks the type arguments every call site records for a call
+// through a generic function's linked sibling.
+//
+// Takes function (*schemagen.CompiledFunction) which holds the untrusted call sites.
+// Takes payloadLen (int) which is the total payload size.
+// Takes budget (*bytecodeExpansionBudget) which tracks the file-wide expansion budget.
+//
+// Returns error before reconstructing any type argument.
+func validateLinkedTypeArgs(ctx context.Context, function *schemagen.CompiledFunction, payloadLen int, budget *bytecodeExpansionBudget) error {
+	var site schemagen.CallSite
+	for index := range function.CallSitesLength() {
+		if !function.CallSites(&site, index) || site.LinkedTypeArgsLength() == 0 {
+			continue
+		}
+		if err := validateTypeEntries(ctx, site.LinkedTypeArgsLength(), func(argument int) *schemagen.TypeDescriptor {
+			var entry schemagen.TypeDescriptor
+			if !site.LinkedTypeArgs(&entry, argument) {
+				return nil
+			}
+			return &entry
+		}, 0, payloadLen, budget); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // validateTypeEntries charges slots even when their descriptor is absent. The getter is a

@@ -18,9 +18,22 @@
 
 // Package isa defines the interpreter's instruction set.
 //
-// An instruction is four bytes: an opcode and three operand bytes. Operations are grouped
-// into tiers by how many operands they take, with the drill opcodes using their leading
-// operand bytes as sub-opcodes; that is how the set stays inside one byte while covering
-// several hundred operations. The tier is a consequence of arity, not a ranking: dispatch
-// is flat, so an operation at tier 3 costs no more to execute than one at tier 0.
+// An instruction has an opcode and three operand bytes. Drill opcodes use leading operand
+// bytes as sub-opcodes to select a tier.
+//
+// # Naming grammar
+//
+// Printed names start with a verb, followed by register banks and modifiers such as
+// CONSTANT, IMMEDIATE, WIDE and UNCHECKED. A fused operation joins two names with _THEN_,
+// as in LESS_THAN_INT64_THEN_JUMP_IF_FALSE. The disassembler prints the tier as a prefix,
+// as in 2:RETURN. Names are unique across tiers.
+//
+// Words are spelt out, as in INCREMENT, SUBTRACT and CAPTURED_VARIABLE. Go type names,
+// function names such as MATH_SQRT and STRCONV_ITOA, and the terms IIFE, SIMD and OK keep
+// their usual spelling.
+//
+// Register banks are named by the Go types they hold. INT64 holds signed integers, UINT64
+// unsigned integers and FLOAT64 also holds float32 values. GENERAL holds other reflected
+// values. A sized type in an operation name describes its arithmetic width. ADD_INT32
+// wraps at 32 bits, and ROUND_TO_FLOAT32 rounds to float32 precision.
 package isa

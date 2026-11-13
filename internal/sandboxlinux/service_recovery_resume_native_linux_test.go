@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64) && !race
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64) && !race
 
 package sandboxlinux
 
@@ -96,7 +96,7 @@ func TestNativeServiceResumeReleaseChild(t *testing.T) {
 	if err := json.Unmarshal([]byte(encoded), &storage); err != nil {
 		t.Fatal(err)
 	}
-	claim, err := ClaimServiceRecovery(context.Background(), storage)
+	claim, err := ClaimServiceRecovery(t.Context(), storage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestNativeServiceResumeReleaseChild(t *testing.T) {
 	switch os.Getenv("PIPIT_TEST_RELEASE_STAGE") {
 	case "before-removal":
 	case "after-removal":
-		if err := claim.group.closeGroup(context.Background()); err != nil {
+		if err := claim.group.closeGroup(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 	default:
@@ -123,7 +123,7 @@ func TestNativeServiceResumeReleaseChild(t *testing.T) {
 
 func TestNativeReadyRecoveryRefusesPopulatedOriginal(t *testing.T) {
 	parent := sandboxtest.CgroupParent(t)
-	aggregate, err := newGroup(parent, Limits{})
+	aggregate, err := newGroup(t.Context(), parent, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,12 +132,12 @@ func TestNativeReadyRecoveryRefusesPopulatedOriginal(t *testing.T) {
 	if err := enableChildControllers(aggregate.directory); err != nil {
 		t.Fatal(err)
 	}
-	original, err := newServiceGroup(root, Limits{}, testTenant)
+	original, err := newServiceGroup(t.Context(), root, Limits{}, testTenant)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 		defer cancel()
 		if err := original.closeGroup(ctx); err != nil {
 			t.Error(err)

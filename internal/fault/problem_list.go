@@ -53,8 +53,8 @@ func (p *ProblemList) Unwrap() []error {
 	return p.Problems
 }
 
-// JoinProblems combines compilation errors, dropping nils and flattening nested lists.
-// A single remaining problem is returned unchanged.
+// JoinProblems combines compilation errors, dropping nils and flattening nested lists. A
+// single remaining problem is returned unchanged.
 //
 // Takes problems ([]error) which are the problems found.
 //
@@ -81,8 +81,8 @@ func JoinProblems(problems []error) error {
 	}
 }
 
-// Problems returns the entries of the first *ProblemList in err's chain, or err itself
-// if no list exists.
+// Problems returns the entries of the first *ProblemList in err's chain, or err itself if
+// no list exists.
 //
 // Takes err (error) which is the error to split; nil gives nil.
 //

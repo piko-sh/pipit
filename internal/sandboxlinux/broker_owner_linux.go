@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxlinux
 
@@ -62,18 +62,18 @@ func (owner *FilesystemBroker) Execute(ctx context.Context, payload json.RawMess
 // Close shuts down the client and retains native cleanup ownership for retries.
 //
 // Returns any execution, shutdown or resource cleanup error.
-func (owner *FilesystemBroker) Close() error {
+func (owner *FilesystemBroker) Close(ctx context.Context) error {
 	if owner == nil {
 		return nil
 	}
 	if owner.recovery != nil {
-		return owner.closeJournalled()
+		return owner.closeJournalled(ctx)
 	}
 	if owner.client != nil {
-		return owner.client.Close()
+		return owner.client.Close(ctx)
 	}
 	if owner.process != nil {
-		return owner.process.Close()
+		return owner.process.Close(ctx)
 	}
 	return nil
 }

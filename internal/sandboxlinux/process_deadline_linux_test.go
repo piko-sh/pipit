@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxlinux
 
@@ -40,11 +40,11 @@ func TestWorkerPhaseDeadlineReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	process.expirePhase(first)
-	if err := process.context.Err(); err != nil {
+	if err := process.lifetimeErr(); err != nil {
 		t.Fatalf("superseded timer cancelled a new phase: %v", err)
 	}
 	process.expirePhase(second)
-	if !errors.Is(process.context.Err(), context.Canceled) {
+	if !errors.Is(process.lifetimeErr(), context.Canceled) {
 		t.Fatal("phase expiry did not cancel the process")
 	}
 	if err := process.SetDeadline(second.Add(time.Hour)); !errors.Is(err, context.Canceled) {
@@ -59,7 +59,7 @@ func TestWorkerPhaseCannotExtendExpiredDeadline(t *testing.T) {
 	if err := process.SetDeadline(time.Now().Add(time.Hour)); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expired phase extended before its callback ran: %v", err)
 	}
-	if !errors.Is(process.context.Err(), context.Canceled) {
+	if !errors.Is(process.lifetimeErr(), context.Canceled) {
 		t.Fatal("expired phase did not cancel execution")
 	}
 }
@@ -84,7 +84,7 @@ func TestWorkerPhaseIgnoresTimerAfterExit(t *testing.T) {
 	}
 	process.phaseFinished = true
 	process.expirePhase(deadline)
-	if err := process.context.Err(); err != nil {
+	if err := process.lifetimeErr(); err != nil {
 		t.Fatalf("finished phase accepted a stale timeout: %v", err)
 	}
 	if err := process.SetDeadline(deadline); !errors.Is(err, os.ErrClosed) {
@@ -99,7 +99,9 @@ func phaseFixture(t *testing.T) *WorkerProcess {
 		t.Fatal(err)
 	}
 	var process WorkerProcess
-	process.context, process.cancel = context.WithCancel(context.Background())
+	lifetime, cancel := context.WithCancel(t.Context())
+	process.cancel = cancel
+	process.watchLifetime(lifetime)
 	process.stream = reader
 	t.Cleanup(func() {
 		process.phaseMutex.Lock()

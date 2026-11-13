@@ -24,6 +24,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"reflect"
 
 	"pipit.sh/pipit/internal/compile/fieldlayout"
 	"pipit.sh/pipit/internal/compile/isaselect"
@@ -121,16 +122,14 @@ func (c *Compiler) compileCompoundAssign(ctx context.Context, statement *ast.Ass
 	}
 }
 
-// compileCompoundAssignStar compiles `*p OP= rhs` by reading the value through the
-// dereferenced pointer, applying the binary operator, and writing the result back through
-// the same pointer. Mirrors the Ident path but uses compileStarExpression /
-// compileStarAssign for the load and store sides.
+// compileCompoundAssignStar compiles a compound assignment through a pointer.
 //
 // Takes target (*ast.StarExpr) which is the dereference expression on the left-hand side.
 // Takes rightHandSide (ast.Expr) which is the right-hand operand.
 // Takes binaryOperation (token.Token) which is the underlying binary operator.
 //
-// Returns the location of the computed result and any compilation error.
+// Returns program.VarLocation which holds the assignment result.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileCompoundAssignStar(ctx context.Context, target *ast.StarExpr, rightHandSide ast.Expr, binaryOperation token.Token) (program.VarLocation, error) {
 	pointerLocation, err := c.compileExpression(ctx, target.X)
 	if err != nil {
@@ -141,7 +140,7 @@ func (c *Compiler) compileCompoundAssignStar(ctx context.Context, target *ast.St
 	if err != nil {
 		return program.VarLocation{}, err
 	}
-	rhsLocation, err := c.compileExpression(ctx, rightHandSide)
+	rhsLocation, err := c.compileCompoundOperand(ctx, binaryOperation, rightHandSide)
 	if err != nil {
 		return program.VarLocation{}, err
 	}
@@ -164,8 +163,8 @@ func (c *Compiler) compileCompoundAssignStar(ctx context.Context, target *ast.St
 // Takes binaryOperation (token.Token) which is the binary operator corresponding to the
 // compound assignment.
 //
-// Returns the result location of the compiled assignment and any compilation error
-// encountered.
+// Returns program.VarLocation which holds the assignment result.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileCompoundAssignIdent(ctx context.Context, target *ast.Ident, rightHandSide ast.Expr, binaryOperation token.Token) (program.VarLocation, error) {
 	if target.Name == typemap.BlankIdentName {
 		_, err := c.compileExpression(ctx, rightHandSide)
@@ -174,9 +173,9 @@ func (c *Compiler) compileCompoundAssignIdent(ctx context.Context, target *ast.I
 
 	switch c.resolveIdentTarget(target) {
 	case identTargetUpvalue:
-		return c.compileCompoundAssignUpvalue(ctx, c.upvalueMap[target.Name], rightHandSide, binaryOperation)
+		return c.compileCompoundAssignUpvalue(ctx, target, rightHandSide, binaryOperation)
 	case identTargetGlobal:
-		return c.compileCompoundAssignGlobal(ctx, c.globalVariables[target.Name], rightHandSide, binaryOperation)
+		return c.compileCompoundAssignGlobal(ctx, target, rightHandSide, binaryOperation)
 	case identTargetLocal, identTargetUnknown:
 	}
 
@@ -184,7 +183,7 @@ func (c *Compiler) compileCompoundAssignIdent(ctx context.Context, target *ast.I
 	if !found {
 		return program.VarLocation{}, fmt.Errorf("undefined variable: %s at %s", target.Name, c.positionString(target.Pos()))
 	}
-	rhsLocation, err := c.compileExpression(ctx, rightHandSide)
+	rhsLocation, err := c.compileCompoundOperand(ctx, binaryOperation, rightHandSide)
 	if err != nil {
 		return program.VarLocation{}, err
 	}
@@ -205,33 +204,50 @@ func (c *Compiler) compileCompoundAssignIdent(ctx context.Context, target *ast.I
 	if err != nil {
 		return program.VarLocation{}, err
 	}
-	var resultType types.Type
-	if targetObject := c.Info.ObjectOf(target); targetObject != nil {
-		c.EmitNarrowIntegerTruncation(resultLocation, targetObject.Type())
-		resultType = targetObject.Type()
-	}
+	resultType := c.narrowCompoundResult(target, binaryOperation, resultLocation)
 	c.emitMoveTyped(ctx, destLocation, resultLocation, resultType)
-	c.emitWriteSharedCellIfCaptured(ctx, destLocation)
+	c.emitSetSharedCellIfCaptured(ctx, destLocation)
 	return destLocation, nil
+}
+
+// narrowCompoundResult narrows the result of a compound assignment to a named variable to
+// the variable's type, unless the operation cannot leave that type.
+//
+// Takes target (*ast.Ident) which names the variable.
+// Takes binaryOperation (token.Token) which is the operation applied.
+// Takes result (program.VarLocation) which holds the operation's result.
+//
+// Returns types.Type which is the variable's type as the body being compiled sees it, or
+// nil when the identifier names no object.
+func (c *Compiler) narrowCompoundResult(target *ast.Ident, binaryOperation token.Token, result program.VarLocation) types.Type {
+	targetObject := c.Info.ObjectOf(target)
+	if targetObject == nil {
+		return nil
+	}
+	resultType := c.substitutedType(targetObject.Type())
+	if !typemap.BinaryResultFitsNarrowType(binaryOperation, resultType) {
+		c.EmitNarrowIntegerTruncation(result, resultType)
+	}
+	return resultType
 }
 
 // compileCompoundAssignUpvalue compiles compound assignment to a captured variable.
 //
-// Takes reference (upvalueReference) which is the upvalue reference identifying the
-// captured variable.
+// Takes target (*ast.Ident) which names the captured variable.
 // Takes rightHandSide (ast.Expr) which is the AST expression on the right-hand side of
 // the compound operator.
 // Takes binaryOperation (token.Token) which is the binary operator corresponding to the
 // compound assignment.
 //
-// Returns the result location of the compiled assignment and any compilation error
-// encountered.
-func (c *Compiler) compileCompoundAssignUpvalue(ctx context.Context, reference upvalueReference, rightHandSide ast.Expr, binaryOperation token.Token) (program.VarLocation, error) {
+// Returns program.VarLocation which holds the assignment result.
+// Returns error which reports a compilation failure.
+func (c *Compiler) compileCompoundAssignUpvalue(ctx context.Context, target *ast.Ident, rightHandSide ast.Expr, binaryOperation token.Token) (program.VarLocation, error) {
+	reference := c.upvalueMap[target.Name]
 	currentRegister := c.Scopes.Alloc.AllocTemp(reference.kind)
-	program.Emit(c.Function, isa.OpGetUpvalue, currentRegister, safeconv.MustIntToUint8(reference.index), uint8(reference.kind))
+	program.Emit(c.Function, isa.OpGetCapturedVariable, currentRegister, safeconv.MustIntToUint8(reference.index), uint8(reference.kind))
 	currentLocation := program.VarLocation{Register: currentRegister, Kind: reference.kind}
 
-	rhsLocation, err := c.compileExpression(ctx, rightHandSide)
+	rhsLocation, err := c.compileCompoundOperand(ctx, binaryOperation, rightHandSide)
 	if err != nil {
 		return program.VarLocation{}, err
 	}
@@ -239,25 +255,26 @@ func (c *Compiler) compileCompoundAssignUpvalue(ctx context.Context, reference u
 	if err != nil {
 		return program.VarLocation{}, err
 	}
-	program.Emit(c.Function, isa.OpSetUpvalue, resultLocation.Register, safeconv.MustIntToUint8(reference.index), uint8(resultLocation.Kind))
+	c.narrowCompoundResult(target, binaryOperation, resultLocation)
+	program.Emit(c.Function, isa.OpSetCapturedVariable, resultLocation.Register, safeconv.MustIntToUint8(reference.index), uint8(resultLocation.Kind))
 	c.Scopes.Alloc.FreeTemp(reference.kind, currentRegister)
 	return resultLocation, nil
 }
 
 // compileCompoundAssignGlobal compiles compound assignment to a package-level variable.
 //
-// Takes gv (GlobalVariableInfo) which holds the global store location for the target
-// variable.
+// Takes target (*ast.Ident) which names the package-level variable.
 // Takes rightHandSide (ast.Expr) which is the AST expression on the right-hand side of
 // the compound operator.
 // Takes binaryOperation (token.Token) which is the binary operator corresponding to the
 // compound assignment.
 //
-// Returns the result location of the compiled assignment and any compilation error
-// encountered.
-func (c *Compiler) compileCompoundAssignGlobal(ctx context.Context, gv program.GlobalVariableInfo, rightHandSide ast.Expr, binaryOperation token.Token) (program.VarLocation, error) {
-	currentLocation := c.emitGetGlobal(ctx, gv)
-	rhsLocation, err := c.compileExpression(ctx, rightHandSide)
+// Returns program.VarLocation which holds the assignment result.
+// Returns error which reports a compilation failure.
+func (c *Compiler) compileCompoundAssignGlobal(ctx context.Context, target *ast.Ident, rightHandSide ast.Expr, binaryOperation token.Token) (program.VarLocation, error) {
+	globalVariable := c.globalVariables[target.Name]
+	currentLocation := c.emitGetGlobal(ctx, globalVariable)
+	rhsLocation, err := c.compileCompoundOperand(ctx, binaryOperation, rightHandSide)
 	if err != nil {
 		return program.VarLocation{}, err
 	}
@@ -265,7 +282,8 @@ func (c *Compiler) compileCompoundAssignGlobal(ctx context.Context, gv program.G
 	if err != nil {
 		return program.VarLocation{}, err
 	}
-	c.emitSetGlobal(ctx, gv, resultLocation)
+	c.narrowCompoundResult(target, binaryOperation, resultLocation)
+	c.emitSetGlobal(ctx, globalVariable, resultLocation)
 	return resultLocation, nil
 }
 
@@ -310,8 +328,8 @@ func (c *Compiler) compileCompoundAssignIndex(ctx context.Context, target *ast.I
 // Takes binaryOperation (token.Token) which is the binary operator corresponding to the
 // compound assignment.
 //
-// Returns the result location of the compiled assignment and any compilation error
-// encountered.
+// Returns program.VarLocation which holds the assignment result.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileCompoundAssignMap(
 	ctx context.Context,
 	mapType *types.Map,
@@ -319,47 +337,47 @@ func (c *Compiler) compileCompoundAssignMap(
 	rightHandSide ast.Expr,
 	binaryOperation token.Token,
 ) (program.VarLocation, error) {
-	rhsLocation, err := c.compileExpression(ctx, rightHandSide)
+	rhsLocation, err := c.compileCompoundOperand(ctx, binaryOperation, rightHandSide)
 	if err != nil {
 		return program.VarLocation{}, err
 	}
 
 	keyKind := c.kindFor(mapType.Key())
 	valueKind := c.kindFor(mapType.Elem())
-	if valueKind == isa.RegisterInt && rhsLocation.Kind == isa.RegisterInt && indexLocation.Kind == keyKind &&
+	if valueKind == isa.RegisterInt64 && rhsLocation.Kind == isa.RegisterInt64 && indexLocation.Kind == keyKind &&
 		binaryOperation == token.ADD &&
-		(keyKind == isa.RegisterInt || keyKind == isa.RegisterString) {
-		fusedOp := isa.OpMapAddIntInt
+		(keyKind == isa.RegisterInt64 || keyKind == isa.RegisterString) {
+		fusedOp := isa.OpAddToMapInt64Int64
 		if keyKind == isa.RegisterString {
-			fusedOp = isa.OpMapAddStringInt
+			fusedOp = isa.OpAddToMapStringInt64
 		}
 		program.Emit(c.Function, fusedOp, collectionLocation.Register, indexLocation.Register, rhsLocation.Register)
 		return program.VarLocation{}, nil
 	}
-	if keyKind == isa.RegisterInt && valueKind == isa.RegisterInt && indexLocation.Kind == isa.RegisterInt && rhsLocation.Kind == isa.RegisterInt {
-		currentRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-		currentLocation := program.VarLocation{Register: currentRegister, Kind: isa.RegisterInt}
-		c.EmitTyped(ctx, isa.OpMapGetIntInt, currentLocation, collectionLocation, indexLocation)
+	if keyKind == isa.RegisterInt64 && valueKind == isa.RegisterInt64 && indexLocation.Kind == isa.RegisterInt64 && rhsLocation.Kind == isa.RegisterInt64 {
+		currentRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+		currentLocation := program.VarLocation{Register: currentRegister, Kind: isa.RegisterInt64}
+		c.EmitTyped(ctx, isa.OpGetMapInt64Int64, currentLocation, collectionLocation, indexLocation)
 		resultLocation, binaryError := c.emitBinaryOp(ctx, binaryOperation, currentLocation, rhsLocation)
 		if binaryError != nil {
 			return program.VarLocation{}, binaryError
 		}
-		c.EmitTyped(ctx, isa.OpMapSetIntInt, collectionLocation, indexLocation, resultLocation)
+		c.EmitTyped(ctx, isa.OpSetMapInt64Int64, collectionLocation, indexLocation, resultLocation)
 		return program.VarLocation{}, nil
 	}
 
 	c.boxElementToGeneralTemp(ctx, &indexLocation)
 	c.boxToGeneralTemp(ctx, &collectionLocation)
 	currentRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpMapIndex, currentRegister, collectionLocation.Register, indexLocation.Register)
-	currentLocation := c.unboxForCompound(ctx, currentRegister, rhsLocation.Kind)
+	program.Emit(c.Function, isa.OpGetMap, currentRegister, collectionLocation.Register, indexLocation.Register)
+	currentLocation := c.unboxForCompound(ctx, currentRegister, c.compoundValueKind(binaryOperation, mapType.Elem(), rhsLocation))
 
 	resultLocation, binaryError := c.emitBinaryOp(ctx, binaryOperation, currentLocation, rhsLocation)
 	if binaryError != nil {
 		return program.VarLocation{}, binaryError
 	}
 	c.boxElementToGeneralTemp(ctx, &resultLocation)
-	program.Emit(c.Function, isa.OpMapSet, collectionLocation.Register, indexLocation.Register, resultLocation.Register)
+	program.Emit(c.Function, isa.OpSetMap, collectionLocation.Register, indexLocation.Register, resultLocation.Register)
 	return program.VarLocation{}, nil
 }
 
@@ -375,8 +393,8 @@ func (c *Compiler) compileCompoundAssignMap(
 // Takes binaryOperation (token.Token) which is the binary operator corresponding to the
 // compound assignment.
 //
-// Returns the result location of the compiled assignment and any compilation error
-// encountered.
+// Returns program.VarLocation which holds the assignment result.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileCompoundAssignSlice(
 	ctx context.Context,
 	collectionType types.Type,
@@ -384,32 +402,31 @@ func (c *Compiler) compileCompoundAssignSlice(
 	rightHandSide ast.Expr,
 	binaryOperation token.Token,
 ) (program.VarLocation, error) {
-	rhsLocation, err := c.compileExpression(ctx, rightHandSide)
+	rhsLocation, err := c.compileCompoundOperand(ctx, binaryOperation, rightHandSide)
 	if err != nil {
 		return program.VarLocation{}, err
 	}
 
-	if elementRegisterKind, ok := c.sliceElemRegisterKind(collectionType); ok && rhsLocation.Kind == elementRegisterKind && indexLocation.Kind == isa.RegisterInt {
-		var elementType types.Type
-		switch collection := collectionType.(type) {
-		case *types.Slice:
-			elementType = collection.Elem()
-		case *types.Array:
-			elementType = collection.Elem()
+	elementType, _ := c.indexedElementType(collectionType)
+	elementRegisterKind, ok := c.sliceElemRegisterKind(collectionType)
+	if ok && c.compoundValueKind(binaryOperation, elementType, rhsLocation) == elementRegisterKind && indexLocation.Kind == isa.RegisterInt64 {
+		narrowTo := elementType
+		if c.elementStoreKeepsOnlyItsWidth(ctx, collectionType, elementType) {
+			narrowTo = nil
 		}
-		return c.compileCompoundAssignSliceTyped(ctx, collectionLocation, indexLocation, rhsLocation, elementRegisterKind, binaryOperation, elementType)
+		return c.compileCompoundAssignSliceTyped(ctx, collectionLocation, indexLocation, rhsLocation, elementRegisterKind, binaryOperation, narrowTo)
 	}
 
 	currentRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpIndex, currentRegister, collectionLocation.Register, indexLocation.Register)
-	currentLocation := c.unboxForCompound(ctx, currentRegister, rhsLocation.Kind)
+	program.Emit(c.Function, isa.OpGetElement, currentRegister, collectionLocation.Register, indexLocation.Register)
+	currentLocation := c.unboxForCompound(ctx, currentRegister, c.compoundValueKind(binaryOperation, elementType, rhsLocation))
 
 	resultLocation, err := c.emitBinaryOp(ctx, binaryOperation, currentLocation, rhsLocation)
 	if err != nil {
 		return program.VarLocation{}, err
 	}
 	c.boxToGeneralTemp(ctx, &resultLocation)
-	program.Emit(c.Function, isa.OpIndexSet, collectionLocation.Register, indexLocation.Register, resultLocation.Register)
+	program.Emit(c.Function, isa.OpSetElement, collectionLocation.Register, indexLocation.Register, resultLocation.Register)
 	return program.VarLocation{}, nil
 }
 
@@ -425,20 +442,21 @@ func (c *Compiler) compileCompoundAssignSlice(
 // element type.
 // Takes binaryOperation (token.Token) which is the binary operator corresponding to the
 // compound assignment.
-// Takes elementType (types.Type) which is the Go type of the slice element.
+// Takes narrowTo (types.Type) which is the element type the result is narrowed to before
+// it is stored, or nil when the store narrows it.
 //
-// Returns the result location of the compiled assignment and any compilation error
-// encountered.
+// Returns program.VarLocation which holds the assignment result.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileCompoundAssignSliceTyped(
 	ctx context.Context,
 	collectionLocation, indexLocation, rhsLocation program.VarLocation,
 	elementRegisterKind isa.RegisterKind,
 	binaryOperation token.Token,
-	elementType types.Type,
+	narrowTo types.Type,
 ) (program.VarLocation, error) {
 	currentRegister := c.Scopes.Alloc.AllocTemp(elementRegisterKind)
 	currentLocation := program.VarLocation{Register: currentRegister, Kind: elementRegisterKind}
-	useDirectInt := collectionLocation.Kind == isa.RegisterSliceInt && elementRegisterKind == isa.RegisterInt
+	useDirectInt := collectionLocation.Kind == isa.RegisterSliceInt64 && elementRegisterKind == isa.RegisterInt64
 	useDirectTier1 := !useDirectInt &&
 		isa.ElementKindForTypedSlice(collectionLocation.Kind) == elementRegisterKind &&
 		isa.IsTypedSliceKind(collectionLocation.Kind)
@@ -448,11 +466,44 @@ func (c *Compiler) compileCompoundAssignSliceTyped(
 		return program.VarLocation{}, err
 	}
 
-	if elementType != nil {
-		c.EmitNarrowIntegerTruncation(resultLocation, elementType)
+	if narrowTo != nil {
+		c.EmitNarrowIntegerTruncation(resultLocation, narrowTo)
 	}
 	c.emitCompoundSliceSet(ctx, collectionLocation, indexLocation, resultLocation, elementRegisterKind, useDirectInt, useDirectTier1)
 	return program.VarLocation{}, nil
+}
+
+// elementStoreKeepsOnlyItsWidth reports whether a typed store keeps exactly the bits a
+// truncation to the element's type would keep.
+//
+// A typed integer store writes as many bytes as the element the collection holds at run
+// time. The answer is therefore taken from the collection's run-time type, which a type
+// that refers to itself or a generic instantiation can give wider elements than its
+// static type names.
+//
+// Takes collectionType (types.Type) which is the static type of the slice, the array or
+// the pointer to an array.
+// Takes elementType (types.Type) which is the static type of its elements.
+//
+// Returns bool which is true for a narrow integer element stored at its own width.
+func (c *Compiler) elementStoreKeepsOnlyItsWidth(ctx context.Context, collectionType, elementType types.Type) bool {
+	width := typemap.NarrowIntegerBitWidth(elementType)
+	if width == 0 {
+		return false
+	}
+	stored := c.TypeToReflect(ctx, collectionType)
+	if stored != nil && stored.Kind() == reflect.Pointer {
+		stored = stored.Elem()
+	}
+	if stored == nil || (stored.Kind() != reflect.Slice && stored.Kind() != reflect.Array) {
+		return false
+	}
+	switch element := stored.Elem(); element.Kind() {
+	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Uint8, reflect.Uint16, reflect.Uint32:
+		return element.Bits() == int(width)
+	default:
+		return false
+	}
 }
 
 // emitCompoundSliceGet emits the read half of a compound slice assignment, dispatching to
@@ -521,7 +572,7 @@ func (c *Compiler) emitCompoundSliceSet(
 // Takes ops (compoundSliceOps) which carries the per-direction opcode dispatch table.
 // Takes args (compoundSliceAccessArgs) which carries the per-call inputs.
 func (c *Compiler) emitCompoundSliceAccess(ctx context.Context, ops isaselect.CompoundSliceOps, args compoundSliceAccessArgs) {
-	isGet := ops.DirectIntOpcode == isa.OpSliceGetIntDirect
+	isGet := ops.DirectIntOpcode == isa.OpGetSliceInt64Element
 	switch {
 	case args.useDirectInt:
 		if isGet {
@@ -534,10 +585,10 @@ func (c *Compiler) emitCompoundSliceAccess(ctx context.Context, ops isaselect.Co
 		directSubOp, _ := ops.Tier1SubOp(args.collectionLocation.Kind)
 		if isGet {
 			program.Emit(c.Function, isa.OpDrillTier1, uint8(directSubOp), args.valueLocation.Register, args.collectionLocation.Register)
-			program.Emit(c.Function, isa.OpExt, args.indexLocation.Register, 0, 0)
+			program.Emit(c.Function, isa.OpExtension, args.indexLocation.Register, 0, 0)
 		} else {
 			program.Emit(c.Function, isa.OpDrillTier1, uint8(directSubOp), args.collectionLocation.Register, args.indexLocation.Register)
-			program.Emit(c.Function, isa.OpExt, args.valueLocation.Register, 0, 0)
+			program.Emit(c.Function, isa.OpExtension, args.valueLocation.Register, 0, 0)
 		}
 		return
 	}
@@ -566,7 +617,7 @@ func (c *Compiler) unboxForCompound(_ context.Context, generalRegister uint8, ri
 		return program.VarLocation{Register: generalRegister, Kind: isa.RegisterGeneral}
 	}
 	unboxed := c.Scopes.Alloc.AllocTemp(rightHandSideKind)
-	program.Emit(c.Function, isa.OpUnpackInterface, unboxed, generalRegister, uint8(rightHandSideKind))
+	program.Emit(c.Function, isa.OpUnboxFromInterface, unboxed, generalRegister, uint8(rightHandSideKind))
 	return program.VarLocation{Register: unboxed, Kind: rightHandSideKind}
 }
 
@@ -579,11 +630,14 @@ func (c *Compiler) unboxForCompound(_ context.Context, generalRegister uint8, ri
 // Takes binaryOperation (token.Token) which is the binary operator corresponding to the
 // compound assignment.
 //
-// Returns the result location of the compiled assignment and any compilation error
-// encountered.
+// Returns program.VarLocation which holds the assignment result.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileCompoundAssignSelector(ctx context.Context, target *ast.SelectorExpr, rightHandSide ast.Expr, binaryOperation token.Token) (program.VarLocation, error) {
 	if c.isPackageQualifiedSelector(target) {
 		return c.compileCompoundAssignPackageVar(ctx, target, rightHandSide, binaryOperation)
+	}
+	if location, fused, err := c.tryCompileCompoundAssignSliceElementField(ctx, target, rightHandSide, binaryOperation); fused {
+		return location, err
 	}
 	receiverLocation, err := c.compileExpression(ctx, target.X)
 	if err != nil {
@@ -598,7 +652,7 @@ func (c *Compiler) compileCompoundAssignSelector(ctx context.Context, target *as
 	index := selection.Index()
 	fieldIndex := safeconv.MustIntToUint8(index[len(index)-1])
 
-	rhsLocation, err := c.compileExpression(ctx, rightHandSide)
+	rhsLocation, err := c.compileCompoundOperand(ctx, binaryOperation, rightHandSide)
 	if err != nil {
 		return program.VarLocation{}, err
 	}
@@ -607,7 +661,7 @@ func (c *Compiler) compileCompoundAssignSelector(ctx context.Context, target *as
 		return location, fastErr
 	}
 
-	if rhsLocation.Kind == isa.RegisterInt && len(index) == 1 {
+	if rhsLocation.Kind == isa.RegisterInt64 && len(index) == 1 {
 		return c.compileCompoundAssignFieldInt(ctx, receiverLocation, rhsLocation, fieldIndex, binaryOperation)
 	}
 
@@ -617,7 +671,7 @@ func (c *Compiler) compileCompoundAssignSelector(ctx context.Context, target *as
 
 	currentRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
 	program.Emit(c.Function, isa.OpGetField, currentRegister, receiverLocation.Register, fieldIndex)
-	currentLocation := c.unboxForCompound(ctx, currentRegister, rhsLocation.Kind)
+	currentLocation := c.unboxForCompound(ctx, currentRegister, c.compoundValueKind(binaryOperation, c.Info.TypeOf(target), rhsLocation))
 
 	resultLocation, err := c.emitBinaryOp(ctx, binaryOperation, currentLocation, rhsLocation)
 	if err != nil {
@@ -637,7 +691,8 @@ func (c *Compiler) compileCompoundAssignSelector(ctx context.Context, target *as
 // Takes rhsLocation (VarLocation) which holds the right-hand value.
 // Takes binaryOperation (token.Token) which is the compound operator.
 //
-// Returns the result location and any compilation error.
+// Returns program.VarLocation which holds the assignment result.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileEmbeddedCompoundAssign(
 	ctx context.Context,
 	receiverLocation program.VarLocation,
@@ -648,8 +703,8 @@ func (c *Compiler) compileEmbeddedCompoundAssign(
 ) (program.VarLocation, error) {
 	pointerLocation := c.compileEmbeddedLeafPointerReusing(receiverLocation, target.X, index)
 	currentRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpDeref, currentRegister, pointerLocation.Register, 0)
-	currentLocation := c.unboxForCompound(ctx, currentRegister, rhsLocation.Kind)
+	program.Emit(c.Function, isa.OpDereference, currentRegister, pointerLocation.Register, 0)
+	currentLocation := c.unboxForCompound(ctx, currentRegister, c.compoundValueKind(binaryOperation, c.Info.TypeOf(target), rhsLocation))
 
 	resultLocation, err := c.emitBinaryOp(ctx, binaryOperation, currentLocation, rhsLocation)
 	if err != nil {
@@ -746,27 +801,26 @@ func (c *Compiler) tryCompileCompoundAssignSelectorFastPath(
 // Returns the result location of the compiled assignment and any compilation error
 // encountered.
 func (c *Compiler) compileCompoundAssignFieldInt(ctx context.Context, receiverLocation, rhsLocation program.VarLocation, fieldIndex uint8, binaryOperation token.Token) (program.VarLocation, error) {
-	currentRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-	currentLocation := program.VarLocation{Register: currentRegister, Kind: isa.RegisterInt}
-	c.EmitTyped(ctx, isa.OpGetFieldInt, currentLocation, receiverLocation, rawOperand(fieldIndex))
+	currentRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+	currentLocation := program.VarLocation{Register: currentRegister, Kind: isa.RegisterInt64}
+	c.EmitTyped(ctx, isa.OpGetFieldInt64, currentLocation, receiverLocation, rawOperand(fieldIndex))
 	resultLocation, err := c.emitBinaryOp(ctx, binaryOperation, currentLocation, rhsLocation)
 	if err != nil {
 		return program.VarLocation{}, err
 	}
-	c.EmitTyped(ctx, isa.OpSetFieldInt, receiverLocation, rawOperand(fieldIndex), resultLocation)
+	c.EmitTyped(ctx, isa.OpSetFieldInt64, receiverLocation, rawOperand(fieldIndex), resultLocation)
 	return program.VarLocation{}, nil
 }
 
-// compileCompoundAssignPackageVar lowers `pkg.Var op= v` for a settable package variable
-// of a registered Go package: the current value is read as the package symbol, unpacked
-// into its static bank, combined with the operand, and written back through the
-// variable's address (compileNativePackageVarAssign).
+// compileCompoundAssignPackageVar compiles compound assignment to a native package
+// variable.
 //
 // Takes target (*ast.SelectorExpr) which is the package-qualified variable.
 // Takes rightHandSide (ast.Expr) which is the operand.
 // Takes binaryOperation (token.Token) which is the arithmetic operator.
 //
-// Returns the location holding the stored result.
+// Returns program.VarLocation which holds the assignment result.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileCompoundAssignPackageVar(ctx context.Context, target *ast.SelectorExpr, rightHandSide ast.Expr, binaryOperation token.Token) (program.VarLocation, error) {
 	currentLocation, err := c.compileExpression(ctx, target)
 	if err != nil {
@@ -775,9 +829,9 @@ func (c *Compiler) compileCompoundAssignPackageVar(ctx context.Context, target *
 	staticType := c.staticTypeOf(target)
 	if kind := c.kindFor(staticType); kind != isa.RegisterGeneral && currentLocation.Kind == isa.RegisterGeneral {
 		currentLocation = c.unpackConversionArgument(currentLocation, kind)
-		currentLocation.SourceType = c.exactReflectTypeForBoxing(staticType)
+		currentLocation.SourceType = c.exactReflectTypeForBoxing(ctx, staticType)
 	}
-	rhsLocation, err := c.compileExpression(ctx, rightHandSide)
+	rhsLocation, err := c.compileCompoundOperand(ctx, binaryOperation, rightHandSide)
 	if err != nil {
 		return program.VarLocation{}, err
 	}

@@ -78,14 +78,43 @@ var (
 	// running after the join grace period following the main function's return.
 	ErrGoroutineJoinTimeout = errors.New("goroutines still running after main returned")
 
+	// ErrUnwindBlocked is joined to a stopped execution's error when one of the deferred
+	// calls the stop's unwinding ran was still blocked in native code at its deadline.
+	ErrUnwindBlocked = errors.New("deferred call of a stopped goroutine still blocked in native code")
+
+	// ErrLockAbandoned is returned by every execution on a service after an earlier
+	// execution was stopped and left a sync.Mutex or sync.RWMutex it had locked still held
+	// once every stopped goroutine had run its deferred calls.
+	ErrLockAbandoned = errors.New("lock abandoned by a stopped execution")
+
+	// ErrUnwindLeakLimit is returned by every execution on a service once its stopped
+	// executions have left as many deferred calls blocked in native code as the service
+	// allows (ErrUnwindBlocked reports each one).
+	ErrUnwindLeakLimit = errors.New("too many deferred calls of stopped goroutines left blocked in native code")
+
 	// ErrUnsupportedInterfaceArgument is returned when an interpreted value is passed to a
 	// native parameter of an interface type that no pipit adapter can satisfy, instead of
 	// letting reflect.Call panic on the unassignable value.
 	ErrUnsupportedInterfaceArgument = errors.New("unsupported interface argument")
 
+	// ErrGlobalSlotsExhausted is returned when loading bytecode would reserve more
+	// package-level variable slots of one register kind than a service's global store can
+	// address.
+	ErrGlobalSlotsExhausted = errors.New("global variable slots exhausted")
+
+	// ErrUnsupportedFunctionArgument is returned when a function value is passed to a native
+	// parameter of a function type it cannot be adapted to, or when an adapted function
+	// receives a value its own signature cannot accept, instead of letting reflect.Call
+	// panic on the mismatched function.
+	ErrUnsupportedFunctionArgument = errors.New("unsupported function argument")
+
 	// ErrUnsupportedInterfaceField is returned when an interpreted value is stored into a
 	// native struct field of an interface type that no pipit adapter can satisfy.
 	ErrUnsupportedInterfaceField = errors.New("unsupported interface field value")
+
+	// ErrNoMethodBodyForReceiver reports a generic method call without a compiled receiver
+	// body.
+	ErrNoMethodBodyForReceiver = errors.New("no method body compiled for the receiver's type arguments")
 
 	// ErrTypeMismatch is returned when a value's runtime type disagrees with the type the
 	// compiler chose an instruction for, such as a struct field read into a typed-slice bank

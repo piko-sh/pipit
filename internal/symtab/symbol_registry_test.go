@@ -21,11 +21,14 @@ package symtab
 import (
 	"go/types"
 	"reflect"
+	"runtime"
 	"sort"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/policy"
 )
 
 type sectionLikeNode struct {
@@ -154,14 +157,14 @@ func TestSymbolRegistryTypeOwnersFacadeAlias(t *testing.T) {
 	rt := reflect.TypeFor[time.Time]()
 	require.Equal(t, "myfacade", reg.typeOwners[rt])
 
-	reg.SynthesiseAll()
+	reg.SynthesiseAll(t.Context())
 
-	facadePkg, err := reg.Import("myfacade")
+	facadePkg, err := reg.Import(t.Context(), "myfacade")
 	require.NoError(t, err)
 	object := facadePkg.Scope().Lookup("MyTime")
 	require.NotNil(t, object, "MyTime should be in facade scope")
 
-	consumerPkg, err := reg.Import("consumer")
+	consumerPkg, err := reg.Import(t.Context(), "consumer")
 	require.NoError(t, err)
 	fmtObj := consumerPkg.Scope().Lookup("Format")
 	require.NotNil(t, fmtObj, "Format should be in consumer scope")
@@ -199,7 +202,7 @@ func TestSymbolRegistrySelfReferentialStruct(t *testing.T) {
 		},
 	})
 
-	pkg, err := reg.Import("tree")
+	pkg, err := reg.Import(t.Context(), "tree")
 	require.NoError(t, err)
 
 	object := pkg.Scope().Lookup("Node")
@@ -232,7 +235,7 @@ func TestSymbolRegistrySelfReferentialPointer(t *testing.T) {
 		},
 	})
 
-	pkg, err := reg.Import("ll")
+	pkg, err := reg.Import(t.Context(), "ll")
 	require.NoError(t, err)
 
 	named, ok := pkg.Scope().Lookup("Node").Type().(*types.Named)
@@ -258,7 +261,7 @@ func TestSymbolRegistrySelfReferentialMap(t *testing.T) {
 		},
 	})
 
-	pkg, err := reg.Import("tm")
+	pkg, err := reg.Import(t.Context(), "tm")
 	require.NoError(t, err)
 
 	named, ok := pkg.Scope().Lookup("Tree").Type().(*types.Named)
@@ -287,7 +290,7 @@ func TestSymbolRegistryMutuallyRecursiveStructs(t *testing.T) {
 		},
 	})
 
-	pkg, err := reg.Import("pair")
+	pkg, err := reg.Import(t.Context(), "pair")
 	require.NoError(t, err)
 
 	aNamed, ok := pkg.Scope().Lookup("A").Type().(*types.Named)
@@ -313,7 +316,7 @@ func TestSymbolRegistryRecursiveDAG(t *testing.T) {
 		},
 	})
 
-	pkg, err := reg.Import("ast")
+	pkg, err := reg.Import(t.Context(), "ast")
 	require.NoError(t, err)
 
 	named, ok := pkg.Scope().Lookup("Node").Type().(*types.Named)
@@ -350,4 +353,26 @@ func assertFieldPointsToNamed(t *testing.T, st *types.Struct, name string, expec
 	named, ok := pointer.Elem().(*types.Named)
 	require.True(t, ok, "field %s should point to named type, got %T", name, pointer.Elem())
 	require.Same(t, expected, named, "field %s should reference expected named type", name)
+}
+
+func TestRegisteredFunctionsAreKnownByTheIdentityTheyAreRegisteredUnder(t *testing.T) {
+	t.Parallel()
+
+	writer := func(name string, data []byte, perm uint32) error { return nil }
+	reader := func(name string) ([]byte, error) { return nil, nil }
+	remover := func(name string) error { return nil }
+	registry := NewSymbolRegistry(SymbolExports{"example.com/gatedwrite": {"WriteFile": reflect.ValueOf(writer)}})
+	registry.RegisterPackage("example.com/gatedread", map[string]reflect.Value{"ReadFile": reflect.ValueOf(reader)})
+	registry.OverlayPackage("example.com/gatedremove", map[string]reflect.Value{"Remove": reflect.ValueOf(remover)})
+
+	for function, want := range map[reflect.Value]string{
+		reflect.ValueOf(writer):  "example.com/gatedwrite.WriteFile",
+		reflect.ValueOf(reader):  "example.com/gatedread.ReadFile",
+		reflect.ValueOf(remover): "example.com/gatedremove.Remove",
+	} {
+		identity, ok := policy.NativeSymbolIdentity(function)
+		require.True(t, ok, want)
+		require.Equal(t, want, identity, "the gate keys on the registered identity, not the closure's runtime name")
+		require.NotContains(t, runtime.FuncForPC(function.Pointer()).Name(), want, "the runtime name would mislead the gate")
+	}
 }

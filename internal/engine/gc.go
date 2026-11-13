@@ -59,15 +59,37 @@ const (
 //
 // Takes vm (*VM) which is the owning VM, used for root enumeration.
 func (a *RegisterArena) MinorGC(vm *VM) {
+	defer func() { a.abortOnCollectorPanic(recover()) }()
+	if hook := minorGCSiteHook.Load(); hook != nil {
+		(*hook)()
+	}
 	a.gcCount++
 	preGCBytes := a.bytesAllocated
 	state := acquireGCMarkState(a)
 	defer releaseGCMarkState(state)
-	vm.markPhase(state)
+	a.refreshFamilyShared()
+	shared := state.licensed && a.licenceShared(0)
+	if state.licensed {
+		var owner *VM
+		if shared, owner = a.enterOwnerSection(shared); owner != nil {
+			defer owner.leaveOwnerSection()
+		}
+	}
+	if shared && !a.sharedMarkApplies(vm) {
+		state.failClose(failClosedShared)
+	} else {
+		state.shared = shared
+		vm.markPhase(state)
+	}
 	reclaimed, recycled := a.compactPhase(state)
 	postGCBytes := max(preGCBytes-reclaimed, 0)
 	a.bytesAllocated = postGCBytes
-	a.deductReclaimedFromBudget(reclaimed - recycled)
+	if state.shared {
+		a.releaseArenaBytes(state.droppedCharge)
+	} else {
+		a.deductReclaimedFromBudget(reclaimed - recycled - state.mutBytesDropped)
+		a.releaseArenaBytes(state.mutChargeDropped)
+	}
 	a.updateNextGCAt(preGCBytes, postGCBytes)
 	a.bytesAtLastGC = postGCBytes
 }
@@ -101,6 +123,9 @@ func (a *RegisterArena) gcShouldRun() bool {
 
 // deductReclaimedFromBudget reduces the arena's live-bytes counter by the capacity
 // released during compactPhase. Negative or zero values are no-ops.
+//
+// A shared collection hands back only the charge the dropped slabs carry (droppedCharge),
+// so the budget still bounds the slabs the goroutine tree holds while its goroutines run.
 //
 // Takes reclaimedBytes (int64) which is the byte capacity dropped by compactPhase.
 func (a *RegisterArena) deductReclaimedFromBudget(reclaimedBytes int64) {

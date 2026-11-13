@@ -361,15 +361,15 @@ func TestClassifyingTypedSliceLocalsKeepsTheCanonicalWidthsOnTheirBanks(t *testi
 		body string
 		want map[string]isa.RegisterKind
 	}{
-		{name: "a slice of int", body: "xs := make([]int, 1)\n_ = len(xs)", want: map[string]isa.RegisterKind{"xs": isa.RegisterSliceInt}},
-		{name: "a slice of float64", body: "xs := make([]float64, 1)\n_ = len(xs)", want: map[string]isa.RegisterKind{"xs": isa.RegisterSliceFloat}},
+		{name: "a slice of int", body: "xs := make([]int, 1)\n_ = len(xs)", want: map[string]isa.RegisterKind{"xs": isa.RegisterSliceInt64}},
+		{name: "a slice of float64", body: "xs := make([]float64, 1)\n_ = len(xs)", want: map[string]isa.RegisterKind{"xs": isa.RegisterSliceFloat64}},
 		{name: "a slice of string", body: "xs := make([]string, 1)\n_ = len(xs)", want: map[string]isa.RegisterKind{"xs": isa.RegisterSliceString}},
 		{name: "a slice of bool", body: "xs := make([]bool, 1)\n_ = len(xs)", want: map[string]isa.RegisterKind{"xs": isa.RegisterSliceBool}},
 		{name: "a slice of byte", body: "xs := make([]byte, 1)\n_ = len(xs)", want: map[string]isa.RegisterKind{"xs": isa.RegisterSliceByte}},
-		{name: "a slice of uint64", body: "xs := make([]uint64, 1)\n_ = len(xs)", want: map[string]isa.RegisterKind{"xs": isa.RegisterSliceUint}},
-		{name: "a slice declared with var", body: "var xs = make([]int, 1)\n_ = len(xs)", want: map[string]isa.RegisterKind{"xs": isa.RegisterSliceInt}},
-		{name: "a slice read out of a map", body: "m := map[string][]int{}\nxs := m[\"k\"]\n_ = len(xs)", want: map[string]isa.RegisterKind{"xs": isa.RegisterSliceInt}},
-		{name: "a slice boxed into an interface keeps its bank", body: "xs := make([]int, 1)\nvar ys any = xs\n_ = ys", want: map[string]isa.RegisterKind{"xs": isa.RegisterSliceInt}},
+		{name: "a slice of uint64", body: "xs := make([]uint64, 1)\n_ = len(xs)", want: map[string]isa.RegisterKind{"xs": isa.RegisterSliceUint64}},
+		{name: "a slice declared with var", body: "var xs = make([]int, 1)\n_ = len(xs)", want: map[string]isa.RegisterKind{"xs": isa.RegisterSliceInt64}},
+		{name: "a slice read out of a map", body: "m := map[string][]int{}\nxs := m[\"k\"]\n_ = len(xs)", want: map[string]isa.RegisterKind{"xs": isa.RegisterSliceInt64}},
+		{name: "a slice boxed into an interface keeps its bank", body: "xs := make([]int, 1)\nvar ys any = xs\n_ = ys", want: map[string]isa.RegisterKind{"xs": isa.RegisterSliceInt64}},
 		{name: "a slice of a narrow element", body: "xs := make([]int32, 1)\n_ = len(xs)", want: nil},
 		{name: "a slice of a struct", body: "xs := make([]record, 1)\n_ = len(xs)", want: nil},
 		{name: "a slice whose address is taken", body: "xs := make([]int, 1)\n_ = &xs", want: nil},

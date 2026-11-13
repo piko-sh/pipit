@@ -30,34 +30,33 @@ const (
 	// the handlerTable[op] indirect call on the trampoline's first op.
 	exitGetField int64 = 9
 
-	// exitMapIndex is the per-op direct exit for isa.OpMapIndex. Mirrors exitSetField; saves
-	// the handlerTable[op] indirect call on the trampoline's first op.
-	exitMapIndex int64 = 10
+	// exitGetMap is the per-op direct exit for isa.OpGetMap. Mirrors exitSetField.
+	exitGetMap int64 = 10
 
 	// exitAppend is the per-op direct exit for isa.OpAppend. Mirrors exitSetField; saves the
 	// handlerTable[op] indirect call on the trampoline's first op.
 	exitAppend int64 = 11
 
-	// exitAppendByteFast is the tier-0 specialised []byte-append direct-exit reason emitted
-	// by compileBuiltinAppend when the slice element is statically `byte`.
-	exitAppendByteFast int64 = 12
+	// exitAppendByte is the tier-0 specialised []byte-append direct-exit reason emitted by
+	// compileBuiltinAppend when the slice element is statically `byte`.
+	exitAppendByte int64 = 12
 
-	// exitSliceSetStringDirect is the direct-exit reason for the tier-1 []string element
+	// exitSetSliceStringElement is the direct-exit reason for the tier-1 []string element
 	// store. Exits to Go because the arena string barrier cannot be checked cheaply from
 	// assembly.
-	exitSliceSetStringDirect int64 = 30
+	exitSetSliceStringElement int64 = 30
 
-	// exitAppendStructFast is the direct-exit reason for isa.OpAppendStructFast.
-	exitAppendStructFast int64 = 31
+	// exitAppendStruct is the direct-exit reason for isa.OpAppendStruct.
+	exitAppendStruct int64 = 31
 
-	// exitAppendIntFast is the direct-exit reason for isa.OpAppendIntFast.
-	exitAppendIntFast int64 = 32
+	// exitAppendInt64 is the direct-exit reason for isa.OpAppendInt64.
+	exitAppendInt64 int64 = 32
 
-	// exitAppendFloatFast is the direct-exit reason for isa.OpAppendFloatFast.
-	exitAppendFloatFast int64 = 33
+	// exitAppendFloat64 is the direct-exit reason for isa.OpAppendFloat64.
+	exitAppendFloat64 int64 = 33
 
-	// exitAppendStringFast is the direct-exit reason for isa.OpAppendStringFast.
-	exitAppendStringFast int64 = 34
+	// exitAppendString is the direct-exit reason for isa.OpAppendString.
+	exitAppendString int64 = 34
 
 	// maxASMIntArgs is the maximum number of int arguments the ASM fast-path call handler
 	// can copy.

@@ -355,7 +355,7 @@ func TestLinkedGenericVariadicWithSliceReturn(t *testing.T) {
 			"SearchLink": reflect.ValueOf(searchStub),
 		},
 	})
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	service := app.NewService()
 	service.UseSymbols(symbols)
@@ -407,7 +407,7 @@ func TestLinkedGenericWithSynthesisedTypesPackage(t *testing.T) {
 			"BuildLink": reflect.ValueOf(buildStub),
 		},
 	})
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 
 	service := app.NewService()
 	service.UseSymbols(symbols)

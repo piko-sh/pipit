@@ -4,8 +4,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=2 float=6 string=4 general=2 bool=1
-;   dispatch:  asm=62 shim=40 exit=0 go=37
+;   registers: int64=2 float64=6 string=4 general=2 bool=1
+;   dispatch:  asm=55 shim=44 exit=0 go=24
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -15,146 +15,130 @@
 ;   floats:  [0]=1  [1]=0  [2]=-1  [3]=1e+20  [4]=-1e+20
 ;   strings: [0]=""  [1]="nan==nan:%v;"  [2]="nan<1:%v;"  [3]="nan>1:%v;"  [4]="nan<=1:%v;"  [5]="nan!=nan:%v;"  [6]="posInf==posInf:%v;"  [7]="negInf<posInf:%v;"  [8]="posInf+1==posInf:%v;"  [9]="isInf+:%v;"  [10]="isInf-:%v;"  [11]="0/0_isNaN:%v;"  [12]="1e20_as_int32:%d;"  [13]="neg1e20_as_int32:%d;"  [14]="0==-0:%v;"  [15]="signBit_posZero:%v;"  [16]="signBit_negZero:%v"
 
-0000 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = ""
-0001 S 0:LOAD_GENERAL_CONST         0   0   0
-0002 G 1:CALL_NATIVE              130   0   0    ; call native general[0] (site 0)
-0003 S 0:LOAD_GENERAL_CONST         0   1   0
-0004 A 0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "nan==nan:%v;"
-0005 A 0:EQ_FLOAT                   0   0   0
-0006 G 1:INT_TO_BOOL               54   0   0
-0007 G 1:CALL_NATIVE              130   1   0    ; call native general[0] (site 1)
-0008 S 0:CONCAT_STRING              3   0   2
-0009 A 1:MOVE_STRING               37   0   3
-0010 S 0:LOAD_GENERAL_CONST         0   2   0
-0011 A 0:LOAD_STRING_CONST          1   2   0    ; strings[1] = "nan<1:%v;"
-0012 A 0:LOAD_FLOAT_CONST           1   0   0    ; floats[1] = 1
-0013 A 0:LT_FLOAT                   0   0   1
-0014 G 1:INT_TO_BOOL               54   0   0
-0015 G 1:CALL_NATIVE              130   2   0    ; call native general[0] (site 2)
-0016 S 0:CONCAT_STRING              3   0   2
-0017 A 1:MOVE_STRING               37   0   3
-0018 S 0:LOAD_GENERAL_CONST         0   3   0
-0019 A 0:LOAD_STRING_CONST          1   3   0    ; strings[1] = "nan>1:%v;"
-0020 A 0:LOAD_FLOAT_CONST           1   0   0    ; floats[1] = 1
-0021 A 0:GT_FLOAT                   0   0   1
-0022 G 1:INT_TO_BOOL               54   0   0
-0023 G 1:CALL_NATIVE              130   3   0    ; call native general[0] (site 3)
-0024 S 0:CONCAT_STRING              3   0   2
-0025 A 1:MOVE_STRING               37   0   3
-0026 S 0:LOAD_GENERAL_CONST         0   4   0
-0027 A 0:LOAD_STRING_CONST          1   4   0    ; strings[1] = "nan<=1:%v;"
-0028 A 0:LOAD_FLOAT_CONST           1   0   0    ; floats[1] = 1
-0029 A 0:LE_FLOAT                   0   0   1
-0030 G 1:INT_TO_BOOL               54   0   0
-0031 G 1:CALL_NATIVE              130   4   0    ; call native general[0] (site 4)
-0032 S 0:CONCAT_STRING              3   0   2
-0033 A 1:MOVE_STRING               37   0   3
-0034 S 0:LOAD_GENERAL_CONST         0   5   0
-0035 A 0:LOAD_STRING_CONST          1   5   0    ; strings[1] = "nan!=nan:%v;"
-0036 A 0:NE_FLOAT                   0   0   0
-0037 G 1:INT_TO_BOOL               54   0   0
-0038 G 1:CALL_NATIVE              130   5   0    ; call native general[0] (site 5)
-0039 S 0:CONCAT_STRING              3   0   2
-0040 A 1:MOVE_STRING               37   0   3
-0041 A 0:LOAD_FLOAT_CONST           0   1   0    ; floats[0] = 0
-0042 A 0:LOAD_FLOAT_CONST           1   0   0    ; floats[1] = 1
-0043 A 0:LOAD_FLOAT_CONST           2   2   0    ; floats[2] = -1
-0044 A 0:DIV_FLOAT                  3   1   0
-0045 A 0:DIV_FLOAT                  1   2   0
-0046 S 0:LOAD_GENERAL_CONST         0   6   0
-0047 A 0:LOAD_STRING_CONST          1   6   0    ; strings[1] = "posInf==posInf:%v;"
-0048 A 0:EQ_FLOAT                   0   3   3
-0049 G 1:INT_TO_BOOL               54   0   0
-0050 G 1:CALL_NATIVE              130   6   0    ; call native general[0] (site 6)
-0051 S 0:CONCAT_STRING              3   0   2
-0052 A 1:MOVE_STRING               37   0   3
-0053 S 0:LOAD_GENERAL_CONST         0   7   0
-0054 A 0:LOAD_STRING_CONST          1   7   0    ; strings[1] = "negInf<posInf:%v;"
-0055 A 0:LT_FLOAT                   0   1   3
-0056 G 1:INT_TO_BOOL               54   0   0
-0057 G 1:CALL_NATIVE              130   7   0    ; call native general[0] (site 7)
-0058 S 0:CONCAT_STRING              3   0   2
-0059 A 1:MOVE_STRING               37   0   3
-0060 S 0:LOAD_GENERAL_CONST         0   8   0
-0061 A 0:LOAD_STRING_CONST          1   8   0    ; strings[1] = "posInf+1==posInf:%v;"
-0062 A 0:LOAD_FLOAT_CONST           4   0   0    ; floats[4] = 1
-0063 A 0:ADD_FLOAT                  5   3   4
-0064 A 0:EQ_FLOAT                   0   5   3
-0065 G 1:INT_TO_BOOL               54   0   0
-0066 G 1:CALL_NATIVE              130   8   0    ; call native general[0] (site 8)
-0067 S 0:CONCAT_STRING              3   0   2
-0068 A 1:MOVE_STRING               37   0   3
-0069 S 0:LOAD_GENERAL_CONST         0   9   0
-0070 A 0:LOAD_STRING_CONST          1   9   0    ; strings[1] = "isInf+:%v;"
-0071 S 0:LOAD_GENERAL_CONST         1  10   0
-0072 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0073 G 1:CALL_NATIVE              130   9   0    ; call native general[1] (site 9)
-0074 G 1:CALL_NATIVE              130  10   0    ; call native general[0] (site 10)
-0075 S 0:CONCAT_STRING              3   0   2
-0076 A 1:MOVE_STRING               37   0   3
-0077 S 0:LOAD_GENERAL_CONST         0  11   0
-0078 A 0:LOAD_STRING_CONST          1  10   0    ; strings[1] = "isInf-:%v;"
-0079 S 0:LOAD_GENERAL_CONST         1  12   0
-0080 A 0:LOAD_INT_CONST             0   1   0    ; ints[0] = -1
-0081 G 1:CALL_NATIVE              130  11   0    ; call native general[1] (site 11)
-0082 G 1:CALL_NATIVE              130  12   0    ; call native general[0] (site 12)
-0083 S 0:CONCAT_STRING              3   0   2
-0084 A 1:MOVE_STRING               37   0   3
-0085 A 0:DIV_FLOAT                  1   0   0
-0086 S 0:LOAD_GENERAL_CONST         0  13   0
-0087 A 0:LOAD_STRING_CONST          1  11   0    ; strings[1] = "0/0_isNaN:%v;"
-0088 S 0:LOAD_GENERAL_CONST         1  14   0
-0089 G 1:CALL_NATIVE              130  13   0    ; call native general[1] (site 13)
-0090 G 1:CALL_NATIVE              130  14   0    ; call native general[0] (site 14)
-0091 S 0:CONCAT_STRING              3   0   2
-0092 A 1:MOVE_STRING               37   0   3
-0093 A 0:LOAD_FLOAT_CONST           1   3   0    ; floats[1] = 1e+20
-0094 G 1:MOVE_FLOAT_TO_GENERAL     42   0   1
-0095 S 0:CONVERT                    1   0   0
-0096   0:EXT                        0   0   0
-0097 G 1:MOVE_GENERAL_TO_INT       41   0   1
-0098 A 0:TRUNCATE_NARROW            0  32   0
-0099 S 0:LOAD_GENERAL_CONST         0  15   0
-0100 A 0:LOAD_STRING_CONST          1  12   0    ; strings[1] = "1e20_as_int32:%d;"
-0101 G 0:PACK_TYPED                 1   0   0
-0102   0:EXT                        0   0   0
-0103 G 1:CALL_NATIVE              130  15   0    ; call native general[0] (site 15)
-0104 S 0:CONCAT_STRING              3   0   2
-0105 A 1:MOVE_STRING               37   0   3
-0106 A 0:LOAD_FLOAT_CONST           1   4   0    ; floats[1] = -1e+20
-0107 G 1:MOVE_FLOAT_TO_GENERAL     42   0   1
-0108 S 0:CONVERT                    1   0   0
-0109   0:EXT                        0   0   0
-0110 G 1:MOVE_GENERAL_TO_INT       41   0   1
-0111 A 0:TRUNCATE_NARROW            0  32   0
-0112 S 0:LOAD_GENERAL_CONST         0  16   0
-0113 A 0:LOAD_STRING_CONST          1  13   0    ; strings[1] = "neg1e20_as_int32:%d;"
-0114 G 0:PACK_TYPED                 1   0   0
-0115   0:EXT                        0   0   0
-0116 G 1:CALL_NATIVE              130  16   0    ; call native general[0] (site 16)
-0117 S 0:CONCAT_STRING              3   0   2
-0118 A 1:MOVE_STRING               37   0   3
-0119 A 0:LOAD_FLOAT_CONST           1   1   0    ; floats[1] = 0
-0120 A 0:LOAD_FLOAT_CONST           0   1   0    ; floats[0] = 0
-0121 S 0:LOAD_GENERAL_CONST         0  17   0
-0122 A 0:LOAD_STRING_CONST          1  14   0    ; strings[1] = "0==-0:%v;"
-0123 A 0:EQ_FLOAT                   1   1   0
-0124 G 1:INT_TO_BOOL               54   0   1
-0125 G 1:CALL_NATIVE              130  17   0    ; call native general[0] (site 17)
-0126 S 0:CONCAT_STRING              3   0   2
-0127 A 1:MOVE_STRING               37   0   3
-0128 S 0:LOAD_GENERAL_CONST         0  18   0
-0129 A 0:LOAD_STRING_CONST          1  15   0    ; strings[1] = "signBit_posZero:%v;"
-0130 S 0:LOAD_GENERAL_CONST         1  19   0
-0131 G 1:CALL_NATIVE              130  18   0    ; call native general[1] (site 18)
-0132 G 1:CALL_NATIVE              130  19   0    ; call native general[0] (site 19)
-0133 S 0:CONCAT_STRING              3   0   2
-0134 A 1:MOVE_STRING               37   0   3
-0135 S 0:LOAD_GENERAL_CONST         0  20   0
-0136 A 0:LOAD_STRING_CONST          1  16   0    ; strings[1] = "signBit_negZero:%v"
-0137 S 0:LOAD_GENERAL_CONST         1  21   0
-0138 G 1:CALL_NATIVE              130  20   0    ; call native general[1] (site 20)
-0139 G 1:CALL_NATIVE              130  21   0    ; call native general[0] (site 21)
-0140 S 0:CONCAT_STRING              3   0   2
-0141 A 1:MOVE_STRING               37   0   3
-0142 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = ""
+0001 S 0:LOAD_GENERAL_CONSTANT                                0   0   0
+0002 G 1:CALL_NATIVE                                        130   0   0    ; call native general[0] (site 0)
+0003 S 0:LOAD_GENERAL_CONSTANT                                0   1   0
+0004 A 0:LOAD_STRING_CONSTANT                                 1   1   0    ; strings[1] = "nan==nan:%v;"
+0005 A 0:EQUAL_FLOAT64                                        0   0   0
+0006 A 1:CONVERT_INT64_TO_BOOL                               54   0   0
+0007 G 1:CALL_NATIVE                                        130   1   0    ; call native general[0] (site 1)
+0008 S 0:CONCATENATE_STRING                                   0   0   2
+0009 S 0:LOAD_GENERAL_CONSTANT                                0   2   0
+0010 A 0:LOAD_STRING_CONSTANT                                 1   2   0    ; strings[1] = "nan<1:%v;"
+0011 A 0:LOAD_FLOAT64_CONSTANT                                1   0   0    ; floats[1] = 1
+0012 A 0:LESS_THAN_FLOAT64                                    0   0   1
+0013 A 1:CONVERT_INT64_TO_BOOL                               54   0   0
+0014 G 1:CALL_NATIVE                                        130   2   0    ; call native general[0] (site 2)
+0015 S 0:CONCATENATE_STRING                                   0   0   2
+0016 S 0:LOAD_GENERAL_CONSTANT                                0   3   0
+0017 A 0:LOAD_STRING_CONSTANT                                 1   3   0    ; strings[1] = "nan>1:%v;"
+0018 A 0:LOAD_FLOAT64_CONSTANT                                1   0   0    ; floats[1] = 1
+0019 A 0:GREATER_THAN_FLOAT64                                 0   0   1
+0020 A 1:CONVERT_INT64_TO_BOOL                               54   0   0
+0021 G 1:CALL_NATIVE                                        130   3   0    ; call native general[0] (site 3)
+0022 S 0:CONCATENATE_STRING                                   0   0   2
+0023 S 0:LOAD_GENERAL_CONSTANT                                0   4   0
+0024 A 0:LOAD_STRING_CONSTANT                                 1   4   0    ; strings[1] = "nan<=1:%v;"
+0025 A 0:LOAD_FLOAT64_CONSTANT                                1   0   0    ; floats[1] = 1
+0026 A 0:LESS_OR_EQUAL_FLOAT64                                0   0   1
+0027 A 1:CONVERT_INT64_TO_BOOL                               54   0   0
+0028 G 1:CALL_NATIVE                                        130   4   0    ; call native general[0] (site 4)
+0029 S 0:CONCATENATE_STRING                                   0   0   2
+0030 S 0:LOAD_GENERAL_CONSTANT                                0   5   0
+0031 A 0:LOAD_STRING_CONSTANT                                 1   5   0    ; strings[1] = "nan!=nan:%v;"
+0032 A 0:NOT_EQUAL_FLOAT64                                    0   0   0
+0033 A 1:CONVERT_INT64_TO_BOOL                               54   0   0
+0034 G 1:CALL_NATIVE                                        130   5   0    ; call native general[0] (site 5)
+0035 S 0:CONCATENATE_STRING                                   0   0   2
+0036 A 0:LOAD_FLOAT64_CONSTANT                                0   1   0    ; floats[0] = 0
+0037 A 0:LOAD_FLOAT64_CONSTANT                                1   0   0    ; floats[1] = 1
+0038 A 0:LOAD_FLOAT64_CONSTANT                                2   2   0    ; floats[2] = -1
+0039 A 0:DIVIDE_FLOAT64                                       3   1   0
+0040 A 0:DIVIDE_FLOAT64                                       1   2   0
+0041 S 0:LOAD_GENERAL_CONSTANT                                0   6   0
+0042 A 0:LOAD_STRING_CONSTANT                                 1   6   0    ; strings[1] = "posInf==posInf:%v;"
+0043 A 0:EQUAL_FLOAT64                                        0   3   3
+0044 A 1:CONVERT_INT64_TO_BOOL                               54   0   0
+0045 G 1:CALL_NATIVE                                        130   6   0    ; call native general[0] (site 6)
+0046 S 0:CONCATENATE_STRING                                   0   0   2
+0047 S 0:LOAD_GENERAL_CONSTANT                                0   7   0
+0048 A 0:LOAD_STRING_CONSTANT                                 1   7   0    ; strings[1] = "negInf<posInf:%v;"
+0049 A 0:LESS_THAN_FLOAT64                                    0   1   3
+0050 A 1:CONVERT_INT64_TO_BOOL                               54   0   0
+0051 G 1:CALL_NATIVE                                        130   7   0    ; call native general[0] (site 7)
+0052 S 0:CONCATENATE_STRING                                   0   0   2
+0053 S 0:LOAD_GENERAL_CONSTANT                                0   8   0
+0054 A 0:LOAD_STRING_CONSTANT                                 1   8   0    ; strings[1] = "posInf+1==posInf:%v;"
+0055 A 0:LOAD_FLOAT64_CONSTANT                                4   0   0    ; floats[4] = 1
+0056 A 0:ADD_FLOAT64                                          5   3   4
+0057 A 0:EQUAL_FLOAT64                                        0   5   3
+0058 A 1:CONVERT_INT64_TO_BOOL                               54   0   0
+0059 G 1:CALL_NATIVE                                        130   8   0    ; call native general[0] (site 8)
+0060 S 0:CONCATENATE_STRING                                   0   0   2
+0061 S 0:LOAD_GENERAL_CONSTANT                                0   9   0
+0062 A 0:LOAD_STRING_CONSTANT                                 1   9   0    ; strings[1] = "isInf+:%v;"
+0063 S 0:LOAD_GENERAL_CONSTANT                                1  10   0
+0064 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0065 G 1:CALL_NATIVE                                        130   9   0    ; call native general[1] (site 9)
+0066 G 1:CALL_NATIVE                                        130  10   0    ; call native general[0] (site 10)
+0067 S 0:CONCATENATE_STRING                                   0   0   2
+0068 S 0:LOAD_GENERAL_CONSTANT                                0  11   0
+0069 A 0:LOAD_STRING_CONSTANT                                 1  10   0    ; strings[1] = "isInf-:%v;"
+0070 S 0:LOAD_GENERAL_CONSTANT                                1  12   0
+0071 A 0:LOAD_INT64_CONSTANT                                  0   1   0    ; ints[0] = -1
+0072 G 1:CALL_NATIVE                                        130  11   0    ; call native general[1] (site 11)
+0073 G 1:CALL_NATIVE                                        130  12   0    ; call native general[0] (site 12)
+0074 S 0:CONCATENATE_STRING                                   0   0   2
+0075 A 0:DIVIDE_FLOAT64                                       1   0   0
+0076 S 0:LOAD_GENERAL_CONSTANT                                0  13   0
+0077 A 0:LOAD_STRING_CONSTANT                                 1  11   0    ; strings[1] = "0/0_isNaN:%v;"
+0078 S 0:LOAD_GENERAL_CONSTANT                                1  14   0
+0079 G 1:CALL_NATIVE                                        130  13   0    ; call native general[1] (site 13)
+0080 G 1:CALL_NATIVE                                        130  14   0    ; call native general[0] (site 14)
+0081 S 0:CONCATENATE_STRING                                   0   0   2
+0082 A 0:LOAD_FLOAT64_CONSTANT                                1   3   0    ; floats[1] = 1e+20
+0083 S 1:BOX_FLOAT64                                         42   0   1
+0084 S 0:CONVERT_GENERAL                                      1   0   0
+0085   0:EXTENSION                                            0   0   0
+0086 S 1:UNBOX_INT64                                         41   0   1
+0087 A 0:TRUNCATE_TO_WIDTH                                    0  32   0
+0088 S 0:LOAD_GENERAL_CONSTANT                                0  15   0
+0089 A 0:LOAD_STRING_CONSTANT                                 1  12   0    ; strings[1] = "1e20_as_int32:%d;"
+0090 G 0:BOX_AS_TYPE                                          1   0   0
+0091   0:EXTENSION                                            0   0   0
+0092 G 1:CALL_NATIVE                                        130  15   0    ; call native general[0] (site 15)
+0093 S 0:CONCATENATE_STRING                                   0   0   2
+0094 A 0:LOAD_FLOAT64_CONSTANT                                1   4   0    ; floats[1] = -1e+20
+0095 S 1:BOX_FLOAT64                                         42   0   1
+0096 S 0:CONVERT_GENERAL                                      1   0   0
+0097   0:EXTENSION                                            0   0   0
+0098 S 1:UNBOX_INT64                                         41   0   1
+0099 A 0:TRUNCATE_TO_WIDTH                                    0  32   0
+0100 S 0:LOAD_GENERAL_CONSTANT                                0  16   0
+0101 A 0:LOAD_STRING_CONSTANT                                 1  13   0    ; strings[1] = "neg1e20_as_int32:%d;"
+0102 G 0:BOX_AS_TYPE                                          1   0   0
+0103   0:EXTENSION                                            0   0   0
+0104 G 1:CALL_NATIVE                                        130  16   0    ; call native general[0] (site 16)
+0105 S 0:CONCATENATE_STRING                                   0   0   2
+0106 A 0:LOAD_FLOAT64_CONSTANT                                1   1   0    ; floats[1] = 0
+0107 A 0:LOAD_FLOAT64_CONSTANT                                0   1   0    ; floats[0] = 0
+0108 S 0:LOAD_GENERAL_CONSTANT                                0  17   0
+0109 A 0:LOAD_STRING_CONSTANT                                 1  14   0    ; strings[1] = "0==-0:%v;"
+0110 A 0:EQUAL_FLOAT64                                        1   1   0
+0111 A 1:CONVERT_INT64_TO_BOOL                               54   0   1
+0112 G 1:CALL_NATIVE                                        130  17   0    ; call native general[0] (site 17)
+0113 S 0:CONCATENATE_STRING                                   0   0   2
+0114 S 0:LOAD_GENERAL_CONSTANT                                0  18   0
+0115 A 0:LOAD_STRING_CONSTANT                                 1  15   0    ; strings[1] = "signBit_posZero:%v;"
+0116 S 0:LOAD_GENERAL_CONSTANT                                1  19   0
+0117 G 1:CALL_NATIVE                                        130  18   0    ; call native general[1] (site 18)
+0118 G 1:CALL_NATIVE                                        130  19   0    ; call native general[0] (site 19)
+0119 S 0:CONCATENATE_STRING                                   0   0   2
+0120 S 0:LOAD_GENERAL_CONSTANT                                0  20   0
+0121 A 0:LOAD_STRING_CONSTANT                                 1  16   0    ; strings[1] = "signBit_negZero:%v"
+0122 S 0:LOAD_GENERAL_CONSTANT                                1  21   0
+0123 G 1:CALL_NATIVE                                        130  20   0    ; call native general[1] (site 20)
+0124 G 1:CALL_NATIVE                                        130  21   0    ; call native general[0] (site 21)
+0125 S 0:CONCATENATE_STRING                                   0   0   2
+0126 A 2:RETURN                                               0  10   1    ; 1 values

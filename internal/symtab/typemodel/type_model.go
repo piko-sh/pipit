@@ -21,6 +21,7 @@ package typemodel
 import (
 	"iter"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -165,6 +166,22 @@ func (t *Type) PkgPath() string {
 		return ""
 	}
 	return t.pkgPath
+}
+
+// NamedInterfaceParts returns what NewNamedInterfaceType was given for a named interface,
+// including the declaring package's import path, the bare name and a copy of the sorted
+// method names. A service saving a program's bytecode records them so another service can
+// rebuild the type.
+//
+// Returns pkgPath (string) which is the import path.
+// Returns name (string) which is the bare interface name.
+// Returns methods ([]string) which are the sorted method names.
+// Returns ok (bool) which is false when t is not a named interface.
+func (t *Type) NamedInterfaceParts() (pkgPath, name string, methods []string, ok bool) {
+	if t == nil || t.kind != reflect.Interface || t.sourceName == "" {
+		return "", "", nil, false
+	}
+	return t.pkgPath, t.sourceName, slices.Clone(t.methodNames), true
 }
 
 // Kind returns the underlying reflect.Kind. Matches reflect.Type.Kind().

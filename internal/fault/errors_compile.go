@@ -43,8 +43,8 @@ var (
 	// closures included, than a function index can address.
 	ErrCompileFunctionTableFull = errors.New("too many functions in one program")
 
-	// ErrCompileSignatureTooLarge reports a function signature beyond reflect.FuncOf's
-	// limit of 128 parameters and results, including the receiver.
+	// ErrCompileSignatureTooLarge reports a function signature beyond reflect.FuncOf's limit
+	// of 128 parameters and results, including the receiver.
 	ErrCompileSignatureTooLarge = errors.New("function signature has too many parameters and results")
 
 	// ErrCompileNamedScalarPoolExhausted is returned when a program declares more named
@@ -52,6 +52,47 @@ var (
 	// runtime identities to. Compilation fails rather than letting the type collapse to its
 	// underlying type, where assertions and method dispatch would silently go wrong.
 	ErrCompileNamedScalarPoolExhausted = errors.New("named-scalar pool exhausted: too many named basic types of one kind in this process")
+
+	// ErrCompileNamedTypeIdentity is returned when a named array, slice, map, channel or
+	// function type cannot be given a runtime type of its own.
+	ErrCompileNamedTypeIdentity = errors.New("named type cannot be given a runtime type of its own")
+
+	// ErrNamedCompositeLimit is returned when the process has already given distinct runtime
+	// types to as many named array, slice, map, channel and function types as its configured
+	// cap allows.
+	ErrNamedCompositeLimit = errors.New("too many named array, slice, map, channel and function types in this process")
+
+	// ErrNamedCompositeQuota is returned when one interpreter has added as many new named
+	// array, slice, map, channel and function types to the process as its quota allows, so
+	// that one guest cannot use up the process-wide cap for every other.
+	ErrNamedCompositeQuota = errors.New("too many named array, slice, map, channel and function types for this interpreter")
+
+	// ErrNamedCompositeUnsupported is returned when a named composite type cannot be given a
+	// runtime identity.
+	ErrNamedCompositeUnsupported = errors.New("named array, slice, map, channel and function types cannot be given a runtime identity")
+
+	// ErrCompileTypeTooComplex is returned when converting one type to its runtime type
+	// would take more steps or nest deeper than the converter allows, which only a
+	// pathological program reaches.
+	ErrCompileTypeTooComplex = errors.New("type is too complex to convert to a runtime type")
+
+	// ErrCompileSharedLoopVariables is returned for a loop whose variables a closure
+	// captures or whose address is taken, in a file whose //go:build line declares a Go
+	// version before 1.22.
+	ErrCompileSharedLoopVariables = errors.New("loop variables shared across iterations (a file declaring a Go version before 1.22) are not supported")
+
+	// ErrCompilePerIterationLoopVariable is returned when a loop variable held in a heap
+	// cell cannot be given a fresh cell for the following iteration.
+	ErrCompilePerIterationLoopVariable = errors.New("loop variable cannot be given a variable per iteration")
+
+	// ErrCompileGotoOutOfRangeOverFunction is returned for a goto leaving a range-over-func
+	// loop body that the compiler has no dispatch for.
+	ErrCompileGotoOutOfRangeOverFunction = errors.New("goto out of a range-over-func loop body is not supported here")
+
+	// ErrCompileDeferInRangeOverFunctionBody is returned for a defer statement directly
+	// inside a range-over-func loop body. Go defers such a call until the enclosing function
+	// returns.
+	ErrCompileDeferInRangeOverFunctionBody = errors.New("defer inside a range-over-func loop body is not supported")
 
 	// ErrCompilePackageVariableNotSettable is returned when a program assigns to a
 	// package-qualified symbol of a registered Go package that is not a settable variable (a

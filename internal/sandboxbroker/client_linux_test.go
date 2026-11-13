@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxbroker
 
 import (
@@ -28,18 +28,26 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/logging"
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 type clientTestTransport struct {
 	net.Conn
-	done   <-chan struct{}
-	closes atomic.Int32
+	done            <-chan struct{}
+	closes          atomic.Int32
+	closeContext    atomic.Pointer[context.Context]
+	closedCancelled atomic.Bool
 }
 
 func (stream *clientTestTransport) Wait() error { <-stream.done; return nil }
-func (stream *clientTestTransport) Close() error {
+
+func (stream *clientTestTransport) Close(ctx context.Context) error {
 	stream.closes.Add(1)
+	stream.closeContext.Store(&ctx)
+	if ctx.Err() != nil {
+		stream.closedCancelled.Store(true)
+	}
 	_ = stream.Conn.Close()
 	<-stream.done
 	return nil
@@ -77,7 +85,7 @@ func maliciousBrokerFixture(t *testing.T, payload string, identity uint64, stall
 	}()
 	client, err := OpenFilesystemClient(t.Context(), stream, []RootGrant{{Name: "data", Rights: Read}}, FilesystemLimits{})
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = client.Close() })
+	t.Cleanup(func() { _ = client.Close(t.Context()) })
 	return client, requested
 }
 
@@ -132,4 +140,61 @@ func TestFilesystemClientHostDenialBeforeSend(t *testing.T) {
 	}
 	require.True(t, client.closed.Load(), "denial did not close cleanly")
 	require.Equal(t, 0, client.budget.outstanding)
+}
+
+func closedTestTransport(t *testing.T) *clientTestTransport {
+	t.Helper()
+	host, peer := net.Pipe()
+	t.Cleanup(func() { _ = peer.Close() })
+	done := make(chan struct{})
+	close(done)
+	return &clientTestTransport{Conn: host, done: done, closes: atomic.Int32{}, closeContext: atomic.Pointer[context.Context]{}, closedCancelled: atomic.Bool{}}
+}
+
+func requireBoundedCleanupClose(t *testing.T, stream *clientTestTransport) context.Context {
+	t.Helper()
+	require.EqualValues(t, 1, stream.closes.Load(), "the stream is closed once")
+	closeContext := stream.closeContext.Load()
+	require.NotNil(t, closeContext)
+	_, bounded := (*closeContext).Deadline()
+	require.True(t, bounded, "the cleanup close is bounded")
+	return *closeContext
+}
+
+func TestClientConstructorsRefuseMissingArguments(t *testing.T) {
+	t.Parallel()
+	_, err := OpenFilesystemClient(t.Context(), nil, nil, FilesystemLimits{})
+	require.ErrorIs(t, err, sandboxwire.ErrProtocol, "a nil stream is refused")
+	_, err = OpenJournalledFilesystemClient(t.Context(), nil, nil, nil)
+	require.ErrorIs(t, err, ErrInvalidPolicy, "a nil stream is refused")
+	require.ErrorIs(t, ExchangeFilesystemRecovery(t.Context(), nil), ErrInvalidPolicy, "a nil stream is refused")
+
+	stream := closedTestTransport(t)
+	_, err = OpenFilesystemClient(nil, stream, nil, FilesystemLimits{})
+	require.ErrorIs(t, err, sandboxwire.ErrProtocol, "a nil context is refused")
+	requireBoundedCleanupClose(t, stream)
+
+	stream = closedTestTransport(t)
+	require.ErrorIs(t, ExchangeFilesystemRecovery(nil, stream), ErrInvalidPolicy, "a nil context is refused")
+	requireBoundedCleanupClose(t, stream)
+
+	stream = closedTestTransport(t)
+	_, err = OpenJournalledFilesystemClient(nil, stream, nil, nil)
+	require.ErrorIs(t, err, ErrInvalidPolicy, "a nil context is refused")
+	requireBoundedCleanupClose(t, stream)
+}
+
+func TestAJournalledClientWithoutItsRecoveryStateClosesUnderTheCallersValues(t *testing.T) {
+	t.Parallel()
+	_, logger := logging.From(t.Context())
+	caller, cancel := context.WithCancel(logging.WithLogger(t.Context(), logger))
+	cancel()
+	stream := closedTestTransport(t)
+
+	_, err := OpenJournalledFilesystemClient(caller, stream, nil, nil)
+	require.ErrorIs(t, err, ErrInvalidPolicy)
+	closeContext := requireBoundedCleanupClose(t, stream)
+	require.False(t, stream.closedCancelled.Load(), "the cleanup does not inherit the caller's cancellation")
+	_, got := logging.From(closeContext)
+	require.Same(t, logger, got, "the cleanup keeps the caller's logger")
 }

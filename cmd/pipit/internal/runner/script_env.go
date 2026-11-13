@@ -57,8 +57,8 @@ func ScriptEnv(target string, scriptArguments []string) map[string]string {
 	return env
 }
 
-// scriptDirectory returns the target directory or a file target's parent. If the
-// absolute path cannot be resolved, it returns the cleaned relative path.
+// scriptDirectory returns the target directory or a file target's parent. If the absolute
+// path cannot be resolved, it returns the cleaned relative path.
 //
 // Takes target (string) which is the file or directory being run.
 //

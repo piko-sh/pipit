@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"sync"
 	"unsafe"
+	"weak"
 
 	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
@@ -130,6 +131,18 @@ func (vm *VM) ensurePrivateACITable(caller *program.CompiledFunction, fp int, ta
 	return clone
 }
 
+// pinASMClosure keeps the closure an AsmCallInfo entry's guard names alive while the
+// entry exists (see VM.asmClosurePins).
+//
+// Takes info (*AsmCallInfo) which is the VM-private entry.
+// Takes closurePointer (unsafe.Pointer) which is the closure it now names.
+func (vm *VM) pinASMClosure(info *AsmCallInfo, closurePointer unsafe.Pointer) {
+	if vm.asmClosurePins == nil {
+		vm.asmClosurePins = make(map[*AsmCallInfo]unsafe.Pointer)
+	}
+	vm.asmClosurePins[info] = closurePointer
+}
+
 // tryPopulateClosureASMInfo fills the call site's AsmCallInfo entry for the closure the
 // site just cached.
 //
@@ -176,7 +189,7 @@ func (vm *VM) tryPopulateClosureASMInfo(
 		info.closurePointer = 0
 		return
 	}
-	if callee.IsVariadic || callee.NumRegisters[isa.RegisterComplex] > 0 || asmCalleeParameterLayoutPerturbed(callee) {
+	if callee.IsVariadic || callee.NumRegisters[isa.RegisterComplex128] > 0 || asmCalleeParameterLayoutPerturbed(callee) {
 		info.closurePointer = 0
 		return
 	}
@@ -199,46 +212,49 @@ func (vm *VM) tryPopulateClosureASMInfo(
 	info.closureUpvaluesLen = int64(len(closureCells))
 	info.closureUpvaluesCap = int64(cap(closureCells))
 	info.closurePointer = uintptr(closurePointer)
+	vm.pinASMClosure(info, closurePointer)
 }
 
-// acquireReflectValueBuffer returns a buffer with at least n slots, zero-padded for safe
-// writes. The caller MUST pass the returned buffer through releaseReflectValueBuffer once
-// the values are no longer needed (typically via defer immediately after acquisition).
+// acquireReflectValueBuffer returns a buffer with at least count slots, zero-padded for
+// safe writes, and the pooled holder it came from. The caller MUST pass the holder to
+// releaseReflectValueBuffer once the values are no longer needed (typically via defer
+// immediately after acquisition), which returns that same holder to the pool.
 //
-// Takes n (int) which is the required length.
+// Takes count (int) which is the required length.
 //
-// Returns a buffer sized to n with zeroed entries.
-func acquireReflectValueBuffer(n int) []reflect.Value {
-	pointer, ok := reflectValueBufferPool.Get().(*[]reflect.Value)
+// Returns []reflect.Value which is a buffer sized to count with zeroed entries.
+// Returns *[]reflect.Value which is the holder to release.
+func acquireReflectValueBuffer(count int) ([]reflect.Value, *[]reflect.Value) {
+	holder, ok := reflectValueBufferPool.Get().(*[]reflect.Value)
 	if !ok {
-		buffer := make([]reflect.Value, n)
-		return buffer
+		holder = new([]reflect.Value)
 	}
-	buffer := *pointer
-	if cap(buffer) < n {
-		buffer = make([]reflect.Value, n)
+	buffer := *holder
+	if cap(buffer) < count {
+		buffer = make([]reflect.Value, count)
 	} else {
-		buffer = buffer[:n]
+		buffer = buffer[:count]
 		clear(buffer)
 	}
-	*pointer = buffer
-	return buffer
+	*holder = buffer
+	return buffer, holder
 }
 
-// releaseReflectValueBuffer returns a buffer to the pool.
+// releaseReflectValueBuffer clears a holder's buffer and returns the holder to the pool.
 //
 // The caller must not retain references to any reflect.Value inside the buffer after
 // release; subsequent acquirers may zero or overwrite the entries. Safe to call with a
-// nil-or-zero-length buffer (no-op).
+// nil holder or an empty buffer (no-op).
 //
-// Takes buffer ([]reflect.Value) which is the buffer to recycle.
-func releaseReflectValueBuffer(buffer []reflect.Value) {
-	if cap(buffer) == 0 {
+// Takes holder (*[]reflect.Value) which acquireReflectValueBuffer returned.
+func releaseReflectValueBuffer(holder *[]reflect.Value) {
+	if holder == nil || cap(*holder) == 0 {
 		return
 	}
-	fullBuffer := buffer[:cap(buffer)]
+	fullBuffer := (*holder)[:cap(*holder)]
 	clear(fullBuffer)
-	reflectValueBufferPool.Put(new(fullBuffer[:0]))
+	*holder = fullBuffer[:0]
+	reflectValueBufferPool.Put(holder)
 }
 
 // registerToReflectValue reads a register value and returns it as a reflect.Value. Used
@@ -257,9 +273,9 @@ func releaseReflectValueBuffer(buffer []reflect.Value) {
 // kind is unrecognised.
 func registerToReflectValue(arena *RegisterArena, registers *Registers, kind isa.RegisterKind, register uint8) reflect.Value {
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return boxInt64ToGeneral(arena, registers.Ints[register])
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return boxFloat64ToGeneral(arena, registers.Floats[register])
 	case isa.RegisterString:
 		return BoxStringToGeneral(arena, registers.Strings[register])
@@ -267,19 +283,19 @@ func registerToReflectValue(arena *RegisterArena, registers *Registers, kind isa
 		return registers.General[register]
 	case isa.RegisterBool:
 		return boxBoolToGeneral(registers.Bools[register])
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return boxUint64ToGeneral(arena, registers.Uints[register])
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return boxComplex128ToGeneral(arena, registers.Complex[register])
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		return packTypedSliceToGeneral(arena, registers.SlicesInt[register], intSliceReflectType)
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		return packTypedSliceFloatToGeneral(arena, registers.slicesFloat[register])
 	case isa.RegisterSliceString:
 		return PackTypedSliceStringToGeneral(arena, registers.slicesString[register])
 	case isa.RegisterSliceBool:
 		return packTypedSliceBoolToGeneral(arena, registers.slicesBool[register])
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		return packTypedSliceUintToGeneral(arena, registers.slicesUint[register])
 	case isa.RegisterSliceByte:
 		if arena == nil {
@@ -417,9 +433,9 @@ func copyOneCallArgument(destination, source *Registers, destinationKind, source
 		boxScalarToGeneral(destination, source, sourceKind, destinationRegister, sourceRegister, arena)
 	case sourceKind == isa.RegisterGeneral:
 		unboxGeneralToScalar(destination, source.General[sourceRegister], destinationKind, destinationRegister, arena)
-	case destinationKind == isa.RegisterBool && sourceKind == isa.RegisterInt:
+	case destinationKind == isa.RegisterBool && sourceKind == isa.RegisterInt64:
 		destination.Bools[destinationRegister] = source.Ints[sourceRegister] != 0
-	case destinationKind == isa.RegisterInt && sourceKind == isa.RegisterBool:
+	case destinationKind == isa.RegisterInt64 && sourceKind == isa.RegisterBool:
 		destination.Ints[destinationRegister] = boolToInt64(source.Bools[sourceRegister])
 	}
 }
@@ -433,9 +449,9 @@ func copyOneCallArgument(destination, source *Registers, destinationKind, source
 // Takes sourceRegister (uint8) which is the source index in the bank.
 func copySameKindArg(destination, source *Registers, kind isa.RegisterKind, destinationRegister int, sourceRegister uint8) {
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		destination.Ints[destinationRegister] = source.Ints[sourceRegister]
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		destination.Floats[destinationRegister] = source.Floats[sourceRegister]
 	case isa.RegisterString:
 		destination.Strings[destinationRegister] = source.Strings[sourceRegister]
@@ -443,19 +459,19 @@ func copySameKindArg(destination, source *Registers, kind isa.RegisterKind, dest
 		destination.General[destinationRegister] = ValueCopyForBoundary(source.General[sourceRegister])
 	case isa.RegisterBool:
 		destination.Bools[destinationRegister] = source.Bools[sourceRegister]
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		destination.Uints[destinationRegister] = source.Uints[sourceRegister]
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		destination.Complex[destinationRegister] = source.Complex[sourceRegister]
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		destination.SlicesInt[destinationRegister] = source.SlicesInt[sourceRegister]
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		destination.slicesFloat[destinationRegister] = source.slicesFloat[sourceRegister]
 	case isa.RegisterSliceString:
 		destination.slicesString[destinationRegister] = source.slicesString[sourceRegister]
 	case isa.RegisterSliceBool:
 		destination.slicesBool[destinationRegister] = source.slicesBool[sourceRegister]
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		destination.slicesUint[destinationRegister] = source.slicesUint[sourceRegister]
 	case isa.RegisterSliceByte:
 		destination.slicesByte[destinationRegister] = source.slicesByte[sourceRegister]
@@ -480,27 +496,27 @@ func copySameKindArg(destination, source *Registers, kind isa.RegisterKind, dest
 // Takes arena (*RegisterArena) which receives the scalar boxes; may be nil.
 func boxScalarToGeneral(destination, source *Registers, sourceKind isa.RegisterKind, destinationRegister int, sourceRegister uint8, arena *RegisterArena) {
 	switch sourceKind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		destination.General[destinationRegister] = boxInt64ToGeneral(arena, source.Ints[sourceRegister])
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		destination.General[destinationRegister] = boxFloat64ToGeneral(arena, source.Floats[sourceRegister])
 	case isa.RegisterString:
 		destination.General[destinationRegister] = BoxStringToGeneral(arena, source.Strings[sourceRegister])
 	case isa.RegisterBool:
 		destination.General[destinationRegister] = boxBoolToGeneral(source.Bools[sourceRegister])
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		destination.General[destinationRegister] = boxUint64ToGeneral(arena, source.Uints[sourceRegister])
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		destination.General[destinationRegister] = boxComplex128ToGeneral(arena, source.Complex[sourceRegister])
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		destination.General[destinationRegister] = reflect.ValueOf(source.SlicesInt[sourceRegister])
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		destination.General[destinationRegister] = reflect.ValueOf(source.slicesFloat[sourceRegister])
 	case isa.RegisterSliceString:
 		destination.General[destinationRegister] = reflect.ValueOf(source.slicesString[sourceRegister])
 	case isa.RegisterSliceBool:
 		destination.General[destinationRegister] = reflect.ValueOf(source.slicesBool[sourceRegister])
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		destination.General[destinationRegister] = reflect.ValueOf(source.slicesUint[sourceRegister])
 	case isa.RegisterSliceByte:
 		destination.General[destinationRegister] = reflect.ValueOf(source.slicesByte[sourceRegister])
@@ -529,36 +545,36 @@ func boxScalarToGeneral(destination, source *Registers, sourceKind isa.RegisterK
 // backings; may be nil for test entry without an active VM.
 func unboxGeneralToScalar(destination *Registers, value reflect.Value, destinationKind isa.RegisterKind, destinationRegister int, arena *RegisterArena) {
 	switch destinationKind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		destination.Ints[destinationRegister] = value.Int()
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		destination.Floats[destinationRegister] = value.Float()
 	case isa.RegisterString:
 		destination.Strings[destinationRegister] = value.String()
 	case isa.RegisterBool:
 		destination.Bools[destinationRegister] = value.Bool()
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		destination.Uints[destinationRegister] = value.Uint()
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		destination.Complex[destinationRegister] = value.Complex()
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		destination.SlicesInt[destinationRegister] = unboxToTypedIntSlice(value, arena)
-	case isa.RegisterSliceFloat:
-		if slice, ok := reflect.TypeAssert[[]float64](value); ok {
+	case isa.RegisterSliceFloat64:
+		if slice, ok := typedSliceOf[float64](value); ok {
 			destination.slicesFloat[destinationRegister] = slice
 		}
 	case isa.RegisterSliceString:
-		if slice, ok := reflect.TypeAssert[[]string](value); ok {
+		if slice, ok := typedSliceOf[string](value); ok {
 			destination.slicesString[destinationRegister] = slice
 		}
 	case isa.RegisterSliceBool:
-		if slice, ok := reflect.TypeAssert[[]bool](value); ok {
+		if slice, ok := typedSliceOf[bool](value); ok {
 			destination.slicesBool[destinationRegister] = slice
 		}
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		destination.slicesUint[destinationRegister] = unboxToTypedUintSlice(value, arena)
 	case isa.RegisterSliceByte:
-		if slice, ok := reflect.TypeAssert[[]byte](value); ok {
+		if slice, ok := typedSliceOf[byte](value); ok {
 			destination.slicesByte[destinationRegister] = slice
 		}
 	default:
@@ -642,25 +658,17 @@ func widenUintSliceWithArena(value reflect.Value, arena *RegisterArena) []uint64
 	return target
 }
 
-// unboxToTypedIntSlice converts a signed-int slice into []int64.
-//
-// Converts a reflect.Value holding a signed integer slice (any width: int / int8 / int16
-// / int32 / int64) into the int64-backed storage shared by isa.RegisterSliceInt. When the
-// source is exactly []int64 the slice header is returned without copying; for narrower
-// widths the elements are widened element-by-element via reflect.Value.Int(). The
-// widening cost is the price paid for preserving the caller's declared element width
-// across the call boundary; signed-int sign-extension is handled by reflect.
+// unboxToTypedIntSlice converts a signed-int slice into []int64. When the source is
+// exactly []int64 the slice header is returned without copying.
 //
 // Takes value (reflect.Value) which is the source slice value.
-// Takes arena (*RegisterArena) which receives bump-allocated widened backings; may be nil
-// for test/library entry without an active VM.
+// Takes arena (*RegisterArena) which receives bump-allocated widened backings. It may be
+// nil for test/library entry without an active VM.
 //
 // Returns the int64-backed slice for the typed-slice bank, or nil when the source is not
 // a recognised signed-int slice.
-//
-//nolint:dupl // hot-path twin
 func unboxToTypedIntSlice(value reflect.Value, arena *RegisterArena) []int64 {
-	if slice, ok := reflect.TypeAssert[[]int64](value); ok {
+	if slice, ok := typedSliceOf[int64](value); ok {
 		return slice
 	}
 	if value.Kind() != reflect.Slice {
@@ -669,7 +677,7 @@ func unboxToTypedIntSlice(value reflect.Value, arena *RegisterArena) []int64 {
 	elemKind := value.Type().Elem().Kind()
 
 	if elemKind == reflect.Int {
-		if slice, ok := reflect.TypeAssert[[]int](value); ok {
+		if slice, ok := typedSliceOf[int](value); ok {
 			return *(*[]int64)(unsafe.Pointer(&slice))
 		}
 	}
@@ -681,18 +689,16 @@ func unboxToTypedIntSlice(value reflect.Value, arena *RegisterArena) []int64 {
 
 // unboxToTypedUintSlice is the unsigned-int companion of unboxToTypedIntSlice. Widens
 // []uint / []uint16 / []uint32 elements into the uint64 storage shared by
-// isa.RegisterSliceUint without re-aliasing the backing array.
+// isa.RegisterSliceUint64 without re-aliasing the backing array.
 //
 // Takes value (reflect.Value) which is the source slice value.
-// Takes arena (*RegisterArena) which receives bump-allocated widened backings; may be nil
-// for test/library entry without an active VM.
+// Takes arena (*RegisterArena) which receives bump-allocated widened backings. It may be
+// nil for test/library entry without an active VM.
 //
 // Returns the uint64-backed slice for the typed-slice bank, or nil when the source is not
 // a recognised unsigned-int slice.
-//
-//nolint:dupl // hot-path twin
 func unboxToTypedUintSlice(value reflect.Value, arena *RegisterArena) []uint64 {
-	if slice, ok := reflect.TypeAssert[[]uint64](value); ok {
+	if slice, ok := typedSliceOf[uint64](value); ok {
 		return slice
 	}
 	if value.Kind() != reflect.Slice {
@@ -701,7 +707,7 @@ func unboxToTypedUintSlice(value reflect.Value, arena *RegisterArena) []uint64 {
 	elemKind := value.Type().Elem().Kind()
 
 	if elemKind == reflect.Uint {
-		if slice, ok := reflect.TypeAssert[[]uint](value); ok {
+		if slice, ok := typedSliceOf[uint](value); ok {
 			return *(*[]uint64)(unsafe.Pointer(&slice))
 		}
 	}
@@ -760,15 +766,39 @@ func handleCall(vm *VM, frame *CallFrame, registers *Registers, instruction isa.
 		} else {
 			closurePointer = rv.ptr
 		}
-		if closurePointer != nil && !vm.hasGoroutines && closurePointer == site.CachedClosurePtr {
+		if closurePointer != nil && !vm.hasGoroutines && unsafe.Pointer(site.CachedClosure.Value()) == closurePointer &&
+			cachedClosureMatches(site, (*RuntimeClosure)(closurePointer)) {
 			callee = site.CachedClosureCallee
-			closureCells = site.CachedClosureUpvalues
+			closureCells = (*RuntimeClosure)(closurePointer).upvalues
 			closureRoot = site.CachedClosureRoot
 
 			vm.repointClosureACIBase(frame.Function)
 		} else {
 			closure, ok := reflect.TypeAssert[*RuntimeClosure](value)
 			if !ok {
+				noted := false
+				if copiesNativeStrings(vm.Arena) {
+					if class, classed := nativeCallClass(vm.Arena, value); classed {
+						if restore := copyNativeStringArguments(vm.Arena, registers, site, class, vm); restore != nil {
+							noteNativeCallArgumentsClassed(vm.Arena, registers, site, value, class)
+							result := handleCallNativeReflect(vm, registers, site, value)
+							restore.undo(registers)
+							return result
+						}
+						noteNativeCallArgumentsClassed(vm.Arena, registers, site, value, class)
+						noted = true
+					}
+				}
+				if !noted && vm.Arena.countsHandOffs() {
+					noteNativeCallArguments(vm.Arena, registers, site, value)
+				}
+				if reusedWithoutLicence(vm.Arena) {
+					if restore := detachNativeStringArguments(vm.Arena, registers, site, value, vm); restore != nil {
+						result := handleCallNativeReflect(vm, registers, site, value)
+						restore.undo(registers)
+						return result
+					}
+				}
 				return handleCallNativeReflect(vm, registers, site, value)
 			}
 			callee = closure.Function
@@ -776,9 +806,8 @@ func handleCall(vm *VM, frame *CallFrame, registers *Registers, instruction isa.
 			closureRoot = closure.RootFunction
 
 			if !vm.hasGoroutines {
-				site.CachedClosurePtr = closurePointer
+				site.CachedClosure = weak.Make((*byte)(closurePointer))
 				site.CachedClosureCallee = callee
-				site.CachedClosureUpvalues = closureCells
 				site.CachedClosureRoot = closureRoot
 				vm.tryPopulateClosureASMInfo(frame.Function, siteIndex, site, callee, closurePointer, closureCells, closureRoot)
 			}
@@ -788,7 +817,9 @@ func handleCall(vm *VM, frame *CallFrame, registers *Registers, instruction isa.
 		}
 	}
 	if !site.IsClosure && callee.TinyLeafShape != program.TinyLeafNone && tinyLeafSiteCompatible(site, callee) {
-		return runTinyLeafInline(vm, registers, site, callee)
+		if result, ran := runTinyLeafInline(vm, registers, site, callee); ran {
+			return result
+		}
 	}
 	if vm.FramePointer >= vm.callDepthLimit() {
 		return opStackOverflow
@@ -805,7 +836,7 @@ func handleCall(vm *VM, frame *CallFrame, registers *Registers, instruction isa.
 	if vm.Arena != nil {
 		vm.Arena.SaveInto(&f.arenaSave)
 		callee.EnsurePrecomputedAllocCounts()
-		vm.Arena.allocRegistersIntoCached(&f.Registers, callee.PrecomputedAllocCounts, callee.NonZeroBankMask)
+		vm.Arena.allocRegistersIntoCached(&f.Registers, &callee.PrecomputedAllocCounts, callee.NonZeroBankMask)
 	} else {
 		f.Registers = NewRegisters(callee.NumRegisters)
 	}
@@ -839,8 +870,7 @@ func handleCall(vm *VM, frame *CallFrame, registers *Registers, instruction isa.
 	return opFrameChanged
 }
 
-// handleCallScalar dispatches a scalar-only interpreted call. Elides the closure,
-// variadic and general-bank branches that handleCall carries.
+// handleCallScalar dispatches a scalar-only interpreted call.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -879,7 +909,7 @@ func handleCallScalar(vm *VM, frame *CallFrame, registers *Registers, instructio
 	if vm.Arena != nil {
 		vm.Arena.SaveInto(&f.arenaSave)
 		callee.EnsurePrecomputedAllocCounts()
-		vm.Arena.allocRegistersIntoCached(&f.Registers, callee.PrecomputedAllocCounts, callee.NonZeroBankMask)
+		vm.Arena.allocRegistersIntoCached(&f.Registers, &callee.PrecomputedAllocCounts, callee.NonZeroBankMask)
 	} else {
 		f.Registers = NewRegisters(callee.NumRegisters)
 	}
@@ -963,7 +993,7 @@ func handleCallIIFE(vm *VM, frame *CallFrame, registers *Registers, instruction 
 		vm.Arena.SaveInto(&f.arenaSave)
 		upvals = vm.Arena.allocUpvalueRefs(n)
 		callee.EnsurePrecomputedAllocCounts()
-		vm.Arena.allocRegistersIntoCached(&f.Registers, callee.PrecomputedAllocCounts, callee.NonZeroBankMask)
+		vm.Arena.allocRegistersIntoCached(&f.Registers, &callee.PrecomputedAllocCounts, callee.NonZeroBankMask)
 	} else {
 		upvals = make([]upvalue, n)
 		f.Registers = NewRegisters(callee.NumRegisters)
@@ -1002,6 +1032,7 @@ func initialiseIIFEUpvalues(upvals []upvalue, cellBatch []program.UpvalueCell, d
 			upvals[i].Value = frame.upvalues[descriptor.Index].Value
 			continue
 		}
+		cellBatch[i].Maker = arena.cellMaker()
 		cellBatch[i].Kind = descriptor.Kind
 		if descriptor.IsIndirect {
 			cellBatch[i].IsIndirect = true
@@ -1028,9 +1059,9 @@ func initialiseIIFEUpvalues(upvals []upvalue, cellBatch []program.UpvalueCell, d
 // Takes arena (*RegisterArena) which is the allocation arena.
 func snapshotRegisterToCell(cell *program.UpvalueCell, registers *Registers, kind isa.RegisterKind, index uint8, arena *RegisterArena) {
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		cell.IntValue = registers.Ints[index]
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		cell.FloatValue = registers.Floats[index]
 	case isa.RegisterString:
 
@@ -1047,15 +1078,15 @@ func snapshotRegisterToCell(cell *program.UpvalueCell, registers *Registers, kin
 		cell.GeneralValue = general
 	case isa.RegisterBool:
 		cell.BoolValue = registers.Bools[index]
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		cell.UintValue = registers.Uints[index]
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		cell.ComplexValue = registers.Complex[index]
 	default:
 	}
 }
 
-// handleReturn processes a function return by running deferred calls, copying return
+// handleReturnBody processes a function return by running deferred calls, copying return
 // values to the caller's registers, and popping the frame. A deferred closure that cannot
 // recover is pushed as an ordinary frame and the return re-executes after it, so deferred
 // bodies do not nest a dispatch loop.
@@ -1065,7 +1096,7 @@ func snapshotRegisterToCell(cell *program.UpvalueCell, registers *Registers, kin
 // Takes instruction (instruction) which encodes the return value count.
 //
 // Returns OpResult indicating whether execution is done or continuing.
-func handleReturn(vm *VM, frame *CallFrame, _ *Registers, instruction isa.Instruction) OpResult {
+func handleReturnBody(vm *VM, frame *CallFrame, _ *Registers, instruction isa.Instruction) OpResult {
 	returnCount := int(instruction.A)
 	if vm.startInlineDefer(frame) {
 		return opFrameChanged
@@ -1075,11 +1106,10 @@ func handleReturn(vm *VM, frame *CallFrame, _ *Registers, instruction isa.Instru
 	}
 	vm.syncNamedResults(frame)
 	if vm.FramePointer == vm.baseFramePointer {
-		if vm.inlineDispatchExpectUintResult && len(frame.Function.ResultKinds) > 0 && frame.Function.ResultKinds[0] == isa.RegisterUint {
+		if vm.inlineDispatchExpectUintResult && len(frame.Function.ResultKinds) > 0 && frame.Function.ResultKinds[0] == isa.RegisterUint64 {
 			vm.inlineDispatchUintResult = frame.Registers.Uints[0]
 		} else {
-			vm.evalResult, _ = vm.extractResult(frame)
-			vm.EvalAllResults = vm.extractAllResults(frame)
+			vm.setBaseFrameResults(frame)
 		}
 		vm.popFrame()
 		return opDone
@@ -1091,7 +1121,7 @@ func handleReturn(vm *VM, frame *CallFrame, _ *Registers, instruction isa.Instru
 		kind := frame.Function.ResultKinds[i]
 		sourceRegister := bankCounters[kind]
 		bankCounters[kind]++
-		vm.copyReturnValueAt(frame, kind, sourceRegister, dest)
+		vm.copyReturnValueAt(frame, i, kind, sourceRegister, dest)
 	}
 	vm.popFrame()
 	return opFrameChanged

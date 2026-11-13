@@ -96,9 +96,9 @@ func (r *scopeStartRecorder) recordRange(s *ast.RangeStmt) {
 }
 
 // CollectClosureCapturedNamesFiltered returns names that warrant heap promotion so each
-// declareVar site can follow with isa.OpAllocIndirect and the closure cell carries a
+// declareVar site can follow with isa.OpAllocateIndirect and the closure cell carries a
 // stable pointer. Typed-bank captures are excluded because they sync via
-// isa.SubOpWriteSharedCell.
+// isa.SubOpSetSharedCell.
 //
 // Takes typeContext (*Compiler) which provides go/types information for filtering
 // candidates by static kind.
@@ -227,13 +227,6 @@ func CollectFreeVarsForLit(lit *ast.FuncLit, captured map[string]bool) {
 
 // CollectHeapPromotedNames populates the unified heapPromotedNames set used by
 // compileFunctionBody and compileClosureBody.
-//
-// Merges names captured by inner closures that need heap promotion (via
-// CollectClosureCapturedNamesFiltered) with names whose address is taken anywhere in the
-// function body (via collectAddressTakenLocals). The merge guarantees every name needing
-// a stable heap address receives exactly one isa.OpAllocIndirect at its declaration site
-// rather than one per `&` expression, which would re-allocate inside loops and drop
-// iteration-to-iteration state.
 //
 // Takes typeContext (*Compiler) which is forwarded to the closure pre-pass for
 // go/types-driven filtering of read-only captures.
@@ -676,8 +669,8 @@ func recordCapturedMutation(n ast.Node, markName func(*ast.Ident)) {
 }
 
 // collectAddressTakenLocals returns local names whose address is taken anywhere in body.
-// These names receive a single isa.OpAllocIndirect at their declaration site rather than
-// one per `&` encounter.
+// These names receive a single isa.OpAllocateIndirect at their declaration site rather
+// than one per `&` encounter.
 //
 // Takes body (*ast.BlockStmt) which is the function body to inspect.
 //

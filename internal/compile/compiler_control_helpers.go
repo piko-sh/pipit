@@ -192,7 +192,7 @@ func (c *Compiler) compileIncDecLocal(
 		c.EmitNarrowIntegerTruncation(scratch, staticType)
 		c.emitSpillStore(ctx, scratch.Register, location.Kind, location.SpillSlot)
 		c.Scopes.Alloc.FreeTemp(location.Kind, scratch.Register)
-		c.emitWriteSharedCellIfCaptured(ctx, location)
+		c.emitSetSharedCellIfCaptured(ctx, location)
 		return program.VarLocation{}, nil
 	}
 
@@ -207,7 +207,7 @@ func (c *Compiler) compileIncDecLocal(
 		c.EmitNarrowIntegerTruncation(scratch, staticType)
 		c.emitIndirectWrite(ctx, location, scratch)
 		c.Scopes.Alloc.FreeTemp(scratch.Kind, scratch.Register)
-		c.emitWriteSharedCellIfCaptured(ctx, location)
+		c.emitSetSharedCellIfCaptured(ctx, location)
 		return program.VarLocation{}, nil
 	}
 
@@ -216,7 +216,7 @@ func (c *Compiler) compileIncDecLocal(
 		return result, err
 	}
 	c.EmitNarrowIntegerTruncation(location, staticType)
-	c.emitWriteSharedCellIfCaptured(ctx, location)
+	c.emitSetSharedCellIfCaptured(ctx, location)
 	return result, nil
 }
 
@@ -319,7 +319,7 @@ func (c *Compiler) compileIncDecSelector(ctx context.Context, statement *ast.Inc
 	fieldIndex := safeconv.MustIntToUint8(index[len(index)-1])
 
 	fieldKind := c.kindFor(selection.Type())
-	if fieldKind != isa.RegisterInt && fieldKind != isa.RegisterFloat && fieldKind != isa.RegisterUint {
+	if fieldKind != isa.RegisterInt64 && fieldKind != isa.RegisterFloat64 && fieldKind != isa.RegisterUint64 {
 		return program.VarLocation{}, fault.ErrCompileIncDecSelectorNumeric
 	}
 
@@ -327,7 +327,7 @@ func (c *Compiler) compileIncDecSelector(ctx context.Context, statement *ast.Inc
 		return program.VarLocation{}, nil
 	}
 
-	if fieldKind == isa.RegisterInt && len(index) == 1 {
+	if fieldKind == isa.RegisterInt64 && len(index) == 1 {
 		return c.emitTypedIntFieldIncDec(ctx, statement.Tok, selection, receiverLocation, fieldIndex)
 	}
 
@@ -360,30 +360,26 @@ func (c *Compiler) emitEmbeddedFieldIncDec(
 ) (program.VarLocation, error) {
 	pointerLocation := c.compileEmbeddedLeafPointerReusing(receiverLocation, selectorExpression.X, index)
 	currentRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpDeref, currentRegister, pointerLocation.Register, 0)
+	program.Emit(c.Function, isa.OpDereference, currentRegister, pointerLocation.Register, 0)
 
 	valueRegister := c.Scopes.Alloc.AllocTemp(fieldKind)
-	program.Emit(c.Function, isa.OpUnpackInterface, valueRegister, currentRegister, uint8(fieldKind))
+	program.Emit(c.Function, isa.OpUnboxFromInterface, valueRegister, currentRegister, uint8(fieldKind))
 	valueLocation := program.VarLocation{Register: valueRegister, Kind: fieldKind}
 	if _, err := c.emitIncDec(ctx, operatorToken, valueLocation); err != nil {
 		return program.VarLocation{}, err
 	}
 	c.EmitNarrowIntegerTruncation(valueLocation, selection.Type())
 	genResult := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpPackInterface, genResult, valueRegister, uint8(fieldKind))
+	program.Emit(c.Function, isa.OpBoxAsInterface, genResult, valueRegister, uint8(fieldKind))
 	program.Emit(c.Function, isa.OpSetField, pointerLocation.Register, isa.SentinelFieldDeref, genResult)
 
 	return program.VarLocation{}, nil
 }
 
-// tryEmitFusedIncDecStructField emits the fused tier-1 isa.SubOpIncStructFieldInt/Uint
-// (or Dec) super-instruction when the struct layout resolves at compile time AND the
-// field is int/uint kind AND no narrow truncation is required AND the layout index fits
-// in uint8.
-//
-// Saves the isa.OpGetFieldInt, tier-2 IncInt, isa.OpSetFieldInt three-trip and the int
-// register temporary. Float is excluded because emitIncDec for floats already needs a
-// constant pool entry and the gain wouldn't justify the second sub-op variant.
+// tryEmitFusedIncDecStructField emits the fused tier-1
+// isa.SubOpIncrementStructFieldInt64/Uint (or Dec) super-instruction when the struct
+// layout resolves at compile time AND the field is int/uint kind AND no narrow truncation
+// is required AND the layout index fits in uint8.
 //
 // Takes operatorToken (token.Token) which is the INC/DEC token.
 // Takes selection (*types.Selection) which describes the field access.
@@ -392,7 +388,7 @@ func (c *Compiler) emitEmbeddedFieldIncDec(
 //
 // Returns true when the fused opcode was emitted.
 func (c *Compiler) tryEmitFusedIncDecStructField(ctx context.Context, operatorToken token.Token, selection *types.Selection, fieldKind isa.RegisterKind, receiverLocation program.VarLocation) bool {
-	if fieldKind != isa.RegisterInt && fieldKind != isa.RegisterUint {
+	if fieldKind != isa.RegisterInt64 && fieldKind != isa.RegisterUint64 {
 		return false
 	}
 	if typemap.NarrowIntegerBitWidth(selection.Type()) != 0 {
@@ -416,9 +412,6 @@ func (c *Compiler) tryEmitFusedIncDecStructField(ctx context.Context, operatorTo
 
 // emitTypedIntFieldIncDec emits inc/dec on a direct int-kind field.
 //
-// Emits isa.OpGetFieldInt, the inc/dec opcode, an optional narrow-truncation, and
-// isa.OpSetFieldInt.
-//
 // Takes operatorToken (token.Token) which is the INC or DEC token.
 // Takes selection (*types.Selection) which describes the field.
 // Takes receiverLocation (VarLocation) which is the boxed receiver.
@@ -433,14 +426,14 @@ func (c *Compiler) emitTypedIntFieldIncDec(
 	receiverLocation program.VarLocation,
 	fieldIndex uint8,
 ) (program.VarLocation, error) {
-	valueRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-	valueLocation := program.VarLocation{Register: valueRegister, Kind: isa.RegisterInt}
-	c.EmitTyped(ctx, isa.OpGetFieldInt, valueLocation, receiverLocation, rawOperand(fieldIndex))
+	valueRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+	valueLocation := program.VarLocation{Register: valueRegister, Kind: isa.RegisterInt64}
+	c.EmitTyped(ctx, isa.OpGetFieldInt64, valueLocation, receiverLocation, rawOperand(fieldIndex))
 	if _, err := c.emitIncDec(ctx, operatorToken, valueLocation); err != nil {
 		return program.VarLocation{}, err
 	}
 	c.EmitNarrowIntegerTruncation(valueLocation, selection.Type())
-	c.EmitTyped(ctx, isa.OpSetFieldInt, receiverLocation, rawOperand(fieldIndex), valueLocation)
+	c.EmitTyped(ctx, isa.OpSetFieldInt64, receiverLocation, rawOperand(fieldIndex), valueLocation)
 	return program.VarLocation{}, nil
 }
 
@@ -469,14 +462,14 @@ func (c *Compiler) emitBoxedFieldIncDec(
 	program.Emit(c.Function, isa.OpGetField, currentRegister, receiverLocation.Register, fieldIndex)
 
 	valueRegister := c.Scopes.Alloc.AllocTemp(fieldKind)
-	program.Emit(c.Function, isa.OpUnpackInterface, valueRegister, currentRegister, uint8(fieldKind))
+	program.Emit(c.Function, isa.OpUnboxFromInterface, valueRegister, currentRegister, uint8(fieldKind))
 	valueLocation := program.VarLocation{Register: valueRegister, Kind: fieldKind}
 	if _, err := c.emitIncDec(ctx, operatorToken, valueLocation); err != nil {
 		return program.VarLocation{}, err
 	}
 	c.EmitNarrowIntegerTruncation(valueLocation, selection.Type())
 	genResult := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpPackInterface, genResult, valueRegister, uint8(fieldKind))
+	program.Emit(c.Function, isa.OpBoxAsInterface, genResult, valueRegister, uint8(fieldKind))
 	program.Emit(c.Function, isa.OpSetField, receiverLocation.Register, fieldIndex, genResult)
 
 	return program.VarLocation{}, nil
@@ -492,7 +485,7 @@ func (c *Compiler) emitBoxedFieldIncDec(
 // Returns the compiled location and any error encountered.
 func (c *Compiler) compileIncDecUpvalue(ctx context.Context, statement *ast.IncDecStmt, reference upvalueReference) (program.VarLocation, error) {
 	currentRegister := c.Scopes.Alloc.AllocTemp(reference.kind)
-	program.Emit(c.Function, isa.OpGetUpvalue, currentRegister, safeconv.MustIntToUint8(reference.index), uint8(reference.kind))
+	program.Emit(c.Function, isa.OpGetCapturedVariable, currentRegister, safeconv.MustIntToUint8(reference.index), uint8(reference.kind))
 	currentLocation := program.VarLocation{Register: currentRegister, Kind: reference.kind}
 
 	if _, err := c.emitIncDec(ctx, statement.Tok, currentLocation); err != nil {
@@ -501,7 +494,7 @@ func (c *Compiler) compileIncDecUpvalue(ctx context.Context, statement *ast.IncD
 	}
 	c.EmitNarrowIntegerTruncation(currentLocation, c.incDecStaticType(statement.X))
 
-	program.Emit(c.Function, isa.OpSetUpvalue, currentRegister, safeconv.MustIntToUint8(reference.index), uint8(reference.kind))
+	program.Emit(c.Function, isa.OpSetCapturedVariable, currentRegister, safeconv.MustIntToUint8(reference.index), uint8(reference.kind))
 	c.Scopes.Alloc.FreeTemp(reference.kind, currentRegister)
 	return program.VarLocation{}, nil
 }
@@ -518,30 +511,30 @@ func (c *Compiler) compileIncDecUpvalue(ctx context.Context, statement *ast.IncD
 // fault.ErrCompileIncDecRequiresNumeric from the default rather than falling through.
 func (c *Compiler) emitIncDec(_ context.Context, operatorToken token.Token, location program.VarLocation) (program.VarLocation, error) {
 	switch location.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		if operatorToken == token.INC {
-			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2IncInt), location.Register)
+			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2IncrementInt64), location.Register)
 		} else {
-			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DecInt), location.Register)
+			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DecrementInt64), location.Register)
 		}
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		oneIndex, err := program.AddFloatConstant(c.Function, 1.0)
 		if err != nil {
 			return program.VarLocation{}, err
 		}
-		temporaryRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterFloat)
-		program.EmitWide(c.Function, isa.OpLoadFloatConst, temporaryRegister, oneIndex)
+		temporaryRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterFloat64)
+		program.EmitWide(c.Function, isa.OpLoadFloat64Constant, temporaryRegister, oneIndex)
 		if operatorToken == token.INC {
-			program.Emit(c.Function, isa.OpAddFloat, location.Register, location.Register, temporaryRegister)
+			program.Emit(c.Function, isa.OpAddFloat64, location.Register, location.Register, temporaryRegister)
 		} else {
-			program.Emit(c.Function, isa.OpSubFloat, location.Register, location.Register, temporaryRegister)
+			program.Emit(c.Function, isa.OpSubtractFloat64, location.Register, location.Register, temporaryRegister)
 		}
-		c.Scopes.Alloc.FreeTemp(isa.RegisterFloat, temporaryRegister)
-	case isa.RegisterUint:
+		c.Scopes.Alloc.FreeTemp(isa.RegisterFloat64, temporaryRegister)
+	case isa.RegisterUint64:
 		if operatorToken == token.INC {
-			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2IncUint), location.Register)
+			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2IncrementUint64), location.Register)
 		} else {
-			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DecUint), location.Register)
+			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DecrementUint64), location.Register)
 		}
 	default:
 		return program.VarLocation{}, fault.ErrCompileIncDecRequiresNumeric
@@ -550,6 +543,10 @@ func (c *Compiler) emitIncDec(_ context.Context, operatorToken token.Token, loca
 }
 
 // callResultKinds determines the register kinds for each result of a call expression.
+//
+// A call to a compiled function or method receives its results in the banks the callee
+// returns them in, so the return copies each value as it is rather than boxing a typed
+// slice into the general bank.
 //
 // Takes callExpression (*ast.CallExpr) which is the call expression to determine result
 // kinds for.
@@ -562,6 +559,11 @@ func (c *Compiler) callResultKinds(ctx context.Context, callExpression *ast.Call
 	}
 	if found {
 		return callee.ResultKinds, nil
+	}
+	if selector, ok := c.unwrapGenericInstantiation(ctx, callExpression.Fun).(*ast.SelectorExpr); ok {
+		if functionIndex, isMethod := c.resolveMethodFunction(ctx, selector); isMethod {
+			return c.RootFunction.Functions[functionIndex].ResultKinds, nil
+		}
 	}
 
 	tv := c.Info.Types[callExpression.Fun]
@@ -709,8 +711,13 @@ func (c *Compiler) resolveMultiReturnIdent(ctx context.Context,
 // declared variable that lands in the spill area receives its result through a deferred
 // store, since a call writes results only to registers.
 //
+// The variable is declared in the bank a single-value declaration would give it, not the
+// bank the callee returns the result in. A typed-slice result goes to a typed-slice
+// register only when the local qualifies for one, and a captured or escaping local stays
+// in the general bank, receiving the result through a deferred store that boxes it.
+//
 // Takes target (*ast.Ident) which is the identifier to declare or look up.
-// Takes kind (isa.RegisterKind) which is the register kind for the new variable.
+// Takes kind (isa.RegisterKind) which is the register kind the callee returns.
 //
 // Returns the target location, an optional deferred store, and any error.
 func (c *Compiler) resolveMultiReturnDefine(ctx context.Context,
@@ -719,10 +726,14 @@ func (c *Compiler) resolveMultiReturnDefine(ctx context.Context,
 ) (program.VarLocation, *multiReturnDeferredStore, error) {
 	typeObject := c.Info.Defs[target]
 	if typeObject != nil {
-		location := c.Scopes.DeclareVar(target.Name, kind)
+		localKind := kind
+		if isa.IsTypedSliceKind(kind) {
+			localKind = c.typedSliceKindForLocal(target.Name, typeObject.Type(), c.kindFor(typeObject.Type()))
+		}
+		location := c.Scopes.DeclareVar(target.Name, localKind)
 		c.resetSharedCellForDeclaration(ctx, target.Name, location)
-		if location.IsSpilled {
-			return c.deferredIdentStore(target, kind)
+		if location.IsSpilled || localKind != kind {
+			return c.deferredIdentStore(ctx, target, kind)
 		}
 		return location, nil, nil
 	}
@@ -741,33 +752,43 @@ func (c *Compiler) resolveMultiReturnDefine(ctx context.Context,
 // Takes kind (isa.RegisterKind) which is the expected register kind for the result.
 //
 // Returns the target location, an optional deferred store, and any error.
-func (c *Compiler) resolveMultiReturnAssignIdent(_ context.Context,
+func (c *Compiler) resolveMultiReturnAssignIdent(ctx context.Context,
 	target *ast.Ident,
 	kind isa.RegisterKind,
 ) (program.VarLocation, *multiReturnDeferredStore, error) {
 	switch c.resolveIdentTarget(target) {
 	case identTargetUpvalue, identTargetGlobal:
-		return c.deferredIdentStore(target, kind)
+		return c.deferredIdentStore(ctx, target, kind)
 	case identTargetLocal, identTargetUnknown:
 	}
 	location, found := c.Scopes.LookupVar(target.Name)
 	if !found || location.IsIndirect || location.IsSpilled || location.Kind != kind {
-		return c.deferredIdentStore(target, kind)
+		return c.deferredIdentStore(ctx, target, kind)
 	}
 	return location, nil, nil
 }
 
 // deferredIdentStore gives a multi-return result a fresh register and a deferred store
 // that assigns it to the identifier after the call, for targets the call cannot write
-// directly (package variables, upvalues, heap cells, spill slots).
+// directly (package variables, upvalues, heap cells, spill slots, and locals held in
+// another bank).
+//
+// A typed-slice result records the identifier's exact type, so a store into the general
+// bank boxes it as that type rather than as its bank's storage type ([]uint64 for a
+// []uint).
 //
 // Takes target (*ast.Ident) which is the assigned identifier.
 // Takes kind (isa.RegisterKind) which is the result's bank.
 //
 // Returns the temporary location, the deferred store and a nil error.
-func (c *Compiler) deferredIdentStore(target *ast.Ident, kind isa.RegisterKind) (program.VarLocation, *multiReturnDeferredStore, error) {
+func (c *Compiler) deferredIdentStore(ctx context.Context, target *ast.Ident, kind isa.RegisterKind) (program.VarLocation, *multiReturnDeferredStore, error) {
 	register := c.Scopes.Alloc.Alloc(kind)
 	location := program.VarLocation{Register: register, Kind: kind}
+	if isa.IsTypedSliceKind(kind) {
+		if object := c.Info.ObjectOf(target); object != nil && typemap.KindForTypedSlice(object.Type()) == kind {
+			location.SourceType = c.exactReflectTypeForBoxing(ctx, object.Type())
+		}
+	}
 	unprepared := preparedTarget{expr: nil, base: program.VarLocation{}, index: program.VarLocation{}, kind: preparedNone}
 	return location, &multiReturnDeferredStore{prepared: unprepared, sourceLocation: location, target: target}, nil
 }
@@ -841,12 +862,7 @@ func (c *Compiler) emitMultiReturnDirectCall(ctx context.Context, callExpression
 	if err != nil {
 		return err
 	}
-	site := program.CallSite{
-		FunctionIndex: functionIndex,
-		Arguments:     argumentLocations,
-		Returns:       returnLocations,
-	}
-	siteIndex, addErr := program.AddCallSite(c.Function, &site)
+	siteIndex, addErr := program.AddCallSite(c.Function, new(directCallSite(functionIndex, callee, argumentLocations, returnLocations)))
 	if addErr != nil {
 		return addErr
 	}
@@ -1025,12 +1041,7 @@ func (c *Compiler) emitMethodCallWithReturns(ctx context.Context,
 	argumentLocations = append(argumentLocations, receiverLocation)
 	argumentLocations = append(argumentLocations, compiledArguments...)
 
-	site := program.CallSite{
-		FunctionIndex: functionIndex,
-		Arguments:     argumentLocations,
-		Returns:       returnLocations,
-	}
-	siteIndex, addErr := program.AddCallSite(c.Function, &site)
+	siteIndex, addErr := program.AddCallSite(c.Function, new(directCallSite(functionIndex, callee, argumentLocations, returnLocations)))
 	if addErr != nil {
 		return addErr
 	}
@@ -1141,7 +1152,7 @@ func (c *Compiler) emitDeferredStore(ctx context.Context, ds multiReturnDeferred
 		switch c.resolveIdentTarget(target) {
 		case identTargetUpvalue:
 			reference := c.upvalueMap[target.Name]
-			program.Emit(c.Function, isa.OpSetUpvalue, ds.sourceLocation.Register, safeconv.MustIntToUint8(reference.index), uint8(reference.kind))
+			program.Emit(c.Function, isa.OpSetCapturedVariable, ds.sourceLocation.Register, safeconv.MustIntToUint8(reference.index), uint8(reference.kind))
 			return nil
 		case identTargetGlobal:
 			c.emitSetGlobal(ctx, c.globalVariables[target.Name], ds.sourceLocation)
@@ -1228,14 +1239,14 @@ func (c *Compiler) declareCommaOkBool(ctx context.Context, okIdentifier *ast.Ide
 	if okIdentifier.Name != typemap.BlankIdentName {
 		typeObject := c.Info.Defs[okIdentifier]
 		if typeObject != nil {
-			location := c.Scopes.DeclareVar(okIdentifier.Name, isa.RegisterInt)
+			location := c.Scopes.DeclareVar(okIdentifier.Name, isa.RegisterInt64)
 			c.resetSharedCellForDeclaration(ctx, okIdentifier.Name, location)
 			return location
 		}
 		location, _ := c.Scopes.LookupVar(okIdentifier.Name)
 		return location
 	}
-	return program.VarLocation{Register: c.Scopes.Alloc.AllocTemp(isa.RegisterInt), Kind: isa.RegisterInt}
+	return program.VarLocation{Register: c.Scopes.Alloc.AllocTemp(isa.RegisterInt64), Kind: isa.RegisterInt64}
 }
 
 // lookupCommaOkValue looks up the value target for a comma-ok assign.
@@ -1263,7 +1274,7 @@ func (c *Compiler) lookupCommaOkBool(_ context.Context, okIdentifier *ast.Ident)
 		location, _ := c.Scopes.LookupVar(okIdentifier.Name)
 		return location
 	}
-	return program.VarLocation{Register: c.Scopes.Alloc.AllocTemp(isa.RegisterInt), Kind: isa.RegisterInt}
+	return program.VarLocation{Register: c.Scopes.Alloc.AllocTemp(isa.RegisterInt64), Kind: isa.RegisterInt64}
 }
 
 // compileMapCommaOk compiles v, ok := m[k] or v, ok = m[k].
@@ -1292,7 +1303,7 @@ func (c *Compiler) compileMapCommaOk(ctx context.Context, leftHandSideList []ast
 	if err != nil {
 		return program.VarLocation{}, err
 	}
-	if op, ok := selectTypedMapIndexOkOpcode(keyKind, valueKind, keyLocation.Kind); ok {
+	if op, ok := selectTypedGetMapOkOpcode(keyKind, valueKind, keyLocation.Kind); ok {
 		return c.emitTypedMapCommaOk(ctx, typedMapCommaOkRequest{
 			valueIdentifier: valueIdentifier,
 			okIdentifier:    okIdentifier,
@@ -1306,11 +1317,11 @@ func (c *Compiler) compileMapCommaOk(ctx context.Context, leftHandSideList []ast
 	c.boxElementToGeneral(ctx, &keyLocation)
 	valueDestination, okDestination := c.declareCommaOkTargets(ctx, valueIdentifier, okIdentifier, valueKind, isa.RegisterGeneral, isDefine)
 	genDest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	okRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-	program.Emit(c.Function, isa.OpMapIndexOk, genDest, mapLocation.Register, keyLocation.Register)
-	program.Emit(c.Function, isa.OpExt, okRegister, 0, 0)
+	okRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+	program.Emit(c.Function, isa.OpGetMapOk, genDest, mapLocation.Register, keyLocation.Register)
+	program.Emit(c.Function, isa.OpExtension, okRegister, 0, 0)
 	c.storeCommaOkResult(ctx, valueDestination, genDest, elementType)
-	c.emitMove(ctx, okDestination, program.VarLocation{Register: okRegister, Kind: isa.RegisterInt})
+	c.emitMove(ctx, okDestination, program.VarLocation{Register: okRegister, Kind: isa.RegisterInt64})
 	if isDefine {
 		c.promoteDefinedIdent(ctx, valueIdentifier)
 	}
@@ -1349,15 +1360,15 @@ func (c *Compiler) mapCommaOkKinds(indexExpression *ast.IndexExpr, isDefine bool
 func (c *Compiler) emitTypedMapCommaOk(ctx context.Context, request typedMapCommaOkRequest) program.VarLocation {
 	valueDestination, okDestination := c.declareCommaOkTargets(ctx, request.valueIdentifier, request.okIdentifier, request.valueKind, isa.RegisterGeneral, request.isDefine)
 	typedDest := c.Scopes.Alloc.Alloc(request.valueKind)
-	okRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt)
+	okRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
 	program.Emit(c.Function, request.op, typedDest, request.mapLocation.Register, request.keyLocation.Register)
-	program.Emit(c.Function, isa.OpExt, okRegister, 0, 0)
+	program.Emit(c.Function, isa.OpExtension, okRegister, 0, 0)
 	if valueDestination.IsSpilled {
 		c.emitSpillStore(ctx, typedDest, request.valueKind, valueDestination.SpillSlot)
 	} else if valueDestination.Register != typedDest || valueDestination.Kind != request.valueKind {
 		c.emitMove(ctx, valueDestination, program.VarLocation{Register: typedDest, Kind: request.valueKind})
 	}
-	c.emitMove(ctx, okDestination, program.VarLocation{Register: okRegister, Kind: isa.RegisterInt})
+	c.emitMove(ctx, okDestination, program.VarLocation{Register: okRegister, Kind: isa.RegisterInt64})
 	if request.isDefine {
 		c.promoteDefinedIdent(ctx, request.valueIdentifier)
 	}
@@ -1376,11 +1387,11 @@ func (c *Compiler) storeCommaOkResult(ctx context.Context, valueDestination prog
 		c.emitMoveTyped(ctx, valueDestination, program.VarLocation{Register: genDest, Kind: isa.RegisterGeneral}, elementType)
 	case valueDestination.IsSpilled:
 		scratch := c.Scopes.Alloc.AllocTemp(valueDestination.Kind)
-		program.Emit(c.Function, isa.OpUnpackInterface, scratch, genDest, uint8(valueDestination.Kind))
+		program.Emit(c.Function, isa.OpUnboxFromInterface, scratch, genDest, uint8(valueDestination.Kind))
 		c.emitSpillStore(ctx, scratch, valueDestination.Kind, valueDestination.SpillSlot)
 		c.Scopes.Alloc.FreeTemp(valueDestination.Kind, scratch)
 	default:
-		program.Emit(c.Function, isa.OpUnpackInterface, valueDestination.Register, genDest, uint8(valueDestination.Kind))
+		program.Emit(c.Function, isa.OpUnboxFromInterface, valueDestination.Register, genDest, uint8(valueDestination.Kind))
 	}
 }
 
@@ -1419,13 +1430,13 @@ func (c *Compiler) compileChannelReceiveCommaOk(ctx context.Context, leftHandSid
 
 	valueDestination, okDestination := c.declareCommaOkTargets(ctx, valueIdentifier, okIdentifier, valueKind, valueKind, isDefine)
 
-	okRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt)
+	okRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
 	destinationRegister := c.Scopes.Alloc.Alloc(valueKind)
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpChannelReceive), channelLocation.Register, okRegister)
-	program.Emit(c.Function, isa.OpExt, destinationRegister, uint8(valueKind), 0)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpReceiveFromChannel), channelLocation.Register, okRegister)
+	program.Emit(c.Function, isa.OpExtension, destinationRegister, uint8(valueKind), 0)
 
 	c.emitMoveTyped(ctx, valueDestination, program.VarLocation{Register: destinationRegister, Kind: valueKind}, elementType)
-	c.emitMove(ctx, okDestination, program.VarLocation{Register: okRegister, Kind: isa.RegisterInt})
+	c.emitMove(ctx, okDestination, program.VarLocation{Register: okRegister, Kind: isa.RegisterInt64})
 
 	if isDefine {
 		c.promoteDefinedIdent(ctx, valueIdentifier)
@@ -1471,13 +1482,13 @@ func (c *Compiler) compileTypeAssertCommaOk(ctx context.Context, leftHandSideLis
 	valueDestination, okDestination := c.declareCommaOkTargets(ctx, valueIdentifier, okIdentifier, valueKind, isa.RegisterGeneral, isDefine)
 
 	genDest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	okRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt)
+	okRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
 
 	program.Emit(c.Function, isa.OpTypeAssert, genDest, sourceLocation.Register, okRegister)
 	program.EmitExtension(c.Function, typeIndex, 0)
 
 	c.storeCommaOkResult(ctx, valueDestination, genDest, targetType)
-	c.emitMove(ctx, okDestination, program.VarLocation{Register: okRegister, Kind: isa.RegisterInt})
+	c.emitMove(ctx, okDestination, program.VarLocation{Register: okRegister, Kind: isa.RegisterInt64})
 
 	if isDefine {
 		c.promoteDefinedIdent(ctx, valueIdentifier)
@@ -1499,13 +1510,13 @@ func wrapIncDecResult(result program.VarLocation, err error) (program.VarLocatio
 	return result, nil
 }
 
-// mapCommaOkTargetIdents extracts the value and ok identifier targets from a comma-ok
-// left-hand side, returning a descriptive error when either target is not a bare
-// identifier.
+// mapCommaOkTargetIdents extracts the value and ok identifier targets of an assignment.
 //
 // Takes leftHandSideList ([]ast.Expr) which is the LHS of the comma-ok assignment.
 //
-// Returns the value identifier, the ok identifier, and any validation error.
+// Returns valueIdentifier (*ast.Ident) which is the value target.
+// Returns okIdentifier (*ast.Ident) which is the presence target.
+// Returns err (error) when either target is not a bare identifier.
 func mapCommaOkTargetIdents(leftHandSideList []ast.Expr) (valueIdentifier *ast.Ident, okIdentifier *ast.Ident, err error) {
 	value, ok := leftHandSideList[0].(*ast.Ident)
 	if !ok {

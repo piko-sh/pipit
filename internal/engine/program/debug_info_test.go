@@ -19,6 +19,7 @@
 package program
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -185,10 +186,10 @@ func TestRelativiseGlobalOperandsSubtractsTheBundleBase(t *testing.T) {
 		t.Parallel()
 		root := NewNamedFunction("root")
 		root.Body = []isa.Instruction{
-			{Op: isa.OpGetGlobal, A: 0, B: 7, C: uint8(isa.RegisterInt)},
+			{Op: isa.OpGetGlobal, A: 0, B: 7, C: uint8(isa.RegisterInt64)},
 		}
 		base := SlotAllocation{}
-		base[isa.RegisterInt] = 3
+		base[isa.RegisterInt64] = 3
 
 		require.NoError(t, RelativiseGlobalOperands(root, base))
 		require.Equal(t, uint8(4), root.Body[0].B, "the operand becomes an offset from the bundle's own base")
@@ -198,10 +199,10 @@ func TestRelativiseGlobalOperandsSubtractsTheBundleBase(t *testing.T) {
 		t.Parallel()
 		root := NewNamedFunction("root")
 		root.Body = []isa.Instruction{
-			{Op: isa.OpSetGlobal, A: 0, B: 1, C: uint8(isa.RegisterInt)},
+			{Op: isa.OpSetGlobal, A: 0, B: 1, C: uint8(isa.RegisterInt64)},
 		}
 		base := SlotAllocation{}
-		base[isa.RegisterInt] = 5
+		base[isa.RegisterInt64] = 5
 
 		err := RelativiseGlobalOperands(root, base)
 
@@ -222,7 +223,7 @@ func TestRelativiseGlobalOperandsSubtractsTheBundleBase(t *testing.T) {
 	t.Run("an instruction that touches no global is left alone", func(t *testing.T) {
 		t.Parallel()
 		root := NewNamedFunction("root")
-		root.Body = []isa.Instruction{{Op: isa.OpAddInt, A: 0, B: 1, C: 2}}
+		root.Body = []isa.Instruction{{Op: isa.OpAddInt64, A: 0, B: 1, C: 2}}
 
 		require.NoError(t, RelativiseGlobalOperands(root, SlotAllocation{}))
 		require.Equal(t, uint8(1), root.Body[0].B)
@@ -237,10 +238,10 @@ func TestRelativiseGlobalOperandsSubtractsTheBundleBase(t *testing.T) {
 		t.Parallel()
 		root := NewNamedFunction("root")
 		child := NewNamedFunction("child")
-		child.Body = []isa.Instruction{{Op: isa.OpGetGlobal, A: 0, B: 7, C: uint8(isa.RegisterInt)}}
+		child.Body = []isa.Instruction{{Op: isa.OpGetGlobal, A: 0, B: 7, C: uint8(isa.RegisterInt64)}}
 		root.AppendFunction(child)
 		base := SlotAllocation{}
-		base[isa.RegisterInt] = 2
+		base[isa.RegisterInt64] = 2
 
 		require.NoError(t, RelativiseGlobalOperands(root, base))
 		require.Equal(t, uint8(5), child.Body[0].B, "the walk must reach every function in the bundle")
@@ -266,7 +267,7 @@ func TestSetGlobalBasesToleratesMissingInput(t *testing.T) {
 		child := NewNamedFunction("child")
 		root.AppendFunction(child)
 		bases := SlotAllocation{}
-		bases[isa.RegisterInt] = 4
+		bases[isa.RegisterInt64] = 4
 
 		SetGlobalBases(root, &bases)
 
@@ -280,16 +281,52 @@ func TestDisassembleRendersEveryInstruction(t *testing.T) {
 
 	compiledFunction := NewNamedFunction("example")
 	compiledFunction.Body = []isa.Instruction{
-		{Op: isa.OpAddInt, A: 0, B: 1, C: 2},
-		{Op: isa.OpSubInt, A: 0, B: 1, C: 2},
+		{Op: isa.OpAddInt64, A: 0, B: 1, C: 2},
+		{Op: isa.OpSubtractInt64, A: 0, B: 1, C: 2},
 		returnInstruction(1),
 	}
 
 	rendered := compiledFunction.Disassemble()
 
-	require.Contains(t, rendered, "ADD_INT")
-	require.Contains(t, rendered, "SUB_INT")
+	require.Contains(t, rendered, "ADD_INT64")
+	require.Contains(t, rendered, "SUBTRACT_INT64")
 	require.Equal(t, 3, strings.Count(rendered, "\n"), "one line per instruction")
+}
+
+func TestDisassembleRangeAlignsOperandsPastTheLongestLabel(t *testing.T) {
+	t.Parallel()
+
+	compiledFunction := NewNamedFunction("example")
+	for _, row := range isa.AllSpecs() {
+		if row.Name == "" || strings.HasPrefix(row.Name, "DRILL_TIER") {
+			continue
+		}
+		switch row.Tier {
+		case isa.TierMain:
+			compiledFunction.Body = append(compiledFunction.Body, isa.Instruction{Op: isa.Opcode(row.Code), A: 1, B: 2, C: 3})
+		case isa.TierSub1:
+			compiledFunction.Body = append(compiledFunction.Body, isa.NewTier1Instruction(isa.SubOpcode(row.Code), 2, 3))
+		case isa.TierSub2:
+			compiledFunction.Body = append(compiledFunction.Body, isa.NewTier2Instruction(isa.SubOpcodeTier2(row.Code), 3))
+		default:
+			compiledFunction.Body = append(compiledFunction.Body, isa.NewTier3Instruction(isa.SubOpcodeTier3(row.Code)))
+		}
+	}
+
+	rendered := compiledFunction.DisassembleRange(0, len(compiledFunction.Body))
+	lines := strings.Split(strings.TrimSuffix(rendered, "\n"), "\n")
+	require.Len(t, lines, len(compiledFunction.Body))
+	operandColumn := len("0000  ") + isa.DisplayLabelWidth
+	for pc, line := range lines {
+		instruction := compiledFunction.Body[pc]
+		label := isa.InstructionDisplayName(instruction)
+		require.Greaterf(t, len(line), operandColumn, "line %d is shorter than the label column (%q)", pc, line)
+		require.Equalf(t, label, strings.TrimRight(line[len("0000  "):operandColumn], " "),
+			"line %d must hold the label in a column isa.DisplayLabelWidth wide (%q)", pc, line)
+		require.Equalf(t, fmt.Sprintf(" %3d %3d %3d", instruction.A, instruction.B, instruction.C),
+			line[operandColumn:operandColumn+len("   0   0   0")],
+			"line %d must start its operands one column after the label column (%q)", pc, line)
+	}
 }
 
 func TestDisassembleRangeRendersOnlyTheRequestedWindow(t *testing.T) {
@@ -297,7 +334,7 @@ func TestDisassembleRangeRendersOnlyTheRequestedWindow(t *testing.T) {
 
 	compiledFunction := NewNamedFunction("example")
 	compiledFunction.Body = []isa.Instruction{
-		{Op: isa.OpAddInt}, {Op: isa.OpSubInt}, {Op: isa.OpMulInt},
+		{Op: isa.OpAddInt64}, {Op: isa.OpSubtractInt64}, {Op: isa.OpMultiplyInt64},
 	}
 
 	tests := []struct {
@@ -307,10 +344,10 @@ func TestDisassembleRangeRendersOnlyTheRequestedWindow(t *testing.T) {
 		contains []string
 		absent   []string
 	}{
-		{name: "the first instruction only", start: 0, end: 1, contains: []string{"ADD_INT"}, absent: []string{"SUB_INT", "MUL_INT"}},
-		{name: "a middle window", start: 1, end: 2, contains: []string{"SUB_INT"}, absent: []string{"ADD_INT", "MUL_INT"}},
-		{name: "the whole body", start: 0, end: 3, contains: []string{"ADD_INT", "SUB_INT", "MUL_INT"}},
-		{name: "an empty window", start: 1, end: 1, absent: []string{"ADD_INT", "SUB_INT", "MUL_INT"}},
+		{name: "the first instruction only", start: 0, end: 1, contains: []string{"ADD_INT64"}, absent: []string{"SUBTRACT_INT64", "MULTIPLY_INT64"}},
+		{name: "a middle window", start: 1, end: 2, contains: []string{"SUBTRACT_INT64"}, absent: []string{"ADD_INT64", "MULTIPLY_INT64"}},
+		{name: "the whole body", start: 0, end: 3, contains: []string{"ADD_INT64", "SUBTRACT_INT64", "MULTIPLY_INT64"}},
+		{name: "an empty window", start: 1, end: 1, absent: []string{"ADD_INT64", "SUBTRACT_INT64", "MULTIPLY_INT64"}},
 	}
 
 	for _, tt := range tests {

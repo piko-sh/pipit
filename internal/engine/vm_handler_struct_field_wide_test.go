@@ -66,7 +66,7 @@ func newWideFieldFrame(t *testing.T, fieldIndex int, receiver any) (*VM, *CallFr
 	builder := newBytecodeBuilder()
 	builder.numRegisters = wideRegCounts(8)
 	builder.Emit(isa.OpDrillTier1, 0, 0, 0)
-	builder.body = append(builder.body, isa.NewInstruction(isa.OpExt, uint8(fieldIndex), 0, 0))
+	builder.body = append(builder.body, isa.NewInstruction(isa.OpExtension, uint8(fieldIndex), 0, 0))
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 
 	layouts := make([]program.StructFieldLayout, 0, structType.NumField())
@@ -97,7 +97,7 @@ func TestWideStructFieldScalarReadsLandInTheirBank(t *testing.T) {
 		inspect func(*testing.T, *Registers)
 	}{
 		{
-			name: "a float field", field: 2, handler: handleGetStructFieldUnsafeFloat,
+			name: "a float field", field: 2, handler: handleGetStructFieldFloat64Wide,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.InDelta(t, 1.5, r.Floats[0], 0)
@@ -128,7 +128,7 @@ func TestWideStructFieldScalarWritesReachTheReceiver(t *testing.T) {
 		vm, frame, registers := newWideFieldFrame(t, 2, receiver)
 		registers.Floats[2] = 2.5
 
-		require.Equal(t, opContinue, handleSetStructFieldUnsafeFloat(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetStructFieldFloat64Wide(vm, frame, registers, op(0, 1, 2)))
 		require.InDelta(t, 2.5, receiver.Ratio, 0)
 	})
 
@@ -139,7 +139,7 @@ func TestWideStructFieldScalarWritesReachTheReceiver(t *testing.T) {
 		vm, frame, registers := newWideFieldFrame(t, 3, receiver)
 		registers.Bools[2] = true
 
-		require.Equal(t, opContinue, handleSetStructFieldUnsafeBool(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetStructFieldBoolWide(vm, frame, registers, op(0, 1, 2)))
 		require.True(t, receiver.Flag)
 	})
 
@@ -150,7 +150,7 @@ func TestWideStructFieldScalarWritesReachTheReceiver(t *testing.T) {
 		vm, frame, registers := newWideFieldFrame(t, 4, receiver)
 		registers.Strings[2] = "written"
 
-		require.Equal(t, opContinue, handleSetStructFieldUnsafeString(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetStructFieldStringWide(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, "written", receiver.Label)
 	})
 }
@@ -166,7 +166,7 @@ func TestWideStructFieldWritesFallBackOnANonPointerReceiver(t *testing.T) {
 		inspect func(*testing.T, reflect.Value)
 	}{
 		{
-			name: "a float field", field: 2, handler: handleSetStructFieldUnsafeFloat,
+			name: "a float field", field: 2, handler: handleSetStructFieldFloat64Wide,
 			load: func(r *Registers) { r.Floats[2] = 3.5 },
 			inspect: func(t *testing.T, v reflect.Value) {
 				t.Helper()
@@ -174,7 +174,7 @@ func TestWideStructFieldWritesFallBackOnANonPointerReceiver(t *testing.T) {
 			},
 		},
 		{
-			name: "a bool field", field: 3, handler: handleSetStructFieldUnsafeBool,
+			name: "a bool field", field: 3, handler: handleSetStructFieldBoolWide,
 			load: func(r *Registers) { r.Bools[2] = true },
 			inspect: func(t *testing.T, v reflect.Value) {
 				t.Helper()
@@ -182,7 +182,7 @@ func TestWideStructFieldWritesFallBackOnANonPointerReceiver(t *testing.T) {
 			},
 		},
 		{
-			name: "a string field", field: 4, handler: handleSetStructFieldUnsafeString,
+			name: "a string field", field: 4, handler: handleSetStructFieldStringWide,
 			load: func(r *Registers) { r.Strings[2] = "walked" },
 			inspect: func(t *testing.T, v reflect.Value) {
 				t.Helper()
@@ -212,7 +212,7 @@ func TestWideStructFieldAccessOnANilPointerRaisesADereferenceFault(t *testing.T)
 
 	vm, frame, registers := newWideFieldFrame(t, 2, (*wideFields)(nil))
 
-	got := handleGetStructFieldUnsafeFloat(vm, frame, registers, op(0, 0, 1))
+	got := handleGetStructFieldFloat64Wide(vm, frame, registers, op(0, 0, 1))
 	require.NotEqual(t, opContinue, got, "a nil receiver must not read through a null pointer")
 	require.Error(t, vm.evalError)
 }
@@ -273,6 +273,43 @@ func TestStructFieldReflectWalkFindsTheLeaf(t *testing.T) {
 	})
 }
 
+func TestStructFieldReflectReadAgreesAcrossReceiverShapes(t *testing.T) {
+	t.Parallel()
+
+	receiver := &wideFields{Unsigned: 77}
+	pointer := reflect.ValueOf(receiver)
+	doublePointer := reflect.ValueOf(&receiver)
+	var boxed any = receiver
+	var nilReceiver *wideFields
+	shapes := []struct {
+		name  string
+		value reflect.Value
+		found bool
+	}{
+		{name: "a struct value", value: reflect.ValueOf(*receiver), found: true},
+		{name: "an addressable struct", value: pointer.Elem(), found: true},
+		{name: "a pointer to the struct", value: pointer, found: true},
+		{name: "a pointer to that pointer", value: doublePointer, found: true},
+		{name: "an interface holding the pointer", value: reflect.ValueOf(&boxed).Elem(), found: true},
+		{name: "a nil pointer", value: reflect.ValueOf(nilReceiver), found: false},
+		{name: "no value at all", value: reflect.Value{}, found: false},
+	}
+	for _, shape := range shapes {
+		t.Run(shape.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, frame, registers := newWideFieldFrame(t, 0, &wideFields{})
+			registers.General[1] = shape.value
+
+			field, ok := structFieldReflectRead(registers, frame, 1, wideFieldLayout(t, 1))
+			require.Equal(t, shape.found, ok)
+			if ok {
+				require.Equal(t, uint64(77), field.Uint())
+			}
+		})
+	}
+}
+
 func TestStructFieldFallbackMissOnlyFaultsForNilPointers(t *testing.T) {
 	t.Parallel()
 
@@ -319,7 +356,7 @@ func TestWideByteFieldReadPreservesHeadersAndBacking(t *testing.T) {
 			vm, frame, registers := newWideFieldFrame(t, 10, receiver.Addr().Interface())
 			frame.Function.StructLayoutTable[10].Path[0] = 0
 			frame.Function.StructLayoutTable[10].Offset = 0
-			require.Equal(t, opContinue, handleGetStructFieldUnsafeSliceByte(vm, frame, registers, op(0, 0, 1)))
+			require.Equal(t, opContinue, handleGetStructFieldSliceByte(vm, frame, registers, op(0, 0, 1)))
 			got := registers.slicesByte[0]
 			require.Len(t, got, value.Len())
 			require.Equal(t, value.Cap(), cap(got))

@@ -50,3 +50,58 @@ func (f *CompiledFunction) ObservedCallDepth() int {
 	}
 	return int(f.observedCallDepth.Load())
 }
+
+// NoteOptimisticMakePlaced records that a run of this root placed a heap-flagged make in
+// the arena.
+func (f *CompiledFunction) NoteOptimisticMakePlaced() {
+	if f != nil && !f.optimisticMakePlaced.Load() {
+		f.optimisticMakePlaced.Store(true)
+	}
+}
+
+// NoteCallbackForeignClone records that a callback VM running this root cloned a string
+// of another arena; once a run of the root has placed a heap-flagged make in the arena,
+// this vetoes such placements for later runs.
+func (f *CompiledFunction) NoteCallbackForeignClone() {
+	if f != nil && f.optimisticMakePlaced.Load() && !f.optimisticMakeVetoed.Load() {
+		f.optimisticMakeVetoed.Store(true)
+	}
+}
+
+// OptimisticMakeVetoed reports whether NoteCallbackForeignClone vetoed this root's
+// placements.
+//
+// Returns bool which is true once vetoed.
+func (f *CompiledFunction) OptimisticMakeVetoed() bool {
+	return f != nil && f.optimisticMakeVetoed.Load()
+}
+
+// DeclareHostTopLevelCalls records the host's declaration that function values received
+// from this root's program are called only at top level.
+func (f *CompiledFunction) DeclareHostTopLevelCalls() {
+	if f != nil && !f.hostTopLevelCalls.Load() {
+		f.hostTopLevelCalls.Store(true)
+	}
+}
+
+// HostCallsTopLevel reports whether DeclareHostTopLevelCalls was called on this root.
+//
+// Returns bool which is true once declared.
+func (f *CompiledFunction) HostCallsTopLevel() bool {
+	return f != nil && f.hostTopLevelCalls.Load()
+}
+
+// MarkLicenceRejected records that the licence checker rejected the compiled program for
+// a defect. The mark lives and dies with the function.
+func (f *CompiledFunction) MarkLicenceRejected() {
+	if f != nil {
+		f.licenceRejected.Store(true)
+	}
+}
+
+// LicenceRejected reports whether MarkLicenceRejected marked the compiled function.
+//
+// Returns bool which is true once marked.
+func (f *CompiledFunction) LicenceRejected() bool {
+	return f != nil && f.licenceRejected.Load()
+}

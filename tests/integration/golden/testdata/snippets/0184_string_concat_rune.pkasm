@@ -4,29 +4,29 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=6 string=3
-;   dispatch:  asm=14 shim=1 exit=0 go=0
+;   registers: int64=6 string=3
+;   dispatch:  asm=13 shim=1 exit=0 go=0
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=0  [1]=26  [2]=97
 ;   strings: [0]=""  [1]="abcdefghijklmnopqrstuvwxyz"
 
-0000 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = ""
-0001 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0002 A 1:LOAD_INT_CONST_SMALL      75   3  97    ; LICM hoist of PC 5
-0003 A 1:LT_INT_CONST_JUMP_FALSE  123   0   1
-0004   0:EXT                        4   0   0
-0005 A 0:ADD_INT32                  5   3   0
-0006 S 0:CONCAT_RUNE_STRING         0   0   5
-0007 A 2:TIER2_INC_INT              0   1   0
-0008 A 1:JUMP                      74 250 255    ; goto -6
-0009 A 0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "abcdefghijklmnopqrstuvwxyz"
-0010 A 0:NE_STRING                  0   0   1
-0011 A 0:JUMP_IF_FALSE              0   2   0    ; if ints[0] == 0 goto +2
-0012 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0013 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0014 A 1:LEN_STRING                65   0   0
-0015 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = ""
+0001 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0002 A 1:LESS_THAN_INT64_CONSTANT_THEN_JUMP_IF_FALSE        123   0   1
+0003   0:EXTENSION                                            5   0   0
+0004 A 1:LOAD_INT64_IMMEDIATE                                75   3  97    ; LICM hoist of PC 4
+0005 A 0:ADD_INT32                                            5   3   0
+0006 S 0:CONCATENATE_STRING_RUNE                              0   0   5
+0007 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN_CONSTANT    215   0   1
+0008   0:EXTENSION                                          252 255   0
+0009 A 0:LOAD_STRING_CONSTANT                                 1   1   0    ; strings[1] = "abcdefghijklmnopqrstuvwxyz"
+0010 A 0:NOT_EQUAL_STRING                                     0   0   1
+0011 A 0:JUMP_IF_FALSE                                        0   2   0    ; if ints[0] == 0 goto +2
+0012 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0013 A 2:RETURN                                               0  10   1    ; 1 values
+0014 A 1:LENGTH_STRING                                       65   0   0
+0015 A 2:RETURN                                               0  10   1    ; 1 values

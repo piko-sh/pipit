@@ -23,9 +23,11 @@ package limits_test
 import (
 	"testing"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/leakcheck"
 )
 
 func TestMain(m *testing.M) {
+	app.SetLicenceCheckerStrictForTest(true)
 	leakcheck.VerifyTestMain(m)
 }

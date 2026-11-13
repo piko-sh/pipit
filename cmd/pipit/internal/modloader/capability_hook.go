@@ -125,8 +125,13 @@ func (h *Hook) SetScriptLabel(label string) {
 
 // CheckFunctionCall enforces the gated axes against a native call.
 //
+// os.DirFS, os.OpenRoot and os.OpenInRoot are refused under a disk gate because they hand
+// out authority the gate cannot follow, and os.Chdir is refused because it would change
+// what every relative path, and every approval of one, refers to. os.Exit is refused
+// under a process gate.
+//
 // Takes modulePath (string) which identifies the calling module.
-// Takes fnPath (string) which is the dotted native symbol path.
+// Takes fnPath (string) which is the registered native symbol.
 // Takes args ([]reflect.Value) which are the reflected call arguments.
 //
 // Returns error when the call exercises a gated capability that is refused.
@@ -134,23 +139,19 @@ func (h *Hook) CheckFunctionCall(ctx context.Context, modulePath, fnPath string,
 	if len(h.gated) == 0 {
 		return nil
 	}
-	if h.mode != HookModePermissive {
-		switch fnPath {
-		case "os.DirFS", "os.OpenRoot", "os.OpenInRoot":
-			if h.gated[AxisFilesystemRead] || h.gated[AxisFilesystemWrite] {
-				return fmt.Errorf("modloader: %s returns filesystem authority that capability gates cannot confine", fnPath)
-			}
-		case "os.Exit":
-			if h.gated[AxisExec] || h.gated[AxisSubprocess] {
-				return fmt.Errorf("modloader: %s would terminate the host process", fnPath)
-			}
-		}
+	if err := h.refuseUnconfinable(fnPath); err != nil {
+		return err
 	}
-	axis, scope, gated := classifyNativeCall(fnPath, args)
-	if !gated || !h.gated[axis] {
+	claims, gated := classifyNativeCall(fnPath, args)
+	if !gated {
 		return nil
 	}
-	return h.consult(ctx, modulePath, axis, scope)
+	for _, claim := range claims {
+		if err := h.consultAxis(ctx, modulePath, claim.axis, claim.scope); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // CheckFileOpen consults the "filesystem.read" axis.
@@ -158,9 +159,9 @@ func (h *Hook) CheckFunctionCall(ctx context.Context, modulePath, fnPath string,
 // Takes modulePath (string) which identifies the calling module.
 // Takes path (string) which is the filesystem path being opened.
 //
-// Returns error when the read capability is not approved.
+// Returns error when the read capability is gated and not approved.
 func (h *Hook) CheckFileOpen(ctx context.Context, modulePath, path string, _ int, _ os.FileMode) error {
-	return h.consult(ctx, modulePath, "filesystem.read", path)
+	return h.consultAxis(ctx, modulePath, AxisFilesystemRead, path)
 }
 
 // CheckFileWrite consults the "filesystem.write" axis.
@@ -168,9 +169,9 @@ func (h *Hook) CheckFileOpen(ctx context.Context, modulePath, path string, _ int
 // Takes modulePath (string) which identifies the calling module.
 // Takes path (string) which is the filesystem path being written.
 //
-// Returns error when the write capability is not approved.
+// Returns error when the write capability is gated and not approved.
 func (h *Hook) CheckFileWrite(ctx context.Context, modulePath, path string) error {
-	return h.consult(ctx, modulePath, "filesystem.write", path)
+	return h.consultAxis(ctx, modulePath, AxisFilesystemWrite, path)
 }
 
 // CheckExec consults the "exec" axis.
@@ -178,9 +179,9 @@ func (h *Hook) CheckFileWrite(ctx context.Context, modulePath, path string) erro
 // Takes modulePath (string) which identifies the calling module.
 // Takes name (string) which is the executable being run.
 //
-// Returns error when the exec capability is not approved.
+// Returns error when the exec capability is gated and not approved.
 func (h *Hook) CheckExec(ctx context.Context, modulePath, name string, _ []string) error {
-	return h.consult(ctx, modulePath, "exec", name)
+	return h.consultAxis(ctx, modulePath, AxisExec, name)
 }
 
 // CheckNetDial consults the "network.dial" axis.
@@ -189,9 +190,9 @@ func (h *Hook) CheckExec(ctx context.Context, modulePath, name string, _ []strin
 // Takes network (string) which is the transport, such as "tcp".
 // Takes address (string) which is the dial target host and port.
 //
-// Returns error when the dial capability is not approved.
+// Returns error when the dial capability is gated and not approved.
 func (h *Hook) CheckNetDial(ctx context.Context, modulePath, network, address string) error {
-	return h.consult(ctx, modulePath, "network.dial", network+":"+address)
+	return h.consultAxis(ctx, modulePath, AxisNetworkDial, network+":"+address)
 }
 
 // CheckNetListen consults the "network.listen" axis.
@@ -200,9 +201,9 @@ func (h *Hook) CheckNetDial(ctx context.Context, modulePath, network, address st
 // Takes network (string) which is the transport, such as "tcp".
 // Takes address (string) which is the listen address host and port.
 //
-// Returns error when the listen capability is not approved.
+// Returns error when the listen capability is gated and not approved.
 func (h *Hook) CheckNetListen(ctx context.Context, modulePath, network, address string) error {
-	return h.consult(ctx, modulePath, "network.listen", network+":"+address)
+	return h.consultAxis(ctx, modulePath, AxisNetworkListen, network+":"+address)
 }
 
 // CheckGetenv consults the "env.read" axis.
@@ -210,9 +211,9 @@ func (h *Hook) CheckNetListen(ctx context.Context, modulePath, network, address 
 // Takes modulePath (string) which identifies the calling module.
 // Takes name (string) which is the environment variable being read.
 //
-// Returns error when the env.read capability is not approved.
+// Returns error when the env.read capability is gated and not approved.
 func (h *Hook) CheckGetenv(ctx context.Context, modulePath, name string) error {
-	return h.consult(ctx, modulePath, "env.read", name)
+	return h.consultAxis(ctx, modulePath, AxisEnvRead, name)
 }
 
 // CheckSetenv consults the "env.write" axis.
@@ -220,20 +221,62 @@ func (h *Hook) CheckGetenv(ctx context.Context, modulePath, name string) error {
 // Takes modulePath (string) which identifies the calling module.
 // Takes name (string) which is the environment variable being set.
 //
-// Returns error when the env.write capability is not approved.
+// Returns error when the env.write capability is gated and not approved.
 func (h *Hook) CheckSetenv(ctx context.Context, modulePath, name, _ string) error {
-	return h.consult(ctx, modulePath, "env.write", name)
+	return h.consultAxis(ctx, modulePath, AxisEnvWrite, name)
 }
 
-// CheckSubprocess consults the "subprocess" axis (distinct from exec to cover
-// syscall-level spawns).
+// CheckSubprocess consults the "subprocess" axis, which is distinct from exec so that
+// spawns made below os/exec are covered.
 //
 // Takes modulePath (string) which identifies the calling module.
 // Takes name (string) which is the subprocess being spawned.
 //
-// Returns error when the subprocess capability is not approved.
+// Returns error when the subprocess capability is gated and not approved.
 func (h *Hook) CheckSubprocess(ctx context.Context, modulePath, name string, _ []string) error {
-	return h.consult(ctx, modulePath, "subprocess", name)
+	return h.consultAxis(ctx, modulePath, AxisSubprocess, name)
+}
+
+// refuseUnconfinable refuses the calls no gate can confine once the matching axis is
+// gated.
+//
+// Takes fnPath (string) which is the registered native symbol.
+//
+// Returns error which names the refused call, or nil.
+func (h *Hook) refuseUnconfinable(fnPath string) error {
+	if h.mode == HookModePermissive {
+		return nil
+	}
+	diskGated := h.gated[AxisFilesystemRead] || h.gated[AxisFilesystemWrite]
+	switch fnPath {
+	case "os.DirFS", "os.OpenRoot", "os.OpenInRoot":
+		if diskGated {
+			return fmt.Errorf("modloader: %s returns filesystem authority that capability gates cannot confine", fnPath)
+		}
+	case "os.Chdir":
+		if diskGated {
+			return fmt.Errorf("modloader: %s would move the host process's working directory, which capability gates cannot confine", fnPath)
+		}
+	case "os.Exit":
+		if h.gated[AxisExec] || h.gated[AxisSubprocess] {
+			return fmt.Errorf("modloader: %s would terminate the host process", fnPath)
+		}
+	}
+	return nil
+}
+
+// consultAxis consults a claim only when its axis is gated.
+//
+// Takes modulePath (string) which identifies the calling module.
+// Takes axis (string) which names the capability axis.
+// Takes scope (string) which narrows the claim within the axis.
+//
+// Returns error when the axis is gated and the claim is refused.
+func (h *Hook) consultAxis(ctx context.Context, modulePath, axis, scope string) error {
+	if h.gated != nil && !h.gated[axis] {
+		return nil
+	}
+	return h.consult(ctx, modulePath, axis, scope)
 }
 
 // displayName returns a human-friendly label for a calling module.

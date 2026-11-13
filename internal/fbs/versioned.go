@@ -100,18 +100,15 @@ func PackAlloc(hash SchemaHash, payload []byte) []byte {
 	return result
 }
 
-// Unpack checks the schema hash and returns the payload slice. The returned payload is a
-// sub-slice of data (zero-copy, no allocation).
+// Unpack checks the schema hash and returns the payload slice.
 //
 // Takes expectedHash (SchemaHash) which is the hash to check against.
 // Takes data ([]byte) which holds the hash prefix followed by the payload.
 //
-// Returns []byte which is the payload part of data after the hash.
+// Returns []byte which is the payload part of data after the hash. Do not change data
+// while using the returned payload.
 // Returns error when data is smaller than hashSize (errDataTooShort) or when the stored
 // hash does not match expectedHash (ErrSchemaVersionMismatch).
-//
-// The returned slice shares the same underlying array as data. Do not change data while
-// using the returned payload.
 func Unpack(expectedHash SchemaHash, data []byte) ([]byte, error) {
 	if len(data) < hashSize {
 		return nil, errDataTooShort

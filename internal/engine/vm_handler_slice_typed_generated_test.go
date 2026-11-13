@@ -58,10 +58,10 @@ func TestTypedSliceLengthAndCapacityReadTheHeader(t *testing.T) {
 			registers := standardRegisters()
 			tt.seed(&registers)
 
-			require.Equal(t, opContinue, handleSubOpLenSliceIntDirect(nil, nil, &registers, op(0, 1, 2)))
+			require.Equal(t, opContinue, handleLengthSliceInt64(nil, nil, &registers, op(0, 1, 2)))
 			require.Equal(t, tt.wantLen, registers.Ints[1])
 
-			require.Equal(t, opContinue, handleSubOpCapSliceIntDirect(nil, nil, &registers, op(0, 1, 2)))
+			require.Equal(t, opContinue, handleCapacitySliceInt64(nil, nil, &registers, op(0, 1, 2)))
 			require.Equal(t, tt.wantCap, registers.Ints[1])
 		})
 	}
@@ -75,19 +75,19 @@ func TestTypedSliceLengthAndCapacityReadTheHeader(t *testing.T) {
 		registers.slicesUint[2] = []uint64{1, 2, 3, 4}
 		registers.slicesByte[2] = []byte("hello")
 
-		require.Equal(t, opContinue, handleSubOpLenSliceFloatDirect(nil, nil, &registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleLengthSliceFloat64(nil, nil, &registers, op(0, 1, 2)))
 		require.Equal(t, int64(2), registers.Ints[1])
 
-		require.Equal(t, opContinue, handleSubOpLenSliceStringDirect(nil, nil, &registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleLengthSliceString(nil, nil, &registers, op(0, 1, 2)))
 		require.Equal(t, int64(1), registers.Ints[1])
 
-		require.Equal(t, opContinue, handleSubOpLenSliceBoolDirect(nil, nil, &registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleLengthSliceBool(nil, nil, &registers, op(0, 1, 2)))
 		require.Equal(t, int64(3), registers.Ints[1])
 
-		require.Equal(t, opContinue, handleSubOpLenSliceUintDirect(nil, nil, &registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleLengthSliceUint64(nil, nil, &registers, op(0, 1, 2)))
 		require.Equal(t, int64(4), registers.Ints[1])
 
-		require.Equal(t, opContinue, handleSubOpLenSliceByteDirect(nil, nil, &registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleLengthSliceByte(nil, nil, &registers, op(0, 1, 2)))
 		require.Equal(t, int64(5), registers.Ints[1])
 	})
 }
@@ -103,7 +103,7 @@ func TestTypedSliceDirectReadsRefuseAnOutOfRangeIndex(t *testing.T) {
 	}{
 		{
 			name:    "a float slice read",
-			handler: handleSubOpSliceGetFloatDirect,
+			handler: handleGetSliceFloat64Element,
 			seed:    func(registers *Registers) { registers.slicesFloat[2] = []float64{1.5, 2.5} },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -112,7 +112,7 @@ func TestTypedSliceDirectReadsRefuseAnOutOfRangeIndex(t *testing.T) {
 		},
 		{
 			name:    "a string slice read",
-			handler: handleSubOpSliceGetStringDirect,
+			handler: handleGetSliceStringElement,
 			seed:    func(registers *Registers) { registers.slicesString[2] = []string{"a", "b"} },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -121,7 +121,7 @@ func TestTypedSliceDirectReadsRefuseAnOutOfRangeIndex(t *testing.T) {
 		},
 		{
 			name:    "a boolean slice read",
-			handler: handleSubOpSliceGetBoolDirect,
+			handler: handleGetSliceBoolElement,
 			seed:    func(registers *Registers) { registers.slicesBool[2] = []bool{false, true} },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -130,7 +130,7 @@ func TestTypedSliceDirectReadsRefuseAnOutOfRangeIndex(t *testing.T) {
 		},
 		{
 			name:    "an unsigned slice read",
-			handler: handleSubOpSliceGetUintDirect,
+			handler: handleGetSliceUint64Element,
 			seed:    func(registers *Registers) { registers.slicesUint[2] = []uint64{7, 42} },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -184,7 +184,7 @@ func TestTypedSliceDirectWritesReachTheBackingArray(t *testing.T) {
 		registers.Ints[2] = 1
 		registers.Floats[3] = 9.5
 
-		require.Equal(t, opContinue, handleSubOpSliceSetFloatDirect(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetSliceFloat64Element(vm, frame, registers, op(0, 1, 2)))
 		require.InDelta(t, 9.5, target[1], 0)
 	})
 
@@ -196,7 +196,7 @@ func TestTypedSliceDirectWritesReachTheBackingArray(t *testing.T) {
 		registers.Ints[2] = 0
 		registers.Uints[3] = 42
 
-		require.Equal(t, opContinue, handleSubOpSliceSetUintDirect(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetSliceUint64Element(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, uint64(42), target[0])
 	})
 
@@ -206,7 +206,7 @@ func TestTypedSliceDirectWritesReachTheBackingArray(t *testing.T) {
 		registers.slicesFloat[1] = []float64{1}
 		registers.Ints[2] = 5
 
-		require.NotEqual(t, opContinue, handleSubOpSliceSetFloatDirect(vm, frame, registers, op(0, 1, 2)))
+		require.NotEqual(t, opContinue, handleSetSliceFloat64Element(vm, frame, registers, op(0, 1, 2)))
 		require.Error(t, vm.evalError)
 	})
 }
@@ -220,7 +220,7 @@ func TestTypedSliceDirectAppendGrowsTheDestination(t *testing.T) {
 		registers.SlicesInt[2] = []int64{1, 2}
 		registers.Ints[3] = 3
 
-		require.Equal(t, opContinue, handleSubOpAppendSliceIntDirect(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAppendSliceInt64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, []int64{1, 2, 3}, registers.SlicesInt[1])
 	})
 
@@ -230,7 +230,7 @@ func TestTypedSliceDirectAppendGrowsTheDestination(t *testing.T) {
 		registers.SlicesInt[2] = nil
 		registers.Ints[3] = 1
 
-		require.Equal(t, opContinue, handleSubOpAppendSliceIntDirect(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAppendSliceInt64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, []int64{1}, registers.SlicesInt[1])
 	})
 
@@ -241,7 +241,7 @@ func TestTypedSliceDirectAppendGrowsTheDestination(t *testing.T) {
 		registers.SlicesInt[2] = []int64{1, 2}
 		registers.Ints[3] = 3
 
-		require.Equal(t, opPanicError, handleSubOpAppendSliceIntDirect(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opPanicError, handleAppendSliceInt64(vm, frame, registers, op(0, 1, 2)))
 		require.Error(t, vm.evalError)
 	})
 }
@@ -275,7 +275,7 @@ func TestTypedSliceReslicingHonoursItsBoundFlags(t *testing.T) {
 			registers.Ints[4] = tt.low
 			registers.Ints[5] = tt.high
 
-			got := handleSubOpSliceSliceIntDirect(vm, frame, registers, op(0, 1, 2))
+			got := handleSliceSliceInt64(vm, frame, registers, op(0, 1, 2))
 
 			if tt.refused {
 				require.Equal(t, opPanicError, got, "an out-of-range reslice must not hand back a bad header")
@@ -312,7 +312,7 @@ func TestTypedSliceMakeRefusesANegativeOrOversizedRequest(t *testing.T) {
 			registers.Ints[2] = tt.length
 			registers.Ints[4] = tt.capacity
 
-			got := handleSubOpMakeSliceInt(vm, frame, registers, op(0, 1, 2))
+			got := handleMakeSliceInt64(vm, frame, registers, op(0, 1, 2))
 
 			if tt.refused {
 				require.NotEqual(t, opContinue, got, "an impossible slice request must be refused")
@@ -333,35 +333,35 @@ func TestTypedSliceMakeCoversEveryBank(t *testing.T) {
 		name    string
 	}{
 		{
-			name: "the integer bank", handler: handleSubOpMakeSliceInt,
+			name: "the integer bank", handler: handleMakeSliceInt64,
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Len(t, registers.SlicesInt[1], 2)
 			},
 		},
 		{
-			name: "the float bank", handler: handleSubOpMakeSliceFloat,
+			name: "the float bank", handler: handleMakeSliceFloat64,
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Len(t, registers.slicesFloat[1], 2)
 			},
 		},
 		{
-			name: "the string bank", handler: handleSubOpMakeSliceString,
+			name: "the string bank", handler: handleMakeSliceString,
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Len(t, registers.slicesString[1], 2)
 			},
 		},
 		{
-			name: "the boolean bank", handler: handleSubOpMakeSliceBool,
+			name: "the boolean bank", handler: handleMakeSliceBool,
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Len(t, registers.slicesBool[1], 2)
 			},
 		},
 		{
-			name: "the unsigned bank", handler: handleSubOpMakeSliceUint,
+			name: "the unsigned bank", handler: handleMakeSliceUint64,
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Len(t, registers.slicesUint[1], 2)
@@ -402,7 +402,7 @@ func TestTypedSliceAppendCoversEveryBank(t *testing.T) {
 		name    string
 	}{
 		{
-			name: "the integer bank", handler: handleSubOpAppendSliceIntDirect,
+			name: "the integer bank", handler: handleAppendSliceInt64,
 			seed: func(r *Registers) { r.SlicesInt[2] = []int64{1}; r.Ints[3] = 2 },
 			check: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -410,7 +410,7 @@ func TestTypedSliceAppendCoversEveryBank(t *testing.T) {
 			},
 		},
 		{
-			name: "the float bank", handler: handleSubOpAppendSliceFloatDirect,
+			name: "the float bank", handler: handleAppendSliceFloat64,
 			seed: func(r *Registers) { r.slicesFloat[2] = []float64{1}; r.Floats[3] = 2 },
 			check: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -418,7 +418,7 @@ func TestTypedSliceAppendCoversEveryBank(t *testing.T) {
 			},
 		},
 		{
-			name: "the string bank", handler: handleSubOpAppendSliceStringDirect,
+			name: "the string bank", handler: handleAppendSliceString,
 			seed: func(r *Registers) { r.slicesString[2] = []string{"a"}; r.Strings[3] = "b" },
 			check: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -426,7 +426,7 @@ func TestTypedSliceAppendCoversEveryBank(t *testing.T) {
 			},
 		},
 		{
-			name: "the boolean bank", handler: handleSubOpAppendSliceBoolDirect,
+			name: "the boolean bank", handler: handleAppendSliceBool,
 			seed: func(r *Registers) { r.slicesBool[2] = []bool{true}; r.Bools[3] = false },
 			check: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -434,7 +434,7 @@ func TestTypedSliceAppendCoversEveryBank(t *testing.T) {
 			},
 		},
 		{
-			name: "the unsigned bank", handler: handleSubOpAppendSliceUintDirect,
+			name: "the unsigned bank", handler: handleAppendSliceUint64,
 			seed: func(r *Registers) { r.slicesUint[2] = []uint64{1}; r.Uints[3] = 2 },
 			check: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -442,7 +442,7 @@ func TestTypedSliceAppendCoversEveryBank(t *testing.T) {
 			},
 		},
 		{
-			name: "the byte bank", handler: handleSubOpAppendSliceByteDirect,
+			name: "the byte bank", handler: handleAppendSliceByte,
 			seed: func(r *Registers) { r.slicesByte[2] = []byte("a"); r.Uints[3] = 'b' },
 			check: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -473,27 +473,27 @@ func TestTypedSliceReslicingCoversEveryBank(t *testing.T) {
 		name    string
 	}{
 		{
-			name: "the integer bank", handler: handleSubOpSliceSliceIntDirect,
+			name: "the integer bank", handler: handleSliceSliceInt64,
 			seed:   func(r *Registers) { r.SlicesInt[2] = make([]int64, 4, 8) },
 			length: func(r *Registers) int { return len(r.SlicesInt[1]) },
 		},
 		{
-			name: "the float bank", handler: handleSubOpSliceSliceFloatDirect,
+			name: "the float bank", handler: handleSliceSliceFloat64,
 			seed:   func(r *Registers) { r.slicesFloat[2] = make([]float64, 4, 8) },
 			length: func(r *Registers) int { return len(r.slicesFloat[1]) },
 		},
 		{
-			name: "the string bank", handler: handleSubOpSliceSliceStringDirect,
+			name: "the string bank", handler: handleSliceSliceString,
 			seed:   func(r *Registers) { r.slicesString[2] = make([]string, 4, 8) },
 			length: func(r *Registers) int { return len(r.slicesString[1]) },
 		},
 		{
-			name: "the boolean bank", handler: handleSubOpSliceSliceBoolDirect,
+			name: "the boolean bank", handler: handleSliceSliceBool,
 			seed:   func(r *Registers) { r.slicesBool[2] = make([]bool, 4, 8) },
 			length: func(r *Registers) int { return len(r.slicesBool[1]) },
 		},
 		{
-			name: "the unsigned bank", handler: handleSubOpSliceSliceUintDirect,
+			name: "the unsigned bank", handler: handleSliceSliceUint64,
 			seed:   func(r *Registers) { r.slicesUint[2] = make([]uint64, 4, 8) },
 			length: func(r *Registers) int { return len(r.slicesUint[1]) },
 		},
@@ -535,12 +535,12 @@ func TestRangeNextAdvancesTheIteratorForEachBank(t *testing.T) {
 
 		for _, want := range []int64{10, 20} {
 			frame.ProgramCounter = 1
-			require.Equal(t, opContinue, handleRangeNextSliceInt(vm, frame, registers, op(0, 1, 2)))
+			require.Equal(t, opContinue, handleRangeNextSliceInt64(vm, frame, registers, op(0, 1, 2)))
 			require.Equal(t, want, registers.Ints[2], "the element register carries the current element")
 		}
 
 		frame.ProgramCounter = 1
-		require.Equal(t, opContinue, handleRangeNextSliceInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleRangeNextSliceInt64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, int64(2), registers.Ints[0], "the cursor comes to rest at the length")
 	})
 
@@ -551,7 +551,7 @@ func TestRangeNextAdvancesTheIteratorForEachBank(t *testing.T) {
 		registers.SlicesInt[1] = nil
 
 		frame.ProgramCounter = 1
-		require.Equal(t, opContinue, handleRangeNextSliceInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleRangeNextSliceInt64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, 5, frame.ProgramCounter, "the loop exit jumps past the body")
 	})
 }

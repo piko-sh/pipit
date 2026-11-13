@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxworker
 
@@ -57,7 +57,7 @@ func TestNativeWorkerSource(t *testing.T) {
 	digest := sha256.New()
 	_, readErr := io.Copy(digest, source)
 	require.NoError(t, errors.Join(readErr, source.Close()))
-	image, err := sandboxlinux.PrepareWorkerImageInStore(context.Background(), executable, [sha256.Size]byte(digest.Sum(nil)), nativeImageStore(t))
+	image, err := sandboxlinux.PrepareWorkerImageInStore(t.Context(), executable, [sha256.Size]byte(digest.Sum(nil)), nativeImageStore(t))
 	require.NoError(t, err)
 	defer image.Close()
 	root, err := image.Root()
@@ -71,7 +71,7 @@ func TestNativeWorkerSource(t *testing.T) {
 	proc, err := sandboxlinux.OpenWorkerProc()
 	require.NoError(t, err)
 	defer proc.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, "/worker")
 	command.Dir = "/"
@@ -126,10 +126,10 @@ func TestNativeWorkerSupervised(t *testing.T) {
 	config.WatchdogDigest = sha256.Sum256(watchdogImage)
 	config.CgroupParent = parent
 	config.Digest = [sha256.Size]byte(digest.Sum(nil))
-	process, err := sandboxlinux.LaunchWorker(context.Background(), config)
+	process, err := sandboxlinux.LaunchWorker(t.Context(), config)
 	if process != nil {
 		t.Cleanup(func() {
-			assert.NoError(t, process.Close())
+			assert.NoError(t, process.Close(t.Context()))
 		})
 	}
 	require.NoError(t, err)
@@ -144,9 +144,9 @@ func TestNativeWorkerSupervised(t *testing.T) {
 			{pkg: "strconv", src: "import \"strconv\"\nstrconv.Itoa(42)", want: "\"42\""},
 			{pkg: "strings", src: "import \"strings\"\nstrings.ToUpper(\"hi\")", want: "\"HI\""},
 		} {
-			w, err := sandboxlinux.LaunchWorker(context.Background(), config)
+			w, err := sandboxlinux.LaunchWorker(t.Context(), config)
 			if w != nil {
-				defer w.Close()
+				defer w.Close(t.Context())
 			}
 			require.NoError(t, err, "launch %s", tc.pkg)
 			resp, err := Exchange(w, Configuration{Profile: Profile, Imports: []string{tc.pkg}},
@@ -158,7 +158,7 @@ func TestNativeWorkerSupervised(t *testing.T) {
 	})
 	t.Run("cached image reuse", func(t *testing.T) {
 
-		cache, err := sandboxlinux.StageWorkerImageCache(context.Background(), t.TempDir(),
+		cache, err := sandboxlinux.StageWorkerImageCache(t.Context(), t.TempDir(),
 			[]sandboxlinux.WorkerImageRequest{
 				{Executable: config.Executable, Digest: config.Digest},
 				{Executable: config.WatchdogExecutable, Digest: config.WatchdogDigest},
@@ -168,9 +168,9 @@ func TestNativeWorkerSupervised(t *testing.T) {
 		cached := config
 		cached.Cache = cache
 		for range 2 {
-			w, err := sandboxlinux.LaunchWorker(context.Background(), cached)
+			w, err := sandboxlinux.LaunchWorker(t.Context(), cached)
 			if w != nil {
-				defer w.Close()
+				defer w.Close(t.Context())
 			}
 			require.NoError(t, err)
 			resp, err := nativeSourceExchange(w)
@@ -184,9 +184,9 @@ func TestNativeWorkerSupervised(t *testing.T) {
 	t.Run("script output budget", func(t *testing.T) {
 		boundedConfig := config
 		boundedConfig.OutputBytes = 4
-		bounded, err := sandboxlinux.LaunchWorker(context.Background(), boundedConfig)
+		bounded, err := sandboxlinux.LaunchWorker(t.Context(), boundedConfig)
 		if bounded != nil {
-			defer bounded.Close()
+			defer bounded.Close(t.Context())
 		}
 		require.NoError(t, err)
 		response, err := Exchange(bounded, Configuration{Profile: Profile, Imports: nil},
@@ -196,9 +196,9 @@ func TestNativeWorkerSupervised(t *testing.T) {
 		require.ErrorIs(t, bounded.Wait(), sandboxlinux.ErrWorkerOutput, "worker completion reports the output overflow")
 	})
 	t.Run("idle phase deadline", func(t *testing.T) {
-		idle, err := sandboxlinux.LaunchWorker(context.Background(), config)
+		idle, err := sandboxlinux.LaunchWorker(t.Context(), config)
 		if idle != nil {
-			defer idle.Close()
+			defer idle.Close(t.Context())
 		}
 		require.NoError(t, err)
 		require.NoError(t, idle.SetDeadline(time.Now().Add(50*time.Millisecond)))

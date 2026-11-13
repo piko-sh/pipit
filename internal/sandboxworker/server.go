@@ -155,7 +155,7 @@ func (session *connection) handshake() (sandboxwire.Message, error) {
 // Takes message (sandboxwire.Message) which is the first host request.
 //
 // Returns error from the selected serve loop.
-func (session *connection) dispatch(stream transport, message sandboxwire.Message) error {
+func (session *connection) dispatch(ctx context.Context, stream transport, message sandboxwire.Message) error {
 	var selector map[string]json.RawMessage
 	if err := json.Unmarshal(message.Payload, &selector); err != nil {
 		return err
@@ -165,14 +165,14 @@ func (session *connection) dispatch(stream transport, message sandboxwire.Messag
 		return err
 	}
 	if profile == FilesystemProfile {
-		return session.serveFilesystem(stream, message)
+		return session.serveFilesystem(ctx, stream, message)
 	}
 	var config Configuration
 	if err := message.DecodePayload(&config); err != nil {
 		return err
 	}
 	if config.Profile == SessionProfile {
-		return session.serveSession(stream, config)
+		return session.serveSession(ctx, stream, config)
 	}
 	interpreter, err := session.configure(message)
 	if err != nil {
@@ -188,7 +188,7 @@ func (session *connection) dispatch(stream transport, message sandboxwire.Messag
 	if message.Kind == sandboxwire.Close {
 		return message.DecodePayload(&struct{}{})
 	}
-	return session.serveSubmission(stream, interpreter, message)
+	return session.serveSubmission(ctx, stream, interpreter, message)
 }
 
 // send validates an outbound transition before writing its bounded frame.
@@ -255,7 +255,7 @@ func (session *connection) configure(message sandboxwire.Message) (*app.Restrict
 // Takes options (...ServeOption) which apply optional configuration to the worker.
 //
 // Returns error on any protocol, configuration or transport failure.
-func Serve(stream transport, options ...ServeOption) error {
+func Serve(ctx context.Context, stream transport, options ...ServeOption) error {
 	if stream == nil {
 		return sandboxwire.ErrProtocol
 	}
@@ -276,7 +276,7 @@ func Serve(stream transport, options ...ServeOption) error {
 	if message.Kind == sandboxwire.Close {
 		return message.DecodePayload(&struct{}{})
 	}
-	return session.dispatch(stream, message)
+	return session.dispatch(ctx, stream, message)
 }
 
 // WithSymbols links native symbol providers into the worker so the host allowlist can
@@ -325,11 +325,11 @@ func truncateError(text string) string {
 //
 // Returns Response containing bounded, serialisable submission results.
 // Returns error for unsupported request semantics before source evaluation.
-func execute(interpreter *app.RestrictedInterpreter, request Request, beginExecution func() error) (Response, error) {
+func execute(ctx context.Context, interpreter *app.RestrictedInterpreter, request Request, beginExecution func() error) (Response, error) {
 	if err := validateSubmission(Configuration{Profile: Profile, Imports: nil}, request); err != nil {
 		return Response{}, err
 	}
-	result, err := app.EvaluateRestrictedPhased(context.Background(), interpreter,
+	result, err := app.EvaluateRestrictedPhased(ctx, interpreter,
 		request.Source, request.Entrypoint, request.Kind == "file", beginExecution)
 	return restrictedResponse(result, err), nil
 }

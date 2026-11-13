@@ -42,24 +42,24 @@ func TestPeepholeFiresOnCompiledOutput(t *testing.T) {
 		{
 			name:        "rune_to_string_then_concat",
 			code:        `r := 'y'; "x" + string(r)`,
-			wantFusedOp: isa.OpConcatRuneString,
+			wantFusedOp: isa.OpConcatenateStringRune,
 		},
 		{
 			name:        "string_index_uint_to_int",
 			code:        `s := "abc"; int(s[0])`,
-			wantFusedOp: isa.OpStringIndexToInt,
+			wantFusedOp: isa.OpGetStringByteAsInt64,
 		},
 		{
 			name:        "len_string_lt_in_for_loop",
 			code:        `s := "hello"; for i := 0; i < len(s); i++ { _ = i }`,
 			wantFusedOp: isa.OpDrillTier1,
-			wantSubOp:   isa.SubOpLenStringLtJumpFalse,
+			wantSubOp:   isa.SubOpLessThanLengthStringThenJumpIfFalse,
 		},
 		{
 			name:        "nil_check_eq",
 			code:        `var x interface{}; if x == nil { _ = 1 }`,
 			wantFusedOp: isa.OpDrillTier1,
-			wantSubOp:   isa.SubOpEqInterfaceNil,
+			wantSubOp:   isa.SubOpEqualInterfaceNil,
 		},
 	}
 

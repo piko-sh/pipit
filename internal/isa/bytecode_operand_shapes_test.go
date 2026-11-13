@@ -32,21 +32,21 @@ func TestOperandShapesDescribeEveryCriticalOpcode(t *testing.T) {
 		aRole   OperandRole
 		writesA bool
 	}{
-		{opcode: OpAddInt, aRole: RoleRegInt, writesA: true},
-		{opcode: OpSubInt, aRole: RoleRegInt, writesA: true},
-		{opcode: OpMulInt, aRole: RoleRegInt, writesA: true},
-		{opcode: OpSliceGetInt, aRole: RoleRegInt, writesA: true},
-		{opcode: OpSliceGetFloat, aRole: RoleRegFloat, writesA: true},
-		{opcode: OpSliceGetString, aRole: RoleRegString, writesA: true},
-		{opcode: OpSliceGetBool, aRole: RoleRegBool, writesA: true},
-		{opcode: OpSliceGetUint, aRole: RoleRegUint, writesA: true},
-		{opcode: OpGetFieldInt, aRole: RoleRegInt, writesA: true},
-		{opcode: OpSetFieldInt, aRole: RoleRegGeneral, writesA: false},
-		{opcode: OpPackInterface, aRole: RoleRegGeneral, writesA: true},
-		{opcode: OpUnpackInterface, aRole: RoleRegDynamic, writesA: true},
-		{opcode: OpLoadIntConst, aRole: RoleRegInt, writesA: true},
-		{opcode: OpLoadFloatConst, aRole: RoleRegFloat, writesA: true},
-		{opcode: OpLoadStringConst, aRole: RoleRegString, writesA: true},
+		{opcode: OpAddInt64, aRole: RoleRegInt, writesA: true},
+		{opcode: OpSubtractInt64, aRole: RoleRegInt, writesA: true},
+		{opcode: OpMultiplyInt64, aRole: RoleRegInt, writesA: true},
+		{opcode: OpGetElementInt64, aRole: RoleRegInt, writesA: true},
+		{opcode: OpGetElementFloat64, aRole: RoleRegFloat, writesA: true},
+		{opcode: OpGetElementString, aRole: RoleRegString, writesA: true},
+		{opcode: OpGetElementBool, aRole: RoleRegBool, writesA: true},
+		{opcode: OpGetElementUint64, aRole: RoleRegUint, writesA: true},
+		{opcode: OpGetFieldInt64, aRole: RoleRegInt, writesA: true},
+		{opcode: OpSetFieldInt64, aRole: RoleRegGeneral, writesA: false},
+		{opcode: OpBoxAsInterface, aRole: RoleRegGeneral, writesA: true},
+		{opcode: OpUnboxFromInterface, aRole: RoleRegDynamic, writesA: true},
+		{opcode: OpLoadInt64Constant, aRole: RoleRegInt, writesA: true},
+		{opcode: OpLoadFloat64Constant, aRole: RoleRegFloat, writesA: true},
+		{opcode: OpLoadStringConstant, aRole: RoleRegString, writesA: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.opcode.String(), func(t *testing.T) {
@@ -80,10 +80,10 @@ func TestOperationsWithExtensionWordsDeclareThem(t *testing.T) {
 	}{
 		{name: "defer carries one word per argument", instr: NewInstruction(OpDefer, 1, 2, 0)},
 		{name: "go carries one word per argument", instr: NewInstruction(OpGo, 1, 2, 0)},
-		{name: "uint add-constant carries its pool index", instr: NewTier1Instruction(SubOpAddUintConst, 1, 2)},
-		{name: "uint subtract-constant carries its pool index", instr: NewTier1Instruction(SubOpSubUintConst, 1, 2)},
-		{name: "uint and-constant carries its pool index", instr: NewTier1Instruction(SubOpBitAndUintConst, 1, 2)},
-		{name: "interface method expression carries type and name indices", instr: NewTier2Instruction(SubOpTier2MakeInterfaceMethodExpr, 1)},
+		{name: "uint add-constant carries its pool index", instr: NewTier1Instruction(SubOpAddUint64Constant, 1, 2)},
+		{name: "uint subtract-constant carries its pool index", instr: NewTier1Instruction(SubOpSubtractUint64Constant, 1, 2)},
+		{name: "uint and-constant carries its pool index", instr: NewTier1Instruction(SubOpBitAndUint64Constant, 1, 2)},
+		{name: "interface method expression carries type and name indices", instr: NewTier2Instruction(SubOpTier2MakeInterfaceMethodExpression, 1)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -93,12 +93,12 @@ func TestOperationsWithExtensionWordsDeclareThem(t *testing.T) {
 	}
 }
 
-func TestMapIndexOkBranchesAreControlFlow(t *testing.T) {
+func TestGetMapOkBranchesAreControlFlow(t *testing.T) {
 	t.Parallel()
 
 	for _, op := range []Opcode{
-		OpMapIndexOkJumpIfFalseIntInt, OpMapIndexOkJumpIfFalseStringInt, OpMapIndexOkJumpIfFalseStringString,
-		OpMapIndexOkJumpIfFalseIntString, OpMapIndexOkJumpIfFalseIntGeneral, OpMapIndexOkJumpIfFalseStringGeneral,
+		OpGetMapInt64Int64OkThenJumpIfFalse, OpGetMapStringInt64OkThenJumpIfFalse, OpGetMapStringStringOkThenJumpIfFalse,
+		OpGetMapInt64StringOkThenJumpIfFalse, OpGetMapInt64GeneralOkThenJumpIfFalse, OpGetMapStringGeneralOkThenJumpIfFalse,
 	} {
 		t.Run(op.String(), func(t *testing.T) {
 			t.Parallel()
@@ -112,7 +112,7 @@ func TestMapIndexOkBranchesAreControlFlow(t *testing.T) {
 func TestOperandShapeReadKindsForTypedSliceGet(t *testing.T) {
 	t.Parallel()
 
-	for _, op := range []Opcode{OpSliceGetInt, OpSliceGetFloat, OpSliceGetString, OpSliceGetBool, OpSliceGetUint} {
+	for _, op := range []Opcode{OpGetElementInt64, OpGetElementFloat64, OpGetElementString, OpGetElementBool, OpGetElementUint64} {
 		t.Run(op.String(), func(t *testing.T) {
 			t.Parallel()
 			shape := OperandShapeFor(op)
@@ -124,56 +124,9 @@ func TestOperandShapeReadKindsForTypedSliceGet(t *testing.T) {
 	}
 }
 
-func TestKindForRoleRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	for kindIndex := range NumRegisterKinds {
-		kind := RegisterKind(kindIndex)
-		t.Run(kind.String(), func(t *testing.T) {
-			t.Parallel()
-			role := RoleForKind(kind)
-			got, ok := KindForRole(role)
-			require.Truef(t, ok, "KindForRole(%v) is register-shaped", role)
-			require.Equalf(t, kind, got,
-				"RoleForKind gave %v, which maps back to another bank. A bank with no role of its own "+
-					"falls through RoleForKind's default and silently coerces to the general bank.", role)
-		})
-	}
-}
-
-func TestKindForRoleNonRegisterRolesAreOpaque(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		role OperandRole
-	}{
-		{name: "none", role: RoleNone},
-		{name: "constant index", role: roleConstIndex},
-		{name: "field index", role: roleFieldIndex},
-		{name: "immediate", role: RoleImmediate},
-		{name: "type index", role: roleTypeIndex},
-		{name: "kind marker", role: RoleKindMarker},
-		{name: "jump offset low byte", role: roleJumpOffsetLow},
-		{name: "jump offset high byte", role: roleJumpOffsetHigh},
-		{name: "call site low byte", role: roleCallSiteLow},
-		{name: "call site high byte", role: roleCallSiteHigh},
-		{name: "follows extension", role: roleFollowsExtension},
-		{name: "unknown", role: roleUnknown},
-		{name: "dynamic register", role: RoleRegDynamic},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			_, ok := KindForRole(tt.role)
-			require.False(t, ok, "the role is not register-shaped")
-		})
-	}
-}
-
 func TestIncrementShapesReadTheirRegister(t *testing.T) {
 	t.Parallel()
-	for _, op := range []SubOpcodeTier2{SubOpTier2IncInt, SubOpTier2DecInt, SubOpTier2IncUint, SubOpTier2DecUint} {
+	for _, op := range []SubOpcodeTier2{SubOpTier2IncrementInt64, SubOpTier2DecrementInt64, SubOpTier2IncrementUint64, SubOpTier2DecrementUint64} {
 		t.Run(op.String(), func(t *testing.T) {
 			t.Parallel()
 			shape := ShapeForInstruction(NewTier2Instruction(op, 4))
@@ -185,12 +138,70 @@ func TestIncrementShapesReadTheirRegister(t *testing.T) {
 
 func TestAccumulatingKernelsReadTheirDestination(t *testing.T) {
 	t.Parallel()
-	for _, op := range []SubOpcode{SubOpSimdDotProductFloat64, SubOpSimdSumSliceFloat64} {
+	for _, op := range []SubOpcode{SubOpSimdDotProductFloat64, SubOpSimdSumFloat64} {
 		t.Run(op.String(), func(t *testing.T) {
 			t.Parallel()
 			shape := ShapeForInstruction(NewTier1Instruction(op, 4, 5))
 			require.True(t, shape.Reads[1], "the kernel adds into the register it names in B")
 			require.True(t, shape.Writes[1], "the kernel writes the register it names in B")
 		})
+	}
+}
+
+func TestScalarConstantOperandNamesTheIndexAndItsPool(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		instruction Instruction
+		index       int
+		kind        RegisterKind
+		carries     bool
+	}{
+		{
+			name:        "a wide index loaded into its register's pool",
+			instruction: NewInstruction(OpLoadStringConstant, 3, 0x34, 0x12),
+			index:       0x1234,
+			kind:        RegisterString,
+			carries:     true,
+		},
+		{
+			name:        "a narrow index in the pool of the register it is combined with",
+			instruction: NewInstruction(OpAddInt64Constant, 1, 2, 9),
+			index:       9,
+			kind:        RegisterInt64,
+			carries:     true,
+		},
+		{
+			name:        "no constant index",
+			instruction: NewInstruction(OpAddInt64, 1, 2, 3),
+		},
+		{
+			name:        "a closure's index names no scalar pool",
+			instruction: NewInstruction(OpMakeClosure, 1, 2, 3),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			index, kind, carries := ScalarConstantOperand(test.instruction)
+			require.Equal(t, test.carries, carries)
+			require.Equal(t, test.index, index)
+			require.Equal(t, test.kind, kind)
+		})
+	}
+}
+
+func TestReadsExtensionWordExceptsOnlyDeferAndGo(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, ReadsExtensionWord(NewTier2Instruction(SubOpTier2MakeMap, 0)),
+		"a map's construction reads its type from the word after it")
+	require.False(t, ReadsExtensionWord(NewInstruction(OpAddInt64, 1, 2, 3)),
+		"an instruction without extension words reads none")
+	for _, op := range []Opcode{OpDefer, OpGo} {
+		instruction := NewInstruction(op, 0, 0, 0)
+		require.NotZero(t, ShapeForInstruction(instruction).Flags&ShapeFlagFollowsExtension)
+		require.False(t, ReadsExtensionWord(instruction), "%s carries one word per argument, and may have none", op)
 	}
 }

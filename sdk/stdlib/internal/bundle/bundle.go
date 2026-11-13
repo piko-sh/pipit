@@ -54,3 +54,10 @@ func (p *Provider) Exports() symtab.SymbolExports {
 func (*Provider) TypesPackages() map[string]*types.Package {
 	return typeinfo.TypesPackages()
 }
+
+// TypesPackagesLoadError reports why any of the shared type information failed to decode.
+//
+// Returns error which is nil after a clean decode.
+func (*Provider) TypesPackagesLoadError() error {
+	return typeinfo.TypesPackagesLoadError()
+}

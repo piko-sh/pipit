@@ -21,11 +21,14 @@ package compile
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"slices"
 
 	"pipit.sh/pipit/internal/compile/escape"
 	"pipit.sh/pipit/internal/compile/inline"
 	"pipit.sh/pipit/internal/compile/passes"
 	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/isa"
 )
 
 // programPass is one program-level step of the post-compilation pipeline: an analysis or
@@ -79,6 +82,7 @@ func ProgramPipeline(opts passes.Options) []programPass {
 			return inline.RunBytecodeInliner(ctx, root, opts)
 		}},
 		{name: "verify-source-maps-inlining", Run: sourceMapVerifier("inlining")},
+		{name: "revalidate-field-store-grants", Run: revalidateFieldStoreGrantsAll},
 		{name: "heap-purity", Run: escape.RunHeapPurityAnalysis},
 		{name: "pointer-alias", Run: runPointerAliasAnalysisAll},
 		{name: "post-purity-peephole", Run: func(ctx context.Context, root *program.CompiledFunction) error {
@@ -86,6 +90,25 @@ func ProgramPipeline(opts passes.Options) []programPass {
 		}},
 		{name: "verify-source-maps-post-purity", Run: sourceMapVerifier("post-purity peephole")},
 	}
+}
+
+// revalidateFieldStoreGrantsAll drops, in every reachable function, the field-store
+// grants the inliner's re-fusion invalidated (escape.RevalidateArenaSafeFieldStores).
+//
+// Takes root (*program.CompiledFunction) which is the program's root.
+//
+// Returns error when cancellation fires.
+func revalidateFieldStoreGrantsAll(ctx context.Context, root *program.CompiledFunction) error {
+	if root == nil {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("revalidateFieldStoreGrantsAll cancelled: %w", err)
+	}
+	for _, compiledFunction := range inline.CollectReachableFunctions(root) {
+		escape.RevalidateArenaSafeFieldStores(compiledFunction)
+	}
+	return nil
 }
 
 // runPointerAliasAnalysisAll invokes RunPointerAliasAnalysis everywhere.
@@ -115,27 +138,61 @@ func runPointerAliasAnalysisAll(ctx context.Context, root *program.CompiledFunct
 
 // runPostPurityPeepholePass re-runs the peephole passes once heap purity is known.
 //
-// Acts on every reachable function once heapMutationClass is populated, through
-// passes.PostPurityPipeline() with the inline method-call promotion supplied as the owned
-// step. The re-run is idempotent because applied rewrites stay in place (the second-read
-// instruction has been replaced with a MOVE) and hoisted instructions sit at the loop
-// pre-header.
-//
 // Takes opts (passes.Options) which selects the optional passes.
 // Takes root (*CompiledFunction) whose nested functions are re-optimised.
 //
-// Returns error when any per-function optimisation pass fails.
+// Returns error when any per-function optimisation pass fails or cancellation stops the
+// walk.
 func runPostPurityPeepholePass(ctx context.Context, opts passes.Options, root *program.CompiledFunction) error {
 	if root == nil {
 		return nil
 	}
-	pipeline := passes.PostPurityPipeline(opts, inlineableMethodCallsPass{})
-	for _, compiledFunction := range inline.CollectReachableFunctions(root) {
+	functions := inline.CollectReachableFunctions(root)
+	facts := passes.ProgramFacts{ElementStoresKeepFields: !reachesMemoryThroughUnsafe(functions)}
+	pipeline := passes.PostPurityPipeline(opts, facts, inlineableMethodCallsPass{})
+	for index, compiledFunction := range functions {
+		if index&program.OptimisationLoopCheckMask == 0 {
+			if err := ctx.Err(); err != nil {
+				return fmt.Errorf("runPostPurityPeepholePass cancelled: %w", err)
+			}
+		}
 		if err := passes.RunPipeline(ctx, pipeline, opts, compiledFunction); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// reachesMemoryThroughUnsafe reports whether any function uses unsafe to reach memory.
+//
+// Takes functions ([]*program.CompiledFunction) which are the program's reachable
+// functions.
+//
+// Returns true when some function does.
+func reachesMemoryThroughUnsafe(functions []*program.CompiledFunction) bool {
+	return slices.ContainsFunc(functions, func(compiledFunction *program.CompiledFunction) bool {
+		namesUnsafePointer := slices.ContainsFunc(compiledFunction.TypeTable, func(known reflect.Type) bool {
+			return known != nil && known.Kind() == reflect.UnsafePointer
+		})
+		return namesUnsafePointer || slices.ContainsFunc(compiledFunction.Body, isUnsafeOperation)
+	})
+}
+
+// isUnsafeOperation reports whether instruction is one of the operations the unsafe
+// package's functions compile to.
+//
+// Takes instruction (isa.Instruction) which is the instruction to classify.
+//
+// Returns true for such an operation.
+func isUnsafeOperation(instruction isa.Instruction) bool {
+	switch instruction.Op {
+	case isa.OpUnsafeString, isa.OpUnsafeSlice, isa.OpUnsafeAdd:
+		return true
+	case isa.OpDrillTier1:
+		return isa.SubOpcode(instruction.A) == isa.SubOpUnsafeStringData || isa.SubOpcode(instruction.A) == isa.SubOpUnsafeSliceData
+	default:
+		return false
+	}
 }
 
 // sourceMapVerifier returns a ProgramPass body that checks every reachable function's

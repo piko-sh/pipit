@@ -30,6 +30,9 @@ const (
 	// labelDispatch is the convergence label where all paths rejoin before calling
 	// DispatchNext.
 	labelDispatch = "dispatch"
+
+	// labelJump is the label of the path a fused loop latch takes when it branches back.
+	labelJump = "jump"
 )
 
 // superinstructionHandlers returns the handler set for fused superinstruction opcodes
@@ -39,11 +42,14 @@ const (
 // for this group.
 func superinstructionHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		constantArithmeticHandler("handlerSubIntConst", "handlerSubIntConst sets ints[A] = ints[B] - intConstants[C].", "SUB"),
-		constantArithmeticHandler("handlerAddIntConst", "handlerAddIntConst sets ints[A] = ints[B] + intConstants[C].", "ADD"),
-		constantArithmeticHandler("handlerMulIntConst", "handlerMulIntConst sets ints[A] = ints[B] * intConstants[C].", "MUL"),
-		handlerAddIntJump(),
-		handlerIncIntJumpLt(),
+		constantArithmeticHandler("handlerSubtractInt64Constant", "handlerSubtractInt64Constant sets ints[A] = ints[B] - intConstants[C].", "SUB"),
+		constantArithmeticHandler("handlerAddInt64Constant", "handlerAddInt64Constant sets ints[A] = ints[B] + intConstants[C].", "ADD"),
+		constantArithmeticHandler("handlerMultiplyInt64Constant", "handlerMultiplyInt64Constant sets ints[A] = ints[B] * intConstants[C].", "MUL"),
+		handlerAddInt64ConstantThenJump(),
+		handlerMultiplyInt64ConstantThenAdd(),
+		handlerIncrementInt64ThenJumpIfLessThan(),
+		handlerIncrementInt64ThenJumpIfLessOrEqual(),
+		handlerIncrementInt64ThenJumpIfLessThanConstant(),
 		handlerRangeNextSliceByte(),
 	}
 }
@@ -90,28 +96,18 @@ func compareConstantJumpFalseHandler(name, comment, condition string) asmgen.Han
 			architecture.ExtractC(emitter, scratches[1])
 
 			architecture.IntegerCompareConstantAndBranch(emitter, condition, scratches[0], scratches[1], labelTaken)
-
-			architecture.LoadNextInstructionWord(emitter, scratches[0])
-			architecture.AddToProgramCounter(emitter, scratches[0])
-			architecture.EmitBackEdgePoll(emitter)
-			architecture.UnconditionalBranch(emitter, labelDispatch)
-			emitter.Blank()
-			emitter.Label(labelTaken)
-			architecture.IncrementProgramCounter(emitter)
-			emitter.Blank()
-			emitter.Label(labelDispatch)
-			architecture.DispatchNext(emitter)
+			jumpByExtensionOrSkipIt(emitter, architecture, scratches[0])
 		},
 	}
 }
 
 // compareConstantJumpTrueHandler returns the EqIntConstJumpTrue handler, which jumps when
-// ints[B] == intConstants[C]. Polarity is inverted relative to the JumpFalse factory.
+// ints[B] == intConstants[C].
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
 func compareConstantJumpTrueHandler() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerEqIntConstJumpTrue", Comment: "handlerEqIntConstJumpTrue compares ints[B] == intConstants[C] and jumps if true.",
+		Name: "handlerEqualInt64ConstantThenJumpIfTrue", Comment: "handlerEqualInt64ConstantThenJumpIfTrue compares ints[B] == intConstants[C] and jumps if true.",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
@@ -119,28 +115,18 @@ func compareConstantJumpTrueHandler() asmgen.HandlerDefinition[BytecodeArchitect
 			architecture.ExtractC(emitter, scratches[1])
 
 			architecture.IntegerCompareConstantAndBranch(emitter, "NE", scratches[0], scratches[1], labelTaken)
-
-			architecture.LoadNextInstructionWord(emitter, scratches[0])
-			architecture.AddToProgramCounter(emitter, scratches[0])
-			architecture.EmitBackEdgePoll(emitter)
-			architecture.UnconditionalBranch(emitter, labelDispatch)
-			emitter.Blank()
-			emitter.Label(labelTaken)
-			architecture.IncrementProgramCounter(emitter)
-			emitter.Blank()
-			emitter.Label(labelDispatch)
-			architecture.DispatchNext(emitter)
+			jumpByExtensionOrSkipIt(emitter, architecture, scratches[0])
 		},
 	}
 }
 
-// handlerAddIntJump returns the AddIntJump handler, fusing ints[A] = ints[B] +
-// intConstants[C] with an unconditional jump.
+// handlerAddInt64ConstantThenJump returns the AddIntJump handler, fusing ints[A] =
+// ints[B] + intConstants[C] with an unconditional jump.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerAddIntJump() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerAddInt64ConstantThenJump() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerAddIntJump", Comment: "handlerAddIntJump sets ints[A] = ints[B] + intConstants[C] and unconditionally jumps.",
+		Name: "handlerAddInt64ConstantThenJump", Comment: "handlerAddInt64ConstantThenJump sets ints[A] = ints[B] + intConstants[C] and unconditionally jumps.",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
@@ -156,13 +142,55 @@ func handlerAddIntJump() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// handlerIncIntJumpLt returns the IncIntJumpLt handler, fusing an in-place increment of
-// ints[B] with a less-than comparison against ints[C] and a conditional backward jump.
+// handlerMultiplyInt64ConstantThenAdd returns the handler fusing a multiplication by a
+// constant with the addition of a second register, named by the extension word.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerIncIntJumpLt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerMultiplyInt64ConstantThenAdd() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerIncIntJumpLt", Comment: "handlerIncIntJumpLt increments ints[B] and jumps if ints[B] < ints[C] in tier-1 form (subOpIncIntJumpLt).",
+		Name:      "handlerMultiplyInt64ConstantThenAdd",
+		Comment:   "handlerMultiplyInt64ConstantThenAdd sets ints[A] = ints[extension.A] + ints[B] * intConstants[C].",
+		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			architecture.EmitMultiplyConstantThenAdd(emitter)
+			architecture.DispatchNext(emitter)
+		},
+	}
+}
+
+// handlerIncrementInt64ThenJumpIfLessThan returns the IncIntJumpLt handler, fusing an
+// in-place increment of ints[B] with a less-than comparison against ints[C] and a
+// conditional backward jump.
+//
+// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
+func handlerIncrementInt64ThenJumpIfLessThan() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return incrementThenJumpHandler("handlerIncrementInt64ThenJumpIfLessThan",
+		"handlerIncrementInt64ThenJumpIfLessThan increments ints[B] and jumps if ints[B] < ints[C] "+
+			"in tier-1 form (subOpIncrementInt64ThenJumpIfLessThan).", "LT")
+}
+
+// handlerIncrementInt64ThenJumpIfLessOrEqual returns the handler that fuses an in-place
+// increment of ints[B] with a less-or-equal comparison against ints[C] and a conditional
+// backward jump.
+//
+// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
+func handlerIncrementInt64ThenJumpIfLessOrEqual() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return incrementThenJumpHandler("handlerIncrementInt64ThenJumpIfLessOrEqual",
+		"handlerIncrementInt64ThenJumpIfLessOrEqual increments ints[B] and jumps if ints[B] <= ints[C].", "LE")
+}
+
+// incrementThenJumpHandler builds a handler that increments ints[B] in place and jumps by
+// the extension word's offset while the counter compares with ints[C] as the condition
+// says.
+//
+// Takes name (string) which is the handler function name.
+// Takes comment (string) which is the handler's doc comment.
+// Takes condition (string) which is the comparison that keeps the loop going.
+//
+// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
+func incrementThenJumpHandler(name, comment, condition string) asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+		Name: name, Comment: comment,
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
@@ -170,11 +198,43 @@ func handlerIncIntJumpLt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 			architecture.ExtractC(emitter, scratches[1])
 			architecture.IntegerInPlace(emitter, "INC", scratches[0])
 
-			architecture.IntegerCompareAndBranch(emitter, "LT", scratches[0], scratches[1], "jump")
+			architecture.IntegerCompareAndBranch(emitter, condition, scratches[0], scratches[1], labelJump)
 			architecture.IncrementProgramCounter(emitter)
 			architecture.UnconditionalBranch(emitter, labelDispatch)
 			emitter.Blank()
-			emitter.Label("jump")
+			emitter.Label(labelJump)
+			architecture.LoadNextInstructionWord(emitter, scratches[0])
+			architecture.AddToProgramCounter(emitter, scratches[0])
+			architecture.EmitBackEdgePoll(emitter)
+			emitter.Blank()
+			emitter.Label(labelDispatch)
+			architecture.DispatchNext(emitter)
+		},
+	}
+}
+
+// handlerIncrementInt64ThenJumpIfLessThanConstant returns the handler fusing an in-place
+// increment of ints[B] with a less-than comparison against intConstants[C] and a
+// conditional backward jump.
+//
+// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
+func handlerIncrementInt64ThenJumpIfLessThanConstant() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+		Name: "handlerIncrementInt64ThenJumpIfLessThanConstant",
+		Comment: "handlerIncrementInt64ThenJumpIfLessThanConstant increments ints[B] and jumps if ints[B] < intConstants[C] " +
+			"in tier-1 form (subOpIncrementInt64ThenJumpIfLessThanConstant).",
+		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			scratches := architecture.ScratchRegisters()
+			architecture.ExtractB(emitter, scratches[0])
+			architecture.ExtractC(emitter, scratches[1])
+			architecture.IntegerInPlace(emitter, "INC", scratches[0])
+
+			architecture.IntegerCompareConstantAndBranch(emitter, "LT", scratches[0], scratches[1], labelJump)
+			architecture.IncrementProgramCounter(emitter)
+			architecture.UnconditionalBranch(emitter, labelDispatch)
+			emitter.Blank()
+			emitter.Label(labelJump)
 			architecture.LoadNextInstructionWord(emitter, scratches[0])
 			architecture.AddToProgramCounter(emitter, scratches[0])
 			architecture.EmitBackEdgePoll(emitter)

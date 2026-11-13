@@ -20,6 +20,8 @@ package pipit
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"go/format"
 	"os"
@@ -48,6 +50,9 @@ var (
 //
 // Returns string containing the pkasm listing, empty when cfs is nil.
 func DisassembleAssembly(cfs *CompiledFileSet) string {
+	if cfs == nil {
+		return ""
+	}
 	return debug.DisassembleAssembly(cfs)
 }
 
@@ -57,6 +62,9 @@ func DisassembleAssembly(cfs *CompiledFileSet) string {
 //
 // Returns string containing the pkasm listing, empty when compiledFunction is nil.
 func DisassembleFunctionAssembly(compiledFunction *CompiledFunction) string {
+	if compiledFunction == nil {
+		return ""
+	}
 	return debug.DisassembleFunctionAssembly(compiledFunction)
 }
 
@@ -89,26 +97,43 @@ func NewDirectoryBytecodeStore(directory string) (BytecodeStorePort, error) {
 //
 // The interpreter must have been built with WithBytecodeStore using
 // NewDirectoryBytecodeStore rooted at the file's parent directory. The store names files
-// from a key, so when path does not match that derived name the artefact is renamed into
-// place afterwards.
+// from a key, so when path does not match that derived name the artefact is saved under a
+// private staging name and copied into place, leaving any artefact the store already
+// holds under the derived name untouched. Every file operation is made relative to the
+// directory, so a symlink cannot redirect it.
 //
 // Takes interpreter (*Interpreter) which provides the configured bytecode store.
 // Takes path (string) which is the caller-chosen output path.
 // Takes cfs (*CompiledFileSet) which holds the compiled program to persist.
 //
-// Returns error when saving or renaming fails.
+// Returns error when saving or moving the artefact fails.
 func SaveCompiledToFile(ctx context.Context, interpreter *Interpreter, path string, cfs *CompiledFileSet) error {
 	directory, key, natural := bytecodePathParts(path)
-	if err := interpreter.SaveCompiled(ctx, key, cfs); err != nil {
+	if natural == filepath.Base(path) {
+		return interpreter.SaveCompiled(ctx, key, cfs)
+	}
+
+	stagingKey, stagingName, err := bytecodeStagingName(key)
+	if err != nil {
 		return err
 	}
-
-	if natural == path {
-		return nil
+	staging, err := rootfs.Open(directory)
+	if err != nil {
+		return fmt.Errorf("pipit: opening bytecode directory: %w", err)
 	}
+	defer func() { _ = staging.Close() }()
 
-	if err := os.Rename(filepath.Join(directory, natural), path); err != nil {
-		return fmt.Errorf("pipit: renaming bytecode artefact: %w", err)
+	if err := interpreter.SaveCompiled(ctx, stagingKey, cfs); err != nil {
+		return err
+	}
+	defer func() { _ = staging.Remove(stagingName) }()
+
+	data, err := staging.ReadFile(stagingName)
+	if err != nil {
+		return fmt.Errorf("pipit: reading staged bytecode artefact: %w", err)
+	}
+	if err := staging.WriteFileAtomic(filepath.Base(path), data, bytecodeStoreFilePerm); err != nil {
+		return fmt.Errorf("pipit: writing bytecode artefact: %w", err)
 	}
 
 	return nil
@@ -118,8 +143,9 @@ func SaveCompiledToFile(ctx context.Context, interpreter *Interpreter, path stri
 //
 // The interpreter must have been built with WithBytecodeStore using
 // NewDirectoryBytecodeStore rooted at the file's parent directory. When path does not
-// match the name the store derives from the key, the file is staged under that name for
-// the duration of the load and removed afterwards.
+// match the name the store derives from the key, the file is staged under a private name
+// for the duration of the load and removed afterwards, so an artefact the store already
+// holds under the derived name is neither overwritten nor deleted.
 //
 // Takes interpreter (*Interpreter) which provides the configured bytecode store.
 // Takes path (string) which is the caller-chosen input path.
@@ -129,28 +155,30 @@ func SaveCompiledToFile(ctx context.Context, interpreter *Interpreter, path stri
 // reconstruction fails.
 func LoadCompiledFromFile(ctx context.Context, interpreter *Interpreter, path string) (*CompiledFileSet, error) {
 	directory, key, natural := bytecodePathParts(path)
-	naturalPath := filepath.Join(directory, natural)
-
-	if naturalPath != path {
-		staging, err := rootfs.Open(directory)
-		if err != nil {
-			return nil, fmt.Errorf("pipit: opening bytecode directory: %w", err)
-		}
-		defer func() { _ = staging.Close() }()
-
-		data, err := staging.ReadFile(filepath.Base(path))
-		if err != nil {
-			return nil, fmt.Errorf("pipit: reading bytecode artefact: %w", err)
-		}
-
-		if err := staging.WriteFileAtomic(natural, data, bytecodeStoreFilePerm); err != nil {
-			return nil, fmt.Errorf("pipit: staging bytecode artefact: %w", err)
-		}
-
-		defer func() { _ = os.Remove(naturalPath) }()
+	if natural == filepath.Base(path) {
+		return interpreter.LoadCompiled(ctx, key)
 	}
 
-	return interpreter.LoadCompiled(ctx, key)
+	stagingKey, stagingName, err := bytecodeStagingName(key)
+	if err != nil {
+		return nil, err
+	}
+	staging, err := rootfs.Open(directory)
+	if err != nil {
+		return nil, fmt.Errorf("pipit: opening bytecode directory: %w", err)
+	}
+	defer func() { _ = staging.Close() }()
+
+	data, err := staging.ReadFile(filepath.Base(path))
+	if err != nil {
+		return nil, fmt.Errorf("pipit: reading bytecode artefact: %w", err)
+	}
+	if err := staging.WriteFileAtomic(stagingName, data, bytecodeStoreFilePerm); err != nil {
+		return nil, fmt.Errorf("pipit: staging bytecode artefact: %w", err)
+	}
+	defer func() { _ = staging.Remove(stagingName) }()
+
+	return interpreter.LoadCompiled(ctx, stagingKey)
 }
 
 // FormatGoSource formats Go source the way gofmt does, wrapping go/format.Source.
@@ -200,6 +228,24 @@ func bytecodePathParts(path string) (directory, key, natural string) {
 	natural = bytecodeFilePrefix + key + bytecodeFileSuffix
 
 	return directory, key, natural
+}
+
+// bytecodeStagingName picks a store key, and the file name the store derives from it,
+// that no other save or load is using, so staging never touches an existing artefact.
+//
+// Takes key (string) which is the key the caller's file name implies.
+//
+// Returns string which is the staging key.
+// Returns string which is the file name the store uses for the staging key.
+// Returns error when no random suffix could be drawn.
+func bytecodeStagingName(key string) (stagingKey, stagingName string, err error) {
+	var suffix [bytecodeStagingSuffixBytes]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		return "", "", fmt.Errorf("pipit: choosing a bytecode staging name: %w", err)
+	}
+	stagingKey = key + ".staging-" + hex.EncodeToString(suffix[:])
+
+	return stagingKey, bytecodeFilePrefix + stagingKey + bytecodeFileSuffix, nil
 }
 
 // trimBytecodePrefix removes the store's filename prefix so a round trip through

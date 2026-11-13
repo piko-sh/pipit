@@ -39,6 +39,7 @@ func main() {
 		panic(err)
 	}
 	service := pipit.NewInterpreter(stdlib.WithStandardLibrary())
+
 	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": string(source)})
 	if err != nil {
 		panic(err)

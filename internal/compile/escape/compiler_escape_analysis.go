@@ -30,9 +30,9 @@ import (
 )
 
 // LocalAllocationSites carries the Emit-time program counters of a function's
-// heap-promoted locals: the isa.OpAllocIndirect word that creates each local's cell and,
-// for a local initialised with make(), the isa.OpExt word of that make whose placement
-// flag decides where the slice backing lives.
+// heap-promoted locals, which are the isa.OpAllocateIndirect word that creates each
+// local's cell and, for a local initialised with make(), the isa.OpExtension word of that
+// make whose placement flag decides where the slice backing lives.
 type LocalAllocationSites struct {
 	// IndirectCellPCs maps a heap-promoted local name to the PC of its cell allocation.
 	IndirectCellPCs map[string]int
@@ -211,19 +211,10 @@ func (state *escapeWalkState) visitFunctionLit(literal *ast.FuncLit) bool {
 }
 
 // ClassifyLocalEscapes populates compiledFunction.ArenaSafeAllocPCs with the PCs of
-// isa.OpAllocIndirect sites whose target local is statically proven not to escape
+// isa.OpAllocateIndirect sites whose target local is statically proven not to escape
 // compiledFunction's frame.
 //
-// Operates on compiledFunction's source AST plus the Compiler's per-name Emit-PC map
-// (recorded by promoteToIndirect at Emit time). heapPromotedNames names the candidate
-// locals.
-//
-// A local whose cell stays in the frame and whose slice value is used only in ways that
-// keep its backing store private (sliceBackingEscapes()) also has the heap-placement flag
-// cleared on the make() that initialised it, so the backing is carved from the arena like
-// any other frame-local slice.
-//
-// Takes compiledFunction (*CompiledFunction) which receives the arenaSafeAllocPCs update;
+// Takes compiledFunction (*CompiledFunction) which receives the arenaSafeAllocPCs update.
 // compiledFunction.body must be finalised so PCs are stable.
 // Takes body (*ast.BlockStmt) which is the function body to scan.
 // Takes sites (LocalAllocationSites) which maps each heap-promoted local name to the PCs
@@ -273,7 +264,7 @@ func ClassifyLocalEscapes(
 // Takes compiledFunction (*CompiledFunction) whose body is rewritten.
 // Takes pc (int) which is the extension word's program counter.
 func clearMakeSliceHeapFlag(compiledFunction *program.CompiledFunction, pc int) {
-	if pc < 0 || pc >= len(compiledFunction.Body) || compiledFunction.Body[pc].Op != isa.OpExt {
+	if pc < 0 || pc >= len(compiledFunction.Body) || compiledFunction.Body[pc].Op != isa.OpExtension {
 		return
 	}
 	compiledFunction.Body[pc].C &^= isa.MakeSliceExtHeapFlag

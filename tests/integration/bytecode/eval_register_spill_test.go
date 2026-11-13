@@ -83,7 +83,7 @@ func TestRegisterSpillAllAliveInt(t *testing.T) {
 	const n = 260
 	source := generateAllAliveProgram(n)
 
-	requireSpillOccurred(t, source, isa.RegisterInt)
+	requireSpillOccurred(t, source, isa.RegisterInt64)
 
 	service := app.NewService()
 	result, err := service.EvalFile(t.Context(), source, "run")
@@ -345,7 +345,7 @@ func TestRegisterSpillClosureCapture(t *testing.T) {
 	b.WriteString("\treturn result\n}\n")
 	source := b.String()
 
-	requireSpillOccurred(t, source, isa.RegisterInt)
+	requireSpillOccurred(t, source, isa.RegisterInt64)
 
 	service := app.NewService()
 	result, err := service.EvalFile(t.Context(), source, "run")
@@ -433,7 +433,7 @@ func TestRegisterSpillIncDec(t *testing.T) {
 	b.WriteString("\treturn result\n}\n")
 	source := b.String()
 
-	requireSpillOccurred(t, source, isa.RegisterInt)
+	requireSpillOccurred(t, source, isa.RegisterInt64)
 
 	service := app.NewService()
 	result, err := service.EvalFile(t.Context(), source, "run")
@@ -491,7 +491,7 @@ func TestRegisterSpillMultipleBanks(t *testing.T) {
 	b.WriteString("\treturn result\n}\n")
 	source := b.String()
 
-	requireSpillOccurred(t, source, isa.RegisterInt)
+	requireSpillOccurred(t, source, isa.RegisterInt64)
 	requireSpillOccurred(t, source, isa.RegisterString)
 
 	service := app.NewService()
@@ -551,7 +551,7 @@ func TestRegisterSpillCompoundAssignAllOps(t *testing.T) {
 	b.WriteString("\treturn result\n}\n")
 	source := b.String()
 
-	requireSpillOccurred(t, source, isa.RegisterInt)
+	requireSpillOccurred(t, source, isa.RegisterInt64)
 
 	service := app.NewService()
 	result, err := service.EvalFile(t.Context(), source, "run")
@@ -566,7 +566,7 @@ func TestRegisterSpillAcrossFiveHundredLocals(t *testing.T) {
 	const n = 500
 	source := generateAllAliveProgram(n)
 
-	requireSpillOccurred(t, source, isa.RegisterInt)
+	requireSpillOccurred(t, source, isa.RegisterInt64)
 
 	service := app.NewService()
 	result, err := service.EvalFile(t.Context(), source, "run")
@@ -579,7 +579,7 @@ func TestRegisterSpillAcrossOneThousandLocals(t *testing.T) {
 	const n = 1000
 	source := generateAllAliveProgram(n)
 
-	requireSpillOccurred(t, source, isa.RegisterInt)
+	requireSpillOccurred(t, source, isa.RegisterInt64)
 
 	service := app.NewService()
 	result, err := service.EvalFile(t.Context(), source, "run")
@@ -621,7 +621,7 @@ func TestRegisterSpillStressMixedOps(t *testing.T) {
 	b.WriteString("\treturn result\n}\n")
 	source := b.String()
 
-	requireSpillOccurred(t, source, isa.RegisterInt)
+	requireSpillOccurred(t, source, isa.RegisterInt64)
 
 	service := app.NewService()
 	result, err := service.EvalFile(t.Context(), source, "run")

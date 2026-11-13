@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxbroker
 
@@ -51,7 +51,7 @@ func TestRecoveryJournalCloseReleasesInheritedLease(t *testing.T) {
 	owner, err := OpenLinuxRecoveryJournal(directory, namespace)
 	require.NoError(t, err)
 	defer owner.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	command := sandboxtest.Command(ctx, "TestRecoveryJournalCloseReleasesInheritedLease", "PIPIT_TEST_JOURNAL_LEASE_CHILD=1")
 	command.ExtraFiles = []*os.File{owner.directory}

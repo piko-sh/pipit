@@ -128,7 +128,8 @@ func (c *Compiler) noteLowering(ctx context.Context, table, name string) {
 	if !traceLoweringEnabled {
 		return
 	}
-	logging.LoggerFrom(ctx).Debug("lowering applied",
+	_, logger := logging.From(ctx)
+	logger.Debug("lowering applied",
 		"table", table, "lowering", name, "function", c.Function.Name, "pc", program.CurrentPC(c.Function))
 }
 
@@ -146,7 +147,8 @@ func (c *Compiler) noteLoweringRefused(ctx context.Context, table, name, reason 
 		return
 	}
 	fields := append([]any{"table", table, "lowering", name, "reason", reason, "function", c.Function.Name, "pc", program.CurrentPC(c.Function)}, attrs...)
-	logging.LoggerFrom(ctx).Debug("lowering refused", fields...)
+	_, logger := logging.From(ctx)
+	logger.Debug("lowering refused", fields...)
 }
 
 // tryAssignLowerings runs assignLowerings in order.
@@ -229,7 +231,7 @@ func (c *Compiler) trySelectorFieldLowerings(ctx context.Context, selection *typ
 func init() {
 	assignLowerings = []assignLowering{
 		{name: loweringStructIntoCollection, try: (*Compiler).tryCompileStructIntoCollection},
-		{name: "star-append-byte-fast", try: (*Compiler).tryCompileStarAppendByteFast},
+		{name: "star-append-byte-fast", try: (*Compiler).tryCompileAppendByteViaPointer},
 		{name: loweringInPlaceAppend, try: (*Compiler).tryCompileInPlaceAppend},
 	}
 

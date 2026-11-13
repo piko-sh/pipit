@@ -206,7 +206,7 @@ compare_generated() {
 # Arguments:
 #   $1 - Directory to list
 generated_files() {
-    ( cd "$1" && find . -name 'gen_*' -type f ! -name '*_test.go' | sort )
+    ( cd "$1" && find . -path './gen_*' -type f ! -name '*_test.go' | sort )
 }
 
 # validate_bundles regenerates into a scratch tree and fails on any difference.

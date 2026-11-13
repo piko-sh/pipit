@@ -45,7 +45,7 @@ func TestReconstructedArraySizeBound(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			value := descriptor.TypeDescriptor{Kind: descriptor.KindArray, Length: tt.length, Element: element}
-			resolved, err := ReflectTypeFor(value, nil)
+			resolved, err := ReflectTypeFor(t.Context(), value, nil)
 			require.ErrorIs(t, err, tt.wantErr)
 			if tt.wantErr != nil {
 				require.Nil(t, resolved, "an oversized array is rejected before reflection")
@@ -61,7 +61,7 @@ func TestNestedReconstructedArraySizeBound(t *testing.T) {
 	element := &descriptor.TypeDescriptor{Kind: descriptor.KindBasic, BasicKind: uint8(reflect.Uint64)}
 	inner := &descriptor.TypeDescriptor{Kind: descriptor.KindArray, Length: 8192, Element: element}
 	outer := descriptor.TypeDescriptor{Kind: descriptor.KindArray, Length: 8192, Element: inner}
-	resolved, err := ReflectTypeFor(outer, nil)
+	resolved, err := ReflectTypeFor(t.Context(), outer, nil)
 	require.ErrorIs(t, err, errCorruptTypeDescriptor, "nested array sizes multiply towards the limit")
 	require.Nil(t, resolved)
 }
@@ -76,13 +76,13 @@ func TestReconstructedStructSizeBound(t *testing.T) {
 		{Name: "First", Typ: half},
 		{Name: "Second", Typ: half},
 	}}
-	resolved, err := ReflectTypeFor(value, nil)
+	resolved, err := ReflectTypeFor(t.Context(), value, nil)
 	require.NoError(t, err, "a struct at the size limit is accepted")
 	require.Equal(t, uintptr(maximumReconstructedTypeBytes), resolved.Size())
 	value.Fields = append(value.Fields, descriptor.TypeDescriptorField{
 		Name: "Extra", Typ: descriptor.TypeDescriptor{Kind: descriptor.KindBasic, BasicKind: uint8(reflect.Uint8)},
 	})
-	resolved, err = ReflectTypeFor(value, nil)
+	resolved, err = ReflectTypeFor(t.Context(), value, nil)
 	require.ErrorIs(t, err, errCorruptTypeDescriptor, "an oversized struct is rejected before reflection")
 	require.Nil(t, resolved)
 }

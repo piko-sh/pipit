@@ -1,5 +1,3 @@
-//go:build bench
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +16,11 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build bench
+
 package bench
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -69,13 +68,13 @@ func EntrypointRun() (string, int64) {
 	symbolRegistry := symtab.NewSymbolRegistry(stdlib.Exports())
 	service.UseSymbols(symbolRegistry)
 
-	compiledFileSet, err := service.CompileFileSet(context.Background(), map[string]string{
+	compiledFileSet, err := service.CompileFileSet(t.Context(), map[string]string{
 		"main.go":       string(sourceBytes),
 		"entrypoint.go": wrapperSource,
 	})
 	require.NoError(t, err, "compile %s", benchDirName)
 
-	_, err = service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun")
+	_, err = service.ExecuteEntrypoint(t.Context(), compiledFileSet, "EntrypointRun")
 	require.NoError(t, err, "warmup %s", benchDirName)
 
 	cpuPath := fmt.Sprintf("/tmp/pipit_xlang_%s.prof", benchDirName)
@@ -89,7 +88,7 @@ func EntrypointRun() (string, int64) {
 
 	wallStart := time.Now()
 	for range iterations {
-		_, err = service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun")
+		_, err = service.ExecuteEntrypoint(t.Context(), compiledFileSet, "EntrypointRun")
 		if err != nil {
 			pprof.StopCPUProfile()
 			require.NoError(t, err, "execute %s", benchDirName)

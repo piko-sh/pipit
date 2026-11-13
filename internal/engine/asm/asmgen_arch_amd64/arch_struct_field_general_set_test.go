@@ -19,6 +19,7 @@
 package asmgen_arch_amd64
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -26,10 +27,10 @@ import (
 	"piko.sh/asmgen"
 )
 
-func TestEmitSetStructFieldGeneralT0(t *testing.T) {
+func TestEmitSetStructFieldGeneral(t *testing.T) {
 	t.Parallel()
 	e := asmgen.NewEmitter()
-	New().EmitSetStructFieldGeneralT0(e)
+	New().EmitSetStructFieldGeneral(e)
 	output := e.String()
 	assertContainsAll(t, output,
 		"runtime·writeBarrier(SB), $0",
@@ -45,7 +46,7 @@ func TestEmitSetStructFieldGeneralT0(t *testing.T) {
 		"ssp_ptr_recv:", "ssp_have_base:", "ssi_ptr_recv:", "ssi_have_base:",
 		"ss_ptr_store:", "ss_ptr_nil:", "ss_iface_data:", "ss_iface_store:", "ss_iface_nil:",
 		"ss_done:", "sf_shim:",
-		"·handlerPathBShimSetStructFieldGeneralT0(SB)",
+		"·handlerPathBShimSetStructFieldGeneral(SB)",
 	)
 	require.Equal(t, 1, strings.Count(output, "DISPATCH_NEXT"), "one dispatch macro per handler: it defines a label")
 	for _, kind := range []string{"$18", "$19", "$21", "$26"} {
@@ -55,10 +56,10 @@ func TestEmitSetStructFieldGeneralT0(t *testing.T) {
 	require.Contains(t, output, "MOVQ    BX, 8(DI)", "cycle-broken arm stores the eface data word")
 }
 
-func TestEmitSetStructFieldGeneralT0LabelsAreUnique(t *testing.T) {
+func TestEmitSetStructFieldGeneralLabelsAreUnique(t *testing.T) {
 	t.Parallel()
 	e := asmgen.NewEmitter()
-	New().EmitSetStructFieldGeneralT0(e)
+	New().EmitSetStructFieldGeneral(e)
 	seen := map[string]int{}
 	for line := range strings.SplitSeq(e.String(), "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -69,4 +70,65 @@ func TestEmitSetStructFieldGeneralT0LabelsAreUnique(t *testing.T) {
 	for label, count := range seen {
 		require.Equalf(t, 1, count, "label %s defined once", label)
 	}
+}
+
+func TestEmitSetStructFieldGeneralStoresANonNilPointerOnlyThroughTheRevokedEpochRoute(t *testing.T) {
+	t.Parallel()
+	emitter := asmgen.NewEmitter()
+	New().EmitSetStructFieldGeneral(emitter)
+	lines := emittedLines(emitter.String())
+	route := func(write string) []string {
+		return []string{
+			"MOVQ    CTX_ARENA_ROUTE_STATE(R15), SI", "TESTQ   SI, SI", "JZ      sf_shim",
+			"CMPB    ROUTE_LOCAL_BLIND(SI), $0", "JE      sf_shim",
+			"TESTQ   $FLAG_RO, CX", "JNZ     sf_shim",
+			"MOVQ    CTX_FRAME_POINTER(R15), CX", "IMULQ   $CALLFRAME_SIZE, CX",
+			"ADDQ    CTX_CSTACK_BASE(R15), CX", "MOVQ    CF_FUNCTION(CX), CX",
+			"CMPQ    FN_FIELD_STORE_GRANTS(CX), $0", "JNE     sf_shim",
+			"INCQ    ROUTE_NOTE_SEQ(SI)",
+			"CMPB    ·licenceCounting(SB), $0", "JE      " + write,
+			"INCQ    ROUTE_NOTES_UNTRACED(SI)", "INCQ    ROUTE_NOTES_BLIND(SI)",
+		}
+	}
+	arms := []struct {
+		store, write, nilLabel string
+		want, stores, nilWant  []string
+	}{
+		{
+			store: "ss_ptr_store:", write: "ss_ptr_write:", nilLabel: "ss_ptr_nil:",
+			want:    append([]string{"TESTQ   AX, AX", "JZ      ss_ptr_write"}, route("ss_ptr_write")...),
+			stores:  []string{"MOVQ    AX, (DI)"},
+			nilWant: []string{"XORQ    AX, AX", "JMP     ss_ptr_write"},
+		},
+		{
+			store: "ss_iface_store:", write: "ss_iface_write:", nilLabel: "ss_iface_nil:",
+			want: append([]string{"TESTQ   BX, BX", "JZ      ss_iface_write", "CMPQ    SI, $22", "JNE     sf_shim"},
+				route("ss_iface_write")...),
+			stores:  []string{"MOVQ    AX, (DI)", "MOVQ    BX, 8(DI)"},
+			nilWant: []string{"XORQ    BX, BX", "JMP     ss_iface_write"},
+		},
+	}
+	for _, arm := range arms {
+		start := slices.Index(lines, arm.store)
+		end := slices.Index(lines, arm.write)
+		require.GreaterOrEqual(t, start, 0, "label %s emitted", arm.store)
+		require.Greater(t, end, start, "label %s follows %s", arm.write, arm.store)
+		require.Equal(t, arm.want, lines[start+1:end], "%s reaches %s with a non-nil word only through the route", arm.store, arm.write)
+		require.Equal(t, arm.stores, lines[end+1:end+1+len(arm.stores)], "%s stores the word", arm.write)
+		nilStart := slices.Index(lines, arm.nilLabel)
+		require.GreaterOrEqual(t, nilStart, 0, "label %s emitted", arm.nilLabel)
+		require.Equal(t, arm.nilWant, lines[nilStart+1:nilStart+1+len(arm.nilWant)], "%s stores a nil word", arm.nilLabel)
+	}
+}
+
+func emittedLines(output string) []string {
+	var lines []string
+	for line := range strings.SplitSeq(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		lines = append(lines, trimmed)
+	}
+	return lines
 }

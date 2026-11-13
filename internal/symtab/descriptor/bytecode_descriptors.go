@@ -46,8 +46,8 @@ const (
 	// package, resolved via SymbolRegistry.ZeroValueForType.
 	GeneralConstantNamedTypeZero
 
-	// GeneralConstantCompositeZero describes a non-interface zero value reconstructed
-	// by symtab.ZeroConstant.
+	// GeneralConstantCompositeZero describes a non-interface zero value reconstructed by
+	// symtab.ZeroConstant.
 	GeneralConstantCompositeZero
 
 	// GeneralConstantPackageSymbolAddress is the address of a settable package variable of a
@@ -65,8 +65,8 @@ type GeneralConstantDescriptor struct {
 	// SymbolName is the name of the symbol within its package.
 	SymbolName string
 
-	// TypeDescriptor records the type for zero-value reconstruction and is populated
-	// during export or decoding.
+	// TypeDescriptor records the type for zero-value reconstruction and is populated during
+	// export or decoding.
 	TypeDescriptor TypeDescriptor
 
 	// Kind identifies which reconstruction strategy to use.
@@ -80,7 +80,10 @@ const (
 	// KindBasic is a primitive type such as int, string, or bool.
 	KindBasic TypeDescriptorKind = iota
 
-	// KindNamed is a named type from a registered package.
+	// KindNamed is a named type whose runtime type is found by name, which is a registered
+	// package's type, a named basic type's pool type, or, when Element describes its
+	// underlying type, a named array, slice, map, channel or function type
+	// (typemodel.NamedCompositeTypeFor).
 	KindNamed
 
 	// KindPtr is a pointer type.
@@ -159,6 +162,11 @@ type TypeDescriptor struct {
 	// IsVariadic reports whether a function type accepts variadic arguments in its last
 	// parameter.
 	IsVariadic bool
+
+	// BackReference marks a KindNamed descriptor, inside the description of a
+	// self-referential named composite type, that names that type or another of its group by
+	// PackagePath and Name instead of describing it again.
+	BackReference bool
 }
 
 // errorReflectType is the predeclared error interface, the one named type with an empty
@@ -183,6 +191,10 @@ type TypeDescriptorField struct {
 
 	// Typ is the type descriptor for the field's type.
 	Typ TypeDescriptor
+
+	// Embedded is true for an embedded (anonymous) field, whose fields and methods promote
+	// to the struct.
+	Embedded bool
 }
 
 // TypeDescriptorData is a serialisation-safe representation of a reflect.Type descriptor.
@@ -227,6 +239,9 @@ type TypeDescriptorData struct {
 
 	// IsVariadic is true for variadic function types.
 	IsVariadic bool
+
+	// BackReference is true for a back-reference to an enclosing named composite type.
+	BackReference bool
 }
 
 // TypeDescriptorFieldData is a serialisation-safe representation of a struct field within
@@ -245,6 +260,9 @@ type TypeDescriptorFieldData struct {
 
 	// Typ is the field's type descriptor.
 	Typ TypeDescriptorData
+
+	// Embedded is true for an embedded (anonymous) field.
+	Embedded bool
 }
 
 // descriptorBuilder recursively converts reflect.Type to TypeDescriptor with cycle
@@ -253,6 +271,10 @@ type descriptorBuilder struct {
 	// visiting tracks struct types currently being converted to detect and break recursive
 	// cycles.
 	visiting map[reflect.Type]bool
+
+	// namedVisiting tracks the named composite types whose underlying types are being
+	// described, so a self-referential one is written as a back-reference where it recurs.
+	namedVisiting map[reflect.Type]bool
 }
 
 // typeToDescriptor converts a single reflect.Type, tracking visited struct types to break
@@ -264,6 +286,22 @@ type descriptorBuilder struct {
 func (b *descriptorBuilder) typeToDescriptor(reflectType reflect.Type) TypeDescriptor {
 	if reflectType == nil {
 		return typeDescriptorOf(KindNil)
+	}
+	if info, isComposite := typemodel.LookupNamedCompositeInfo(reflectType); isComposite {
+		descriptor := typeDescriptorOf(KindNamed)
+		descriptor.PackagePath = info.PkgPath
+		descriptor.Name = info.Name
+		if b.namedVisiting[reflectType] {
+			descriptor.BackReference = true
+			return descriptor
+		}
+		if b.namedVisiting == nil {
+			b.namedVisiting = make(map[reflect.Type]bool)
+		}
+		b.namedVisiting[reflectType] = true
+		descriptor.Element = new(b.typeToDescriptor(info.Underlying))
+		delete(b.namedVisiting, reflectType)
+		return descriptor
 	}
 	if info, isPool := typemodel.LookupNamedScalarPoolInfo(reflectType); isPool {
 		descriptor := typeDescriptorOf(KindNamed)
@@ -417,6 +455,7 @@ func (b *descriptorBuilder) structToDescriptor(reflectType reflect.Type) TypeDes
 			Tag:         string(field.Tag),
 			PackagePath: field.PkgPath,
 			Typ:         b.typeToDescriptor(field.Type),
+			Embedded:    field.Anonymous,
 		})
 	}
 
@@ -433,7 +472,7 @@ func (b *descriptorBuilder) structToDescriptor(reflectType reflect.Type) TypeDes
 // Returns TypeDescriptor which contains enough information to reconstruct the type via
 // descriptorToReflectType.
 func ReflectTypeToDescriptor(reflectType reflect.Type) TypeDescriptor {
-	b := &descriptorBuilder{visiting: make(map[reflect.Type]bool)}
+	b := &descriptorBuilder{visiting: make(map[reflect.Type]bool), namedVisiting: nil}
 	return b.typeToDescriptor(reflectType)
 }
 

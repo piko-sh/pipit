@@ -66,30 +66,70 @@ const (
 //
 // Returns the execution result and any error encountered during dispatch.
 func (vm *VM) RunDispatchedGuarded(baseFramePointer int) (result any, err error) {
+	if baseFramePointer == 0 {
+		if refused := vm.failedClosed(); refused != nil {
+			return nil, refused
+		}
+	}
+	vm.bindFinaliserPlacement()
 	if vm.lockInterpreter() {
 		defer vm.unlockInterpreter()
+	}
+	if vm.enterServedChain() {
+		defer vm.leaveServedChain()
+	}
+	if vm.mayRunGated() && vm.beginGatedRun() {
+		defer vm.endGatedRun()
 	}
 	defer func() { vm.handleRecoveredHandlerPanic(recover(), baseFramePointer, &result, &err) }()
 	vm.DispatchEntries++
 	result, err = vm.runDispatched(baseFramePointer)
+	err = vm.unwindAfterStoppedRun(baseFramePointer, err)
 	return vm.reportFailedExecution(baseFramePointer, result, err)
 }
 
-// RunGuarded wraps the pure-Go run loop with the same handler-panic recovery as
-// RunDispatchedGuarded. Used by the variable-initialiser path, which dispatches via run
-// directly rather than runDispatched.
+// RunGuarded wraps the pure-Go run loop with the same handler-panic recovery and the same
+// fail-closed refusal as RunDispatchedGuarded. The variable-initialiser path uses it to
+// dispatch via run directly rather than runDispatched.
 //
 // Takes baseFramePointer (int) which specifies the frame index at which this invocation
 // should stop and return results.
 //
 // Returns the execution result and any error encountered during dispatch.
 func (vm *VM) RunGuarded(baseFramePointer int) (result any, err error) {
+	if baseFramePointer == 0 {
+		if refused := vm.failedClosed(); refused != nil {
+			return nil, refused
+		}
+	}
+	vm.bindFinaliserPlacement()
 	if vm.lockInterpreter() {
 		defer vm.unlockInterpreter()
 	}
+	if vm.enterServedChain() {
+		defer vm.leaveServedChain()
+	}
+	if vm.mayRunGated() && vm.beginGatedRun() {
+		defer vm.endGatedRun()
+	}
 	defer func() { vm.handleRecoveredHandlerPanic(recover(), baseFramePointer, &result, &err) }()
 	result, err = vm.run(baseFramePointer)
+	err = vm.unwindAfterStoppedRun(baseFramePointer, err)
 	return vm.reportFailedExecution(baseFramePointer, result, err)
+}
+
+// unwindAfterStoppedRun runs pending defers when a stop ends the outermost dispatch.
+//
+// Takes baseFramePointer (int) which is the frame the run returned at.
+// Takes err (error) which is the run's error.
+//
+// Returns error which is err, joined with the unwind report when a defer was left
+// blocked.
+func (vm *VM) unwindAfterStoppedRun(baseFramePointer int, err error) error {
+	if baseFramePointer != 0 || err == nil || !vm.unwindsAfterRun(err) {
+		return err
+	}
+	return joinUnwindReport(err, vm.unwindAfterAbort())
 }
 
 // reportFailedExecution turns a successful run of the execution's main frame into the
@@ -130,9 +170,16 @@ func (vm *VM) AccountForInstructionCost(instruction isa.Instruction) (bool, erro
 // Returns true with errCostBudgetExceeded when the shared budget cannot cover the local
 // deficit, and false with nil when metering is disabled or the refill succeeded.
 func (vm *VM) RefillCostChunk() (bool, error) {
+	if vm.abortUnwinding {
+		vm.abortUnwindExhausted = true
+		return true, fault.ErrCostBudgetExceeded
+	}
 	if vm.Limits.CostBudget == 0 {
 		vm.CostRemaining = UnmeteredCostSentinel
 		return false, nil
+	}
+	if abortInjectBuilt && abortInjectFires(abortSiteCost) {
+		return true, abortInjectedError(abortSiteCost)
 	}
 	shared := &vm.Limits.Tracker.CostRemaining
 	for {
@@ -189,13 +236,15 @@ func (vm *VM) CostUsed() int64 {
 
 // handleRecoveredHandlerPanic forwards a recovered handler panic.
 //
-// The deferred body shared by RunDispatchedGuarded and RunGuarded. Receives the value
-// already recovered by the enclosing deferred closure, converts a native Go panic raised
-// by an opcode handler into an interpreted panic so interpreted defer/recover can observe
-// it; an arena-budget panic is re-raised so execute's own recover continues to surface it
-// as an error. The switch names the exit reasons that need work here. Every other
-// isa.OpResult means "keep running the loop", which is what falling out of the switch
-// does; that path is the overwhelming majority of dispatches.
+// It provides the deferred body shared by RunDispatchedGuarded and RunGuarded. It
+// receives the value recovered by the enclosing deferred closure and converts a native Go
+// panic from an opcode handler into an interpreted panic. Interpreted defer/recover can
+// then observe it. An arena-budget panic is raised again so execute's own recover
+// surfaces it as an error. Any other panic exited its handler part-way through, so the
+// arena is marked aborted and abandoned at its release (markAborted). The switch names
+// the exit reasons that need work here. Every other isa.OpResult means "keep running the
+// loop", which is what falling out of the switch does; that path is the overwhelming
+// majority of dispatches.
 //
 // Takes recovered (any) which is the value returned by recover() in the deferred closure,
 // or nil when no panic is pending.
@@ -206,9 +255,11 @@ func (vm *VM) handleRecoveredHandlerPanic(recovered any, baseFramePointer int, r
 	if recovered == nil {
 		return
 	}
-	if budgetErr, ok := recovered.(error); ok && errors.Is(budgetErr, fault.ErrArenaBudgetExceeded) {
-		panic(recovered)
+	if isUnwindingAbort(recovered) {
+		vm.handleRecoveredAbort(recovered.(error), baseFramePointer, result, err)
+		return
 	}
+	vm.Arena.markAborted()
 	if invariant, ok := recovered.(*invariantError); ok {
 		vm.evalError = nil
 		*result = nil
@@ -239,6 +290,28 @@ func (vm *VM) handleRecoveredHandlerPanic(recovered any, baseFramePointer int, r
 		*err = vm.evalError
 		vm.evalError = nil
 	}
+}
+
+// handleRecoveredAbort unwinds a run ended by a hard abort or a callback's cost stop
+// raised as a Go panic.
+//
+// Takes abort (error) which is the recovered panic value.
+// Takes baseFramePointer (int) which is the frame index at which dispatch stops.
+// Takes result (*any) which receives the run's result.
+// Takes err (*error) which receives the run's error.
+//
+// Panics with the abort unless it is a cost stop at frame 0.
+func (vm *VM) handleRecoveredAbort(abort error, baseFramePointer int, result *any, err *error) {
+	if baseFramePointer != 0 || errors.Is(abort, errUnwindAbandoned) || vm.abortUnwinding {
+		panic(abort)
+	}
+	report := vm.unwindAfterAbort()
+	if !errors.Is(abort, fault.ErrArenaBudgetExceeded) {
+		*result = nil
+		*err = joinUnwindReport(abort, report)
+		return
+	}
+	panic(joinUnwindReport(abort, report))
 }
 
 // run is the main execution loop, dispatching all opcodes via flatDispatchSwitch (Path-B)
@@ -292,7 +365,7 @@ func (vm *VM) runMetered(baseFramePointer int) (any, error) {
 				frame = &vm.CallStack[vm.FramePointer]
 				registers = &frame.Registers
 			}
-			vm.yieldInterpreterLock()
+			vm.yieldAtCheckpoint()
 		}
 		if vm.Limits.Debug != nil && vm.debugStopRequested(frame) {
 			return nil, vm.debugStopError()
@@ -308,6 +381,7 @@ func (vm *VM) runMetered(baseFramePointer int) (any, error) {
 		}
 
 		instruction := frame.Function.Body[frame.ProgramCounter]
+		opcodeCensusRecord(frame.Function, frame.Function.Body, frame.ProgramCounter)
 		frame.ProgramCounter++
 
 		if exhausted, err := vm.AccountForInstructionCost(instruction); exhausted {
@@ -317,7 +391,7 @@ func (vm *VM) runMetered(baseFramePointer int) (any, error) {
 			vm.maybeYield()
 		}
 
-		rc := flatDispatchSwitch(vm, frame, registers, instruction)
+		rc := censusDispatch(vm, frame, registers, instruction)
 		if rc == opContinue {
 			continue
 		}
@@ -360,8 +434,7 @@ func (vm *VM) runUnmetered(baseFramePointer int) (any, error) {
 }
 
 // dispatchSpan runs the frame's instructions until a handler changes the frame or fails,
-// the periodic checks fall due, or the body ends. The body is held in a local because
-// only those events can change it.
+// the periodic checks fall due, or the body ends.
 //
 // Takes vm (*VM) which executes the instructions.
 // Takes frame (*CallFrame) which is the running frame.
@@ -370,6 +443,22 @@ func (vm *VM) runUnmetered(baseFramePointer int) (any, error) {
 // Returns why the span stopped, the handler result for spanStopResult, and the updated
 // counter.
 func dispatchSpan(vm *VM, frame *CallFrame, ops uint32) (spanStop, OpResult, uint32) {
+	if storeCensusBuilt {
+		return censusDispatchSpan(vm, frame, ops)
+	}
+	return flatDispatchSpan(vm, frame, &frame.Registers, frame.Function.Body, ops)
+}
+
+// censusDispatchSpan is dispatchSpan for the store census build, which routes every
+// instruction through censusDispatch.
+//
+// Takes vm (*VM) which executes the instructions.
+// Takes frame (*CallFrame) which is the running frame.
+// Takes ops (uint32) which is the instruction counter for the periodic checks.
+//
+// Returns why the span stopped, the handler result for spanStopResult, and the updated
+// counter.
+func censusDispatchSpan(vm *VM, frame *CallFrame, ops uint32) (spanStop, OpResult, uint32) {
 	registers := &frame.Registers
 	body := frame.Function.Body
 	for {
@@ -382,7 +471,8 @@ func dispatchSpan(vm *VM, frame *CallFrame, ops uint32) (spanStop, OpResult, uin
 			return spanStopEndOfBody, opContinue, ops
 		}
 		frame.ProgramCounter = pc + 1
-		if rc := flatDispatchSwitch(vm, frame, registers, body[pc]); rc != opContinue {
+		opcodeCensusRecord(frame.Function, body, pc)
+		if rc := censusDispatch(vm, frame, registers, body[pc]); rc != opContinue {
 			return spanStopResult, rc, ops
 		}
 	}
@@ -422,7 +512,7 @@ func (vm *VM) unmeteredCheckpoint() (done bool, result any, err error) {
 	if vm.checkpointFlags != 0 || (vm.Arena != nil && vm.Arena.gcShouldRun()) {
 		vm.runPendingCheckpoints()
 	}
-	vm.yieldInterpreterLock()
+	vm.yieldAtCheckpoint()
 	return false, nil, nil
 }
 
@@ -469,6 +559,10 @@ func (vm *VM) maybeYield() {
 // Returns result (any) which is the propagated result value to surface from run.
 // Returns err (error) which is any error encountered during the periodic checks.
 func (vm *VM) runPeriodicChecks() (done bool, result any, err error) {
+	if vm.abortUnwinding {
+		stop, stopErr := vm.unwindPeriodicCheck()
+		return stop, nil, stopErr
+	}
 	if vm.Cancelled.Load() != 0 || vm.pollContext() {
 		return true, nil, vm.stopError()
 	}
@@ -555,8 +649,8 @@ func (vm *VM) handleOpResult(rc OpResult) (result any, terminal bool, err error)
 	return outcome.result, true, outcome.err
 }
 
-// pollContext checks cancellation and the callback deadline, yielding the processor
-// every pollYieldMask+1 polls.
+// pollContext checks cancellation and the callback deadline, yielding the processor every
+// pollYieldMask+1 polls.
 //
 // Returns true when the run must stop, with Cancelled set and pollCause naming a cause
 // the context does not carry.

@@ -20,11 +20,14 @@ package engine
 
 import (
 	"reflect"
+	"runtime"
 	"strconv"
+	"sync"
 	"testing"
 	"unsafe"
 
 	"github.com/stretchr/testify/require"
+	"piko.sh/stablepool"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
@@ -113,7 +116,7 @@ func TestRegisterArenaUpvalueCellAllocation(t *testing.T) {
 	require.Empty(t, cells[0].StringValue)
 	require.Nil(t, refs[0].Value)
 
-	cells[0].Kind = isa.RegisterInt
+	cells[0].Kind = isa.RegisterInt64
 	cells[0].IntValue = 42
 	refs[0].Value = &cells[0]
 
@@ -293,16 +296,16 @@ func TestShrinkOvergrownSlabsWithinThreshold(t *testing.T) {
 	require.Len(t, a.floatSlab, originalFloatLen)
 }
 
-func TestArenaConcatRuneStringTailNoGrowth(t *testing.T) {
+func TestArenaConcatenateStringRuneTailNoGrowth(t *testing.T) {
 	t.Parallel()
 	arena := NewRegisterArena()
 
-	s := ArenaConcatString(arena, "", "ab")
-	result := arenaConcatRuneString(arena, s, 'c')
+	s := ArenaConcatenateString(arena, "", "ab")
+	result := arenaConcatenateStringRune(arena, s, 'c')
 	require.Equal(t, "abc", result)
 }
 
-func TestArenaConcatRuneStringTailTriggersGrowth(t *testing.T) {
+func TestArenaConcatenateStringRuneTailTriggersGrowth(t *testing.T) {
 	t.Parallel()
 	arena := NewRegisterArena()
 
@@ -312,41 +315,41 @@ func TestArenaConcatRuneStringTailTriggersGrowth(t *testing.T) {
 	}
 	_ = arenaBytesToString(arena, padding)
 
-	s := ArenaConcatString(arena, "", "ab")
+	s := ArenaConcatenateString(arena, "", "ab")
 	require.Equal(t, "ab", s)
 
-	result := arenaConcatRuneString(arena, s, '€')
+	result := arenaConcatenateStringRune(arena, s, '€')
 	require.Equal(t, "ab€", result)
 }
 
-func TestArenaConcatRuneStringNonTail(t *testing.T) {
+func TestArenaConcatenateStringRuneNonTail(t *testing.T) {
 	t.Parallel()
 	arena := NewRegisterArena()
 
-	first := ArenaConcatString(arena, "", "hello")
-	_ = ArenaConcatString(arena, "", "world")
+	first := ArenaConcatenateString(arena, "", "hello")
+	_ = ArenaConcatenateString(arena, "", "world")
 
-	result := arenaConcatRuneString(arena, first, '!')
+	result := arenaConcatenateStringRune(arena, first, '!')
 	require.Equal(t, "hello!", result)
 }
 
-func TestArenaConcatRuneStringEmptyBase(t *testing.T) {
+func TestArenaConcatenateStringRuneEmptyBase(t *testing.T) {
 	t.Parallel()
 	arena := NewRegisterArena()
 
-	result := arenaConcatRuneString(arena, "", 'x')
+	result := arenaConcatenateStringRune(arena, "", 'x')
 	require.Equal(t, "x", result)
 }
 
-func TestArenaConcatRuneStringInvalidRune(t *testing.T) {
+func TestArenaConcatenateStringRuneInvalidRune(t *testing.T) {
 	t.Parallel()
 	arena := NewRegisterArena()
 
-	result := arenaConcatRuneString(arena, "hello", rune(-1))
+	result := arenaConcatenateStringRune(arena, "hello", rune(-1))
 	require.Equal(t, "hello\uFFFD", result)
 }
 
-func TestArenaConcatRuneStringMultiByteBoundary(t *testing.T) {
+func TestArenaConcatenateStringRuneMultiByteBoundary(t *testing.T) {
 	t.Parallel()
 	arena := NewRegisterArena()
 
@@ -356,29 +359,29 @@ func TestArenaConcatRuneStringMultiByteBoundary(t *testing.T) {
 	}
 	_ = arenaBytesToString(arena, padding)
 
-	s := ArenaConcatString(arena, "", "a")
+	s := ArenaConcatenateString(arena, "", "a")
 
-	result := arenaConcatRuneString(arena, s, '🎉')
+	result := arenaConcatenateStringRune(arena, s, '🎉')
 	require.Equal(t, "a🎉", result)
 }
 
-func TestArenaConcatStringBothEmpty(t *testing.T) {
+func TestArenaConcatenateStringBothEmpty(t *testing.T) {
 	t.Parallel()
 	arena := NewRegisterArena()
-	result := ArenaConcatString(arena, "", "")
+	result := ArenaConcatenateString(arena, "", "")
 	require.Empty(t, result)
 }
 
-func TestArenaConcatStringTailNoGrowth(t *testing.T) {
+func TestArenaConcatenateStringTailNoGrowth(t *testing.T) {
 	t.Parallel()
 	arena := NewRegisterArena()
 
-	s := ArenaConcatString(arena, "", "he")
-	result := ArenaConcatString(arena, s, "llo")
+	s := ArenaConcatenateString(arena, "", "he")
+	result := ArenaConcatenateString(arena, s, "llo")
 	require.Equal(t, "hello", result)
 }
 
-func TestArenaConcatStringTailTriggersGrowth(t *testing.T) {
+func TestArenaConcatenateStringTailTriggersGrowth(t *testing.T) {
 	t.Parallel()
 	arena := NewRegisterArena()
 
@@ -388,10 +391,10 @@ func TestArenaConcatStringTailTriggersGrowth(t *testing.T) {
 	}
 	_ = arenaBytesToString(arena, padding)
 
-	s := ArenaConcatString(arena, "", "ab")
+	s := ArenaConcatenateString(arena, "", "ab")
 	require.Equal(t, "ab", s)
 
-	result := ArenaConcatString(arena, s, "world")
+	result := ArenaConcatenateString(arena, s, "world")
 	require.Equal(t, "abworld", result)
 }
 
@@ -451,70 +454,70 @@ func TestArenaRuneToStringAcrossEncodedWidths(t *testing.T) {
 	})
 }
 
-func TestArenaConcatRuneStringAcrossUTF8Widths(t *testing.T) {
+func TestArenaConcatenateStringRuneAcrossUTF8Widths(t *testing.T) {
 	t.Parallel()
 
 	t.Run("concat 4-byte emoji to ASCII", func(t *testing.T) {
 		t.Parallel()
 		arena := NewRegisterArena()
-		s := ArenaConcatString(arena, "", "ok")
-		result := arenaConcatRuneString(arena, s, '🎊')
+		s := ArenaConcatenateString(arena, "", "ok")
+		result := arenaConcatenateStringRune(arena, s, '🎊')
 		require.Equal(t, "ok🎊", result)
 	})
 
 	t.Run("concat surrogate half produces replacement", func(t *testing.T) {
 		t.Parallel()
 		arena := NewRegisterArena()
-		s := ArenaConcatString(arena, "", "abc")
-		result := arenaConcatRuneString(arena, s, rune(0xD800))
+		s := ArenaConcatenateString(arena, "", "abc")
+		result := arenaConcatenateStringRune(arena, s, rune(0xD800))
 		require.Equal(t, "abc\uFFFD", result)
 	})
 
 	t.Run("concat max valid rune", func(t *testing.T) {
 		t.Parallel()
 		arena := NewRegisterArena()
-		s := ArenaConcatString(arena, "", "x")
-		result := arenaConcatRuneString(arena, s, '\U0010FFFF')
+		s := ArenaConcatenateString(arena, "", "x")
+		result := arenaConcatenateStringRune(arena, s, '\U0010FFFF')
 		require.Equal(t, "x\U0010FFFF", result)
 	})
 
 	t.Run("concat NUL rune", func(t *testing.T) {
 		t.Parallel()
 		arena := NewRegisterArena()
-		s := ArenaConcatString(arena, "", "ab")
-		result := arenaConcatRuneString(arena, s, 0)
+		s := ArenaConcatenateString(arena, "", "ab")
+		result := arenaConcatenateStringRune(arena, s, 0)
 		require.Equal(t, "ab\x00", result)
 	})
 }
 
-func TestArenaConcatStringAcrossUTF8Widths(t *testing.T) {
+func TestArenaConcatenateStringAcrossUTF8Widths(t *testing.T) {
 	t.Parallel()
 
 	t.Run("concat two multi-byte strings", func(t *testing.T) {
 		t.Parallel()
 		arena := NewRegisterArena()
-		result := ArenaConcatString(arena, "日本", "語")
+		result := ArenaConcatenateString(arena, "日本", "語")
 		require.Equal(t, "日本語", result)
 	})
 
 	t.Run("concat emoji strings", func(t *testing.T) {
 		t.Parallel()
 		arena := NewRegisterArena()
-		result := ArenaConcatString(arena, "🎉", "🎊")
+		result := ArenaConcatenateString(arena, "🎉", "🎊")
 		require.Equal(t, "🎉🎊", result)
 	})
 
 	t.Run("concat with NUL bytes", func(t *testing.T) {
 		t.Parallel()
 		arena := NewRegisterArena()
-		result := ArenaConcatString(arena, "a\x00", "b\x00c")
+		result := ArenaConcatenateString(arena, "a\x00", "b\x00c")
 		require.Equal(t, "a\x00b\x00c", result)
 	})
 
 	t.Run("concat invalid UTF-8 preserves bytes", func(t *testing.T) {
 		t.Parallel()
 		arena := NewRegisterArena()
-		result := ArenaConcatString(arena, "\x80\x81", "\x82\x83")
+		result := ArenaConcatenateString(arena, "\x80\x81", "\x82\x83")
 		require.Equal(t, "\x80\x81\x82\x83", result)
 		require.Len(t, result, 4)
 	})
@@ -728,20 +731,20 @@ func TestArenaAllocIntBackingGrow(t *testing.T) {
 		"new slab is at least 2x previous")
 }
 
-func TestArenaAppendIntInCapNoAlloc(t *testing.T) {
+func TestArenaAppendInt64InCapNoAlloc(t *testing.T) {
 
 	arena := NewRegisterArena()
 	s := arena.AllocIntBacking(100)[:0:100]
 
 	allocs := testing.AllocsPerRun(50, func() {
-		s = arenaAppendInt(arena, s[:0], 42)
+		s = arenaAppendInt64(arena, s[:0], 42)
 	})
 	require.Zero(t, allocs, "append in-cap must not allocate")
 }
 
-func TestArenaAppendIntGrowFromHeapSlice(t *testing.T) {
+func TestArenaAppendInt64GrowFromHeapSlice(t *testing.T) {
 	if !arenaUsesUnsafeSlabs {
-		t.Skip("safe build: arenaAppendInt does not route through intBackingSlab")
+		t.Skip("safe build: arenaAppendInt64 does not route through intBackingSlab")
 	}
 	t.Parallel()
 
@@ -750,15 +753,15 @@ func TestArenaAppendIntGrowFromHeapSlice(t *testing.T) {
 	s := []int64{1, 2, 3}
 	require.Equal(t, len(s), cap(s))
 
-	out := arenaAppendInt(arena, s, 4)
+	out := arenaAppendInt64(arena, s, 4)
 	require.Equal(t, []int64{1, 2, 3, 4}, out)
 	require.GreaterOrEqual(t, cap(out), 4, "grown cap is at least len(out)")
 	require.False(t, arena.OwnsSliceBacking(unsafe.Pointer(&out[0])),
 		"a heap-born slice keeps growing on the heap")
 
-	arenaBorn := arenaAppendInt(arena, nil, 1)
+	arenaBorn := arenaAppendInt64(arena, nil, 1)
 	require.True(t, arena.OwnsSliceBacking(unsafe.Pointer(&arenaBorn[0])), "an empty slice starts in the arena")
-	grown := arenaAppendInt(arena, arenaBorn[:cap(arenaBorn)], 2)
+	grown := arenaAppendInt64(arena, arenaBorn[:cap(arenaBorn)], 2)
 	require.True(t, arena.OwnsSliceBacking(unsafe.Pointer(&grown[0])), "an arena-born slice keeps growing in the arena")
 	require.Equal(t, int64(2), grown[len(grown)-1])
 }
@@ -852,39 +855,39 @@ func TestAccumulateArenaBytecodeHints(t *testing.T) {
 	t.Parallel()
 
 	body := []isa.Instruction{
-		{Op: isa.OpConcatString},
-		{Op: isa.OpConcatString},
-		{Op: isa.OpConcatRuneString},
-		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpBytesToString)},
+		{Op: isa.OpConcatenateString},
+		{Op: isa.OpConcatenateString},
+		{Op: isa.OpConcatenateStringRune},
+		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpConvertBytesToString)},
 		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpStrconvItoa)},
 		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpStrconvFormatInt)},
-		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpRuneToString)},
-		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpMakeSliceInt)},
-		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpMakeSliceFloat)},
+		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpConvertRuneToString)},
+		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpMakeSliceInt64)},
+		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpMakeSliceFloat64)},
 		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpMakeSliceString)},
 		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpMakeSliceBool)},
-		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpMakeSliceUint)},
+		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpMakeSliceUint64)},
 
 		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpMathSin)},
-		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpCap)},
+		{Op: isa.OpDrillTier1, A: uint8(isa.SubOpCapacityGeneral)},
 	}
 
 	var hints arenaBytecodeHints
 	accumulateArenaBytecodeHints(&hints, body, nil)
 
-	expectedBytes := 2*arenaConcatStringAvgBytes +
-		arenaConcatRuneStringAvgBytes +
+	expectedBytes := 2*arenaConcatenateStringAvgBytes +
+		arenaConcatenateStringRuneAvgBytes +
 		arenaBytesToStringAvgBytes +
 		arenaItoaMaxBytes +
 		arenaFormatIntMaxBytes +
 		arenaRuneToStringMaxBytes
 	require.Equal(t, expectedBytes, hints.Bytes, "byte hint sum")
 
-	require.Equal(t, 1, hints.MakeSliceInt)
-	require.Equal(t, 1, hints.MakeSliceFloat)
+	require.Equal(t, 1, hints.MakeSliceInt64)
+	require.Equal(t, 1, hints.MakeSliceFloat64)
 	require.Equal(t, 1, hints.MakeSliceString)
 	require.Equal(t, 1, hints.MakeSliceBool)
-	require.Equal(t, 1, hints.MakeSliceUint)
+	require.Equal(t, 1, hints.MakeSliceUint64)
 }
 
 func TestArenaAllocByteBackingShape(t *testing.T) {
@@ -1168,8 +1171,7 @@ func BenchmarkArenaSaveInto(b *testing.B) {
 	arena.UpvalueReferenceIndex = 2
 	var savePoint ArenaSavePoint
 	b.ReportAllocs()
-	b.ResetTimer()
-	for index := 0; index < b.N; index++ {
+	for b.Loop() {
 		arena.SaveInto(&savePoint)
 	}
 }
@@ -1179,9 +1181,58 @@ func BenchmarkArenaSaveRestoreRoundTrip(b *testing.B) {
 	var savePoint ArenaSavePoint
 	arena.SaveInto(&savePoint)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for index := 0; index < b.N; index++ {
+	for b.Loop() {
 		arena.SaveInto(&savePoint)
 		arena.Restore(savePoint)
 	}
+}
+
+func TestMustPoolStopsOnARejectedConfiguration(t *testing.T) {
+	require.PanicsWithValue(t,
+		"engine: the engine.sharedCellMap pool's configuration is rejected: "+mustPoolError(t).Error(),
+		func() { mustPool(stablepool.New[sharedCellMap](func(*sharedCellMap) {}, nil, 0)) },
+		"a pool whose fixed configuration is rejected stops initialisation with the reason rather than leaving a nil pool")
+	require.NotNil(t, mustPool(stablepool.New[sharedCellMap](func(*sharedCellMap) {}, nil, 1)))
+}
+
+func mustPoolError(t *testing.T) error {
+	t.Helper()
+	_, err := stablepool.New[sharedCellMap](func(*sharedCellMap) {}, nil, 0)
+	require.Error(t, err)
+	return err
+}
+
+func stablepoolRetentionBound(capacity, ceiling int) int {
+	shards := 1
+	for shards < runtime.GOMAXPROCS(0) {
+		shards <<= 1
+	}
+	perShard := (max(capacity, ceiling) + shards - 1) / shards
+	return shards*perShard + shards
+}
+
+func burst[T any](count int, take func() *T, give func(*T)) []*T {
+	objects := make([]*T, count)
+	var group sync.WaitGroup
+	for index := range objects {
+		group.Go(func() { objects[index] = take() })
+	}
+	group.Wait()
+	for _, object := range objects {
+		group.Go(func() { give(object) })
+	}
+	group.Wait()
+	return objects
+}
+
+func TestRegisterArenaPoolKeepsNoMoreThanItsBoundAfterABurst(t *testing.T) {
+	bound := stablepoolRetentionBound(registerArenaPool.Cap(), registerArenaPool.MaxCap())
+	burst(2*bound, GetRegisterArena, PutRegisterArena)
+	kept := registerArenaPool.Drain()
+	t.Cleanup(func() {
+		for _, arena := range kept {
+			registerArenaPool.Put(arena)
+		}
+	})
+	require.LessOrEqual(t, len(kept), bound, "after a burst of %d arenas the pool keeps at most its bound, not the burst's peak", 2*bound)
 }

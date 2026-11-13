@@ -154,7 +154,7 @@ func (c *Compiler) compilePackageSymbol(_ context.Context, expression *ast.Selec
 		c.recordStickyError(err)
 		return program.VarLocation{}, false
 	}
-	program.EmitWide(c.Function, isa.OpLoadGeneralConst, dest, constIndex)
+	program.EmitWide(c.Function, isa.OpLoadGeneralConstant, dest, constIndex)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, true
 }
 
@@ -197,7 +197,7 @@ func (c *Compiler) compilePackageSymbolIdent(identifier *ast.Ident) (program.Var
 		c.recordStickyError(err)
 		return program.VarLocation{}, false
 	}
-	program.EmitWide(c.Function, isa.OpLoadGeneralConst, dest, constIndex)
+	program.EmitWide(c.Function, isa.OpLoadGeneralConstant, dest, constIndex)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, true
 }
 
@@ -317,7 +317,7 @@ func (c *Compiler) tryEmitSelectorFieldFastPath(ctx context.Context, selection *
 }
 
 // maybeRetargetCycleBrokenInterface swaps isa.OpGetStructFieldGeneral for
-// isa.OpGetStructFieldRawPointerT0 when warranted.
+// isa.OpGetStructFieldRawPointer when warranted.
 //
 // The runtime held value of a cycle-broken interface field is provably a pointer of the
 // cycle-causing type (because convertFieldBreakingCycles substituted `any` for a
@@ -344,12 +344,12 @@ func (c *Compiler) maybeRetargetCycleBrokenInterface(op isa.Opcode, layoutIdx ui
 	if layout.Flags&structFieldLayoutFlagCycleBroken == 0 {
 		return op
 	}
-	return isa.OpGetStructFieldRawPointerT0
+	return isa.OpGetStructFieldRawPointer
 }
 
 // compileSelectorMethodValue compiles a method value s.Method. Binds the receiver to the
 // method via isa.OpBindMethod when the method resolves through the function table,
-// otherwise emits isa.SubOpGetMethod through isa.OpDrillTier1.
+// otherwise emits isa.SubOpBindMethodByName through isa.OpDrillTier1.
 //
 // Takes expression (*ast.SelectorExpr) which is the selector node.
 // Takes selection (*types.Selection) which is the type selection.
@@ -380,14 +380,14 @@ func (c *Compiler) compileSelectorMethodValue(ctx context.Context, expression *a
 	}
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
 	getMethodPC := safeconv.IntToUint32Truncate(len(c.Function.Body))
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpGetMethod), dest, receiverLocation.Register)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBindMethodByName), dest, receiverLocation.Register)
 	program.EmitExtension(c.Function, nameIndex, 0)
 
 	if typeName := c.staticReceiverTypeName(expression.X); typeName != "" {
-		if c.Function.GetMethodReceiverTypeNames == nil {
-			c.Function.GetMethodReceiverTypeNames = make(map[uint32]string)
+		if c.Function.BindMethodByNameReceiverTypeNames == nil {
+			c.Function.BindMethodByNameReceiverTypeNames = make(map[uint32]string)
 		}
-		c.Function.GetMethodReceiverTypeNames[getMethodPC] = typeName
+		c.Function.BindMethodByNameReceiverTypeNames[getMethodPC] = typeName
 	}
 	return selectorResult{
 		location:           program.VarLocation{Register: dest, Kind: isa.RegisterGeneral},
@@ -414,14 +414,11 @@ func (c *Compiler) staticReceiverTypeName(receiver ast.Expr) string {
 	return bareNamedTypeName(tv.Type)
 }
 
-// recastBoxedReceiverToNamedType emits isa.OpConvert to re-attach the receiver's named Go
-// type when the generic boxToGeneral path stored it under the bank-default reflect.Type.
-// Without this, methods defined on named numeric types such as time.Duration cannot be
-// resolved by reflect.Type.MethodByName because the boxed value carries the underlying
-// int64/uint64/float64 type.
-//
-// Skipped for struct and interface underlying types, where the boxed receiver already
-// carries the named type.
+// recastBoxedReceiverToNamedType emits isa.OpConvertGeneral to re-attach the receiver's
+// named Go type when the generic boxToGeneral path stored it under the bank-default
+// reflect.Type. Without this, methods defined on named numeric types such as
+// time.Duration cannot be resolved by reflect.Type.MethodByName because the boxed value
+// carries the underlying int64/uint64/float64 type.
 //
 // Takes expression (*ast.SelectorExpr) which carries the receiver expression whose static
 // named type drives the recast.
@@ -462,7 +459,7 @@ func (c *Compiler) recastBoxedReceiverToNamedType(ctx context.Context, expressio
 		return receiverLocation
 	}
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpConvert, dest, receiverLocation.Register, 0)
+	program.Emit(c.Function, isa.OpConvertGeneral, dest, receiverLocation.Register, 0)
 	program.EmitExtension(c.Function, typeIndex, 0)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}
 }
@@ -500,9 +497,7 @@ func (c *Compiler) emitBoundMethod(ctx context.Context, expression *ast.Selector
 // compileInterfaceMethodExpr compiles a method expression on an interface type.
 //
 // Produces a function value that takes the receiver first and dispatches the method on
-// its dynamic type when called. The function type comes from go/types and the method name
-// travels as a string constant. The static receiver type is recorded for the site as for
-// GET_METHOD so external (pipit-declared) interfaces resolve.
+// its dynamic type when called.
 //
 // Takes expression (*ast.SelectorExpr) which is the method expression.
 //
@@ -522,14 +517,14 @@ func (c *Compiler) compileInterfaceMethodExpr(ctx context.Context, expression *a
 	}
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
 	sitePC := safeconv.IntToUint32Truncate(len(c.Function.Body))
-	program.EmitTier2(c.Function, isa.SubOpTier2MakeInterfaceMethodExpr, dest)
+	program.EmitTier2(c.Function, isa.SubOpTier2MakeInterfaceMethodExpression, dest)
 	program.EmitExtension(c.Function, typeIndex, 0)
 	program.EmitExtension(c.Function, nameIndex, 0)
 	if typeName := c.staticReceiverTypeName(expression.X); typeName != "" {
-		if c.Function.GetMethodReceiverTypeNames == nil {
-			c.Function.GetMethodReceiverTypeNames = make(map[uint32]string)
+		if c.Function.BindMethodByNameReceiverTypeNames == nil {
+			c.Function.BindMethodByNameReceiverTypeNames = make(map[uint32]string)
 		}
-		c.Function.GetMethodReceiverTypeNames[sitePC] = typeName
+		c.Function.BindMethodByNameReceiverTypeNames[sitePC] = typeName
 	}
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, nil
 }
@@ -537,9 +532,7 @@ func (c *Compiler) compileInterfaceMethodExpr(ctx context.Context, expression *a
 // compileMethodExprValue compiles a method expression used as a value (e.g. f :=
 // Type.Method).
 //
-// The result is a function whose first parameter is the receiver. Emits
-// isa.SubOpMakeMethodExpr plus a function-table index extension and one isa.OpExt per
-// embedded field hop.
+// The result is a function whose first parameter is the receiver.
 //
 // Takes expression (*ast.SelectorExpr) which is the selector node.
 // Takes selection (*types.Selection) which is the type selection.
@@ -547,6 +540,9 @@ func (c *Compiler) compileInterfaceMethodExpr(ctx context.Context, expression *a
 // Returns the method expression location and any compilation error.
 func (c *Compiler) compileMethodExprValue(ctx context.Context, expression *ast.SelectorExpr, selection *types.Selection) (program.VarLocation, error) {
 	if _, isInterface := selection.Recv().Underlying().(*types.Interface); isInterface {
+		return c.compileInterfaceMethodExpr(ctx, expression)
+	}
+	if promotedThroughEmbeddedInterface(selection) {
 		return c.compileInterfaceMethodExpr(ctx, expression)
 	}
 	tableName, ok := c.resolveMethodTableName(ctx, expression)
@@ -567,18 +563,28 @@ func (c *Compiler) compileMethodExprValue(ctx context.Context, expression *ast.S
 		fieldPath = index[:len(index)-1]
 	}
 
+	pathLength, err := c.uint8Operand(len(fieldPath), "embedding depth", expression.Pos())
+	if err != nil {
+		return program.VarLocation{}, err
+	}
+	fieldOperands := make([]uint8, len(fieldPath))
+	for position, index := range fieldPath {
+		if fieldOperands[position], err = c.uint8Operand(index, "embedded field index", expression.Pos()); err != nil {
+			return program.VarLocation{}, err
+		}
+	}
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
 
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMakeMethodExpr), dest, safeconv.MustIntToUint8(len(fieldPath)))
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMakeMethodExpression), dest, pathLength)
 	program.EmitExtension(c.Function, functionIndex, 0)
-	for _, index := range fieldPath {
-		program.Emit(c.Function, isa.OpExt, safeconv.MustIntToUint8(index), 0, 0)
+	for _, operand := range fieldOperands {
+		program.Emit(c.Function, isa.OpExtension, operand, 0, 0)
 	}
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, nil
 }
 
-// compileStarExpression compiles a pointer dereference *p via isa.OpDeref. Unboxes the
-// result when the pointee resolves to a typed bank.
+// compileStarExpression compiles a pointer dereference *p via isa.OpDereference. Unboxes
+// the result when the pointee resolves to a typed bank.
 //
 // Takes expression (*ast.StarExpr) which is the star expression.
 //
@@ -608,7 +614,7 @@ func (c *Compiler) compileStarExpressionFrom(_ context.Context, expression *ast.
 	elementKind := c.kindFor(tv.Type)
 
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpDeref, dest, pointerLocation.Register, 0)
+	program.Emit(c.Function, isa.OpDereference, dest, pointerLocation.Register, 0)
 
 	if elementKind != isa.RegisterGeneral {
 		return c.emitUnboxFromGeneral(dest, elementKind), nil
@@ -649,4 +655,27 @@ func namedTypeHasNoMethods(t types.Type) bool {
 	pointer := types.NewPointer(named)
 	pointerMethodSet := types.NewMethodSet(pointer)
 	return pointerMethodSet.Len() == 0
+}
+
+// promotedThroughEmbeddedInterface reports whether a method selection reaches its method
+// through an embedded interface, as (*wrap).foo does when wrap embeds an interface that
+// declares foo.
+//
+// Such a method has no body in the function table. Go calls the interface's method on the
+// embedded field's value, so the method expression dispatches by name.
+//
+// Takes selection (*types.Selection) which is the method selection.
+//
+// Returns bool which is true when the method's receiver is an interface.
+func promotedThroughEmbeddedInterface(selection *types.Selection) bool {
+	method, ok := selection.Obj().(*types.Func)
+	if !ok {
+		return false
+	}
+	signature, ok := method.Type().(*types.Signature)
+	if !ok || signature.Recv() == nil {
+		return false
+	}
+	_, isInterface := signature.Recv().Type().Underlying().(*types.Interface)
+	return isInterface
 }

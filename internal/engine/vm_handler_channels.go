@@ -133,8 +133,8 @@ func (vm *VM) surfaceGoroutinePanicAbort() OpResult {
 	return opPanicError
 }
 
-// HandleChannelSend sends a value on a channel by reading the value from the appropriate
-// register and converting it to the channel's element type.
+// handleSendToChannel sends a value on a channel by reading the value from the
+// appropriate register and converting it to the channel's element type.
 //
 // The send is attempted without blocking first, through the typed-channel closures and
 // then reflect's TrySend, so a send that can complete immediately never allocates a
@@ -147,10 +147,10 @@ func (vm *VM) surfaceGoroutinePanicAbort() OpResult {
 // Takes instruction (instruction) which encodes the channel and value regs.
 //
 // Returns OpResult indicating the next execution step.
-func HandleChannelSend(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSendToChannel(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	channel := registers.General[instruction.A]
 	if !channel.IsValid() {
-		vMPanicInvalidRegister("handleChannelSend", "channel", instruction.A, instruction, frame, registers)
+		vMPanicInvalidRegister("handleSendToChannel", "channel", instruction.A, instruction, frame, registers)
 	}
 
 	sent := false
@@ -161,7 +161,9 @@ func HandleChannelSend(vm *VM, frame *CallFrame, registers *Registers, instructi
 			return
 		}
 		ext := isa.NewInstruction(0, instruction.B, instruction.C, 0)
+		before := vm.Arena.licenceNoteSeq()
 		value = materialiseArenaValueUnconditional(vm.Arena, buildSelectSendValue(vm, registers, ext, channel.Type().Elem()))
+		noteHandOffAfter(vm.Arena, handOffUntracedContainer, value, channel.Type().Elem().Kind() == reflect.Interface, before)
 		sent = channel.TrySend(value)
 	})
 	if panicked {
@@ -173,8 +175,8 @@ func HandleChannelSend(vm *VM, frame *CallFrame, registers *Registers, instructi
 	return blockingChannelSend(vm, channel, value)
 }
 
-// handleChannelReceive receives a value from a channel and stores it in the destination
-// register along with a boolean indicating success.
+// handleReceiveFromChannelBody receives a value from a channel and stores it in the
+// destination register along with a boolean indicating success.
 //
 // The receive is attempted without blocking first, through the typed-channel closures and
 // then reflect's TryRecv, so a value that is already available (or a closed channel) is
@@ -187,12 +189,12 @@ func HandleChannelSend(vm *VM, frame *CallFrame, registers *Registers, instructi
 // Takes instruction (instruction) which encodes the channel register.
 //
 // Returns OpResult indicating the next execution step.
-func handleChannelReceive(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleReceiveFromChannelBody(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	channel := registers.General[instruction.A]
 	if !channel.IsValid() {
-		vMPanicInvalidRegister("handleChannelReceive", "channel", instruction.A, instruction, frame, registers)
+		vMPanicInvalidRegister("handleReceiveFromChannelBody", "channel", instruction.A, instruction, frame, registers)
 	}
 
 	if tryRecvTypedChannel(vm, channel, registers, instruction.B, extensionWord.A, isa.RegisterKind(extensionWord.B)) {
@@ -204,7 +206,7 @@ func handleChannelReceive(vm *VM, frame *CallFrame, registers *Registers, instru
 	}
 
 	done := vm.blockingDone()
-	panicWake := vm.Globals.goroutinePanicWakeChan()
+	panicWake := vm.panicWakeChan()
 	wake := blockWakeValue
 	var result reflect.Value
 	var ok bool
@@ -233,7 +235,7 @@ func handleChannelReceive(vm *VM, frame *CallFrame, registers *Registers, instru
 // Returns OpResult indicating the next execution step.
 func blockingChannelSend(vm *VM, channel, value reflect.Value) OpResult {
 	done := vm.blockingDone()
-	panicWake := vm.Globals.goroutinePanicWakeChan()
+	panicWake := vm.panicWakeChan()
 	wake := blockWakeValue
 	token := vm.enterBlocking(vm.Globals.isInterpretedChannel(channel))
 	released := vm.releaseAroundBlock()
@@ -275,23 +277,25 @@ func blockingChannelSend(vm *VM, channel, value reflect.Value) OpResult {
 func trySendTypedChannel(vm *VM, channel reflect.Value, registers *Registers, sourceRegister uint8, sourceKind isa.RegisterKind) bool {
 	switch channel.Type().Elem() {
 	case reflectTypeChanElemInt:
-		return sendTypedChannel[chan int](vm, channel, sourceKind, isa.RegisterInt, func(typed chan int) bool {
+		return sendTypedChannel[chan int](vm, channel, sourceKind, isa.RegisterInt64, func(typed chan int) bool {
 			return offerTypedChannel(typed, int(registers.Ints[sourceRegister]))
 		})
 	case reflectTypeChanElemInt64:
-		return sendTypedChannel[chan int64](vm, channel, sourceKind, isa.RegisterInt, func(typed chan int64) bool {
+		return sendTypedChannel[chan int64](vm, channel, sourceKind, isa.RegisterInt64, func(typed chan int64) bool {
 			return offerTypedChannel(typed, registers.Ints[sourceRegister])
 		})
 	case reflectTypeChanElemString:
 		return sendTypedChannel[chan string](vm, channel, sourceKind, isa.RegisterString, func(typed chan string) bool {
-			return offerTypedChannel(typed, materialiseString(vm.Arena, registers.Strings[sourceRegister]))
+			value := materialiseString(vm.Arena, registers.Strings[sourceRegister])
+			noteHandOffString(vm.Arena, handOffUntracedContainer, value)
+			return offerTypedChannel(typed, value)
 		})
 	case reflectTypeChanElemBool:
 		return sendTypedChannel[chan bool](vm, channel, sourceKind, isa.RegisterBool, func(typed chan bool) bool {
 			return offerTypedChannel(typed, registers.Bools[sourceRegister])
 		})
 	case reflectTypeChanElemFloat64:
-		return sendTypedChannel[chan float64](vm, channel, sourceKind, isa.RegisterFloat, func(typed chan float64) bool {
+		return sendTypedChannel[chan float64](vm, channel, sourceKind, isa.RegisterFloat64, func(typed chan float64) bool {
 			return offerTypedChannel(typed, registers.Floats[sourceRegister])
 		})
 	default:
@@ -490,11 +494,11 @@ func appendWakeCases(cases []reflect.SelectCase, start int, done, panicWake <-ch
 func tryRecvTypedChannel(vm *VM, channel reflect.Value, registers *Registers, okRegister, destinationRegister uint8, destinationKind isa.RegisterKind) bool {
 	switch channel.Type().Elem() {
 	case reflectTypeChanElemInt:
-		return recvTypedChannel[chan int](vm, channel, destinationKind, isa.RegisterInt, func(typed chan int) bool {
+		return recvTypedChannel[chan int](vm, channel, destinationKind, isa.RegisterInt64, func(typed chan int) bool {
 			return receiveTypedInto(typed, registers, okRegister, func(value int) { registers.Ints[destinationRegister] = int64(value) })
 		})
 	case reflectTypeChanElemInt64:
-		return recvTypedChannel[chan int64](vm, channel, destinationKind, isa.RegisterInt, func(typed chan int64) bool {
+		return recvTypedChannel[chan int64](vm, channel, destinationKind, isa.RegisterInt64, func(typed chan int64) bool {
 			return receiveTypedInto(typed, registers, okRegister, func(value int64) { registers.Ints[destinationRegister] = value })
 		})
 	case reflectTypeChanElemString:
@@ -525,7 +529,7 @@ func tryRecvTypedChannelScalar(vm *VM, channel reflect.Value, registers *Registe
 			return receiveTypedInto(typed, registers, okRegister, func(value bool) { registers.Bools[destinationRegister] = value })
 		})
 	case reflectTypeChanElemFloat64:
-		return recvTypedChannel[chan float64](vm, channel, destinationKind, isa.RegisterFloat, func(typed chan float64) bool {
+		return recvTypedChannel[chan float64](vm, channel, destinationKind, isa.RegisterFloat64, func(typed chan float64) bool {
 			return receiveTypedInto(typed, registers, okRegister, func(value float64) { registers.Floats[destinationRegister] = value })
 		})
 	default:
@@ -593,8 +597,8 @@ func recvTypedChannel[T any](vm *VM, channel reflect.Value, destinationKind, exp
 	return recv(typed)
 }
 
-// handleChannelClose closes the channel stored in the general register bank at the index
-// specified by the instruction.
+// handleCloseChannelBody closes the channel stored in the general register bank at the
+// index specified by the instruction.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -602,10 +606,10 @@ func recvTypedChannel[T any](vm *VM, channel reflect.Value, destinationKind, exp
 // Takes instruction (instruction) which encodes the channel register index.
 //
 // Returns OpResult indicating the next execution step.
-func handleChannelClose(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleCloseChannelBody(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	channel := registers.General[instruction.A]
 	if !channel.IsValid() {
-		vMPanicInvalidRegister("handleChannelClose", "channel", instruction.A, instruction, frame, registers)
+		vMPanicInvalidRegister("handleCloseChannelBody", "channel", instruction.A, instruction, frame, registers)
 	}
 	if recovered, panicked := guardChannelOp(func() { channel.Close() }); panicked {
 		return raiseNativePanicAsInterpreted(vm, recovered)

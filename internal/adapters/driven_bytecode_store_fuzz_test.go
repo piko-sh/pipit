@@ -34,7 +34,7 @@ func FuzzLoadCompiledFromBytes(f *testing.F) {
 	service := app.NewService()
 	compiled, err := service.CompileFileSet(f.Context(), map[string]string{"main.go": "package main\n\nfunc helper(n int) int {\n\treturn n + 1\n}\n\nfunc main() {\n\tx := helper(1)\n\t_ = x\n}\n"})
 	require.NoError(f, err, "the seed program compiles")
-	seed, err := PackCompiledFileSetToBytes(compiled)
+	seed, err := PackCompiledFileSetToBytes(f.Context(), compiled)
 	require.NoError(f, err, "the seed program packs")
 	raw, err := schema.Unpack(seed)
 	require.NoError(f, err, "the seed program unpacks")
@@ -49,7 +49,7 @@ func FuzzLoadCompiledFromBytes(f *testing.F) {
 	} {
 		compiled, err := service.CompileFileSet(f.Context(), map[string]string{"main.go": source})
 		require.NoError(f, err, "the descriptor seed compiles")
-		encoded, err := PackCompiledFileSetToBytes(compiled)
+		encoded, err := PackCompiledFileSetToBytes(f.Context(), compiled)
 		require.NoError(f, err, "the descriptor seed packs")
 		payload, err := schema.Unpack(encoded)
 		require.NoError(f, err, "the descriptor seed unpacks")
@@ -60,7 +60,7 @@ func FuzzLoadCompiledFromBytes(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		require.NotPanics(t, func() {
 			registry := symtab.NewSymbolRegistry(nil)
-			loaded, err := LoadCompiledFromBytes(data, registry)
+			loaded, err := LoadCompiledFromBytes(t.Context(), data, registry)
 			if err != nil {
 				require.Nil(t, loaded, "a failed versioned decode returns no partial bytecode")
 			}

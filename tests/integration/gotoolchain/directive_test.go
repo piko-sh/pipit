@@ -78,7 +78,7 @@ func TestClassifyFailure(t *testing.T) {
 	}{
 		{name: "runtime panic", output: "panic: boom\n", err: generic, wantBucket: bucketRuntime, wantDetail: "panic: boom"},
 		{name: "compiler panic", output: "panic: x\n\ngoroutine 1 [running]:\npipit.sh/pipit/internal/compile.(*Compiler).f()\n", err: generic, wantBucket: bucketPanic, wantDetail: "panic: x at pipit.sh/pipit/internal/compile.(*Compiler).f()"},
-		{name: "interpreter invariant by text", output: "pipit: evaluating file: panic: interp: handleAddr - general[0] is zero reflect.Value\n", err: generic, wantBucket: bucketInternal, wantDetail: "pipit: evaluating file: panic: interp: handleAddr - general[0] is zero reflect.Value"},
+		{name: "interpreter invariant by text", output: "pipit: evaluating file: panic: interp: handleAddress - general[0] is zero reflect.Value\n", err: generic, wantBucket: bucketInternal, wantDetail: "pipit: evaluating file: panic: interp: handleAddress - general[0] is zero reflect.Value"},
 		{name: "undefined method is internal", output: "pipit: evaluating file: undefined method: Base.Sound\n", err: generic, wantBucket: bucketInternal, wantDetail: "pipit: evaluating file: undefined method: Base.Sound"},
 		{name: "cancelled text", output: "pipit: execution cancelled\n", err: generic, wantBucket: bucketTimeout, wantDetail: "pipit: execution cancelled"},
 		{name: "deadline text", output: "pipit: evaluating file: context deadline exceeded\n", err: generic, wantBucket: bucketTimeout, wantDetail: "pipit: evaluating file: context deadline exceeded"},

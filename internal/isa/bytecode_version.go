@@ -21,9 +21,8 @@ package isa
 const (
 	// BytecodeVersionMajor identifies the major bytecode format version. Bytecode emitted at
 	// a different major version is incompatible and rejected on load.
-	BytecodeVersionMajor uint16 = 12
+	BytecodeVersionMajor uint16 = 13
 
-	// bytecodeVersionMinor identifies an additive bytecode revision. Bumped when new opcodes
-	// are appended without disturbing existing iota assignments.
+	// bytecodeVersionMinor identifies an additive bytecode revision.
 	bytecodeVersionMinor uint16 = 1
 )

@@ -33,8 +33,8 @@ func TestVerificationErrorRendersOffsetAndReason(t *testing.T) {
 		pc:           17,
 		reason:       "uninitialised register read",
 		operand:      "a",
-		instruction:  isa.NewInstruction(isa.OpNop, 1, 2, 3),
-		bank:         isa.RegisterInt,
+		instruction:  isa.NewInstruction(isa.OpNoOperation, 1, 2, 3),
+		bank:         isa.RegisterInt64,
 		slot:         5,
 	}
 	got := err.Error()

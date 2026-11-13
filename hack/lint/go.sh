@@ -15,6 +15,7 @@
 #
 # This project stands against fascism, authoritarianism, and all forms of
 # oppression. We built this to empower people, not to enable those who would
+# strip others of their rights and dignity.
 
 # hack/lint/go.sh - Lint every Go module in the workspace with golangci-lint
 #
@@ -24,7 +25,8 @@
 #
 # A lint target is "dir|tags|goos/goarch", where empty fields mean the default
 # build. Targets sit in three groups:
-#   core         the root module, cmd/pipit, the sdk modules and tests/facade
+#   core         the root module (default build and each diagnostic build),
+#                cmd/pipit, the sdk modules and tests/facade
 #   integration  every integration suite, once per build-tag set its files use
 #   extended     the safe and fuzz builds, cmd/wasm and the benchmarks
 # A run without --only lints core and integration.
@@ -37,11 +39,14 @@
 # shellcheck source=../lib/init.sh
 source "$(dirname "$0")/../lib/init.sh"
 
-# Targets of the core group.
-CORE_TARGETS=(".||" "cmd/pipit||" "sdk/extract||" "sdk/link||" "sdk/stdlib||" "sdk/selfhost||" "tests/facade||")
+# Targets of the core group. The root module is linted once more under each diagnostic
+# build tag, whose files the default build leaves out.
+CORE_TARGETS=(".||" ".|pipit_testhooks|" ".|pipit_reuse_audit|" ".|pipit_arena_paranoid|" ".|pipit_store_census|"
+    ".|pipit_opcode_census|" "cmd/pipit||" "sdk/extract||" "sdk/link||" "sdk/stdlib||" "sdk/selfhost||" "tests/facade||")
 
 # Targets of the extended group.
-EXTENDED_TARGETS=(".|safe|" ".|fuzz|" "cmd/wasm||js/wasm" "tests/bench|bench|" "tests/bench|crosslang|")
+EXTENDED_TARGETS=(".|safe|" ".|fuzz|" "cmd/wasm||js/wasm" "tests/bench|bench|" "tests/bench|crosslang|"
+    "tests/bench|pipit_opcode_census|")
 
 # Groups selected with --only; empty means core and integration.
 ONLY_GROUPS=()

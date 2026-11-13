@@ -28,13 +28,13 @@ import (
 )
 
 func FuzzDecodeInstruction(f *testing.F) {
-	f.Add(byte(isa.OpNop), byte(0), byte(0), byte(0))
-	f.Add(byte(isa.OpAddInt), byte(1), byte(2), byte(3))
-	f.Add(byte(isa.OpLoadIntConst), byte(0), byte(0), byte(0))
+	f.Add(byte(isa.OpNoOperation), byte(0), byte(0), byte(0))
+	f.Add(byte(isa.OpAddInt64), byte(1), byte(2), byte(3))
+	f.Add(byte(isa.OpLoadInt64Constant), byte(0), byte(0), byte(0))
 	f.Add(byte(isa.OpDrillTier1), byte(isa.SubOpJump), byte(0), byte(0))
 	f.Add(byte(isa.OpDrillTier1), byte(isa.SubOpDrillTier2), byte(isa.SubOpTier2Return), byte(1))
-	f.Add(byte(isa.OpDrillTier1), byte(isa.SubOpDrillTier2), byte(isa.SubOpTier2DrillTier3), byte(isa.SubOpTier3Nop))
-	f.Add(byte(isa.OpExt), byte(0xFF), byte(0xFF), byte(0xFF))
+	f.Add(byte(isa.OpDrillTier1), byte(isa.SubOpDrillTier2), byte(isa.SubOpTier2DrillTier3), byte(isa.SubOpTier3NoOperation))
+	f.Add(byte(isa.OpExtension), byte(0xFF), byte(0xFF), byte(0xFF))
 
 	f.Fuzz(func(t *testing.T, op, a, b, c byte) {
 		defer func() {

@@ -21,7 +21,6 @@
 package bench
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
@@ -53,7 +52,7 @@ n`
 	symbols := symtab.NewSymbolRegistry(stdlib.Exports())
 	service := app.NewService()
 	service.UseSymbols(symbols)
-	compiledFunction, err := service.Compile(context.Background(), code)
+	compiledFunction, err := service.Compile(t.Context(), code)
 	require.NoError(t, err)
 	fmt.Printf("Root function: %s\n", compiledFunction.FunctionName())
 	fmt.Printf("  NumRegisters: %v\n", compiledFunction.RegisterCounts())
@@ -63,7 +62,7 @@ n`
 		fmt.Printf("  Functions[%d]: %s, NumRegisters=%v, Body=%d\n", i, f.FunctionName(), f.RegisterCounts(), f.BodyLen())
 	}
 
-	result, err := service.Execute(context.Background(), compiledFunction)
+	result, err := service.Execute(t.Context(), compiledFunction)
 	require.NoError(t, err)
 	fmt.Printf("  Result: %v\n", result)
 }
@@ -81,12 +80,12 @@ var (
 
 func BenchmarkPipit_ConcatOnly(b *testing.B) {
 	service := app.NewService()
-	compiledFunction, err := service.Compile(context.Background(), concatOnlyCode)
+	compiledFunction, err := service.Compile(b.Context(), concatOnlyCode)
 	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		_, err = service.Execute(context.Background(), compiledFunction)
+		_, err = service.Execute(b.Context(), compiledFunction)
 		if err != nil {
 			require.NoError(b, err)
 		}

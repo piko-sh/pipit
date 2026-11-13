@@ -28,18 +28,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSafeInvokeLinkedSiblingRecoversFromPanic(t *testing.T) {
+func TestSafeInvokeLinkedSiblingReturnsItsPanicForTheProgram(t *testing.T) {
 	t.Parallel()
 
 	panicking := reflect.ValueOf(func(_ int) int {
 		panic("boom")
 	})
 
-	results, err := safeInvokeLinkedSibling(panicking, []reflect.Value{reflect.ValueOf(1)})
+	results, panicValue := safeInvokeLinkedSibling(panicking, []reflect.Value{reflect.ValueOf(1)})
 
 	require.Nil(t, results)
-	require.Error(t, err)
-	require.ErrorIs(t, err, errLinkedSiblingPanic)
+	require.Equal(t, "boom", panicValue, "the generic's own panic reaches the program unchanged, so recover sees what Go would")
 }
 
 func TestSafeInvokeLinkedSiblingPropagatesResults(t *testing.T) {
@@ -47,9 +46,9 @@ func TestSafeInvokeLinkedSiblingPropagatesResults(t *testing.T) {
 
 	identity := reflect.ValueOf(func(value int) int { return value })
 
-	results, err := safeInvokeLinkedSibling(identity, []reflect.Value{reflect.ValueOf(42)})
+	results, panicValue := safeInvokeLinkedSibling(identity, []reflect.Value{reflect.ValueOf(42)})
 
-	require.NoError(t, err)
+	require.Nil(t, panicValue)
 	require.Len(t, results, 1)
 	require.Equal(t, int64(42), results[0].Int())
 }
@@ -143,11 +142,4 @@ func TestUnwrapReflectValueResultPassesThroughNonWrapper(t *testing.T) {
 
 	result := unwrapReflectValueResult(plain)
 	require.Equal(t, int64(99), result.Int())
-}
-
-func TestErrLinkedSentinelsAreDistinct(t *testing.T) {
-	t.Parallel()
-
-	require.NotErrorIs(t, errLinkedSiblingPanic, errLinkedSiblingShapeMismatch)
-	require.NotErrorIs(t, errLinkedSiblingShapeMismatch, errLinkedSiblingPanic)
 }

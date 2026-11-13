@@ -34,22 +34,22 @@ func TestAliasAnalysisAllocsAreDistinct(t *testing.T) {
 	t.Parallel()
 	compiledFunction := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			mk(isa.OpAllocIndirect, 0, 0, 0),
-			mk(isa.OpAllocIndirect, 1, 0, 0),
+			mk(isa.OpAllocateIndirect, 0, 0, 0),
+			mk(isa.OpAllocateIndirect, 1, 0, 0),
 			mk(isa.OpMoveGeneral, 2, 0, 0),
 		},
 	}
 	_ = passes.RunPointerAliasAnalysis(t.Context(), compiledFunction)
 	require.NotNil(t, compiledFunction.AliasInfo)
 	require.False(t, compiledFunction.AliasInfo.MayAlias(2, 0, 1),
-		"two distinct opAllocIndirect produce different alias classes")
+		"two distinct opAllocateIndirect produce different alias classes")
 }
 
 func TestAliasAnalysisSameRegisterAlwaysAliases(t *testing.T) {
 	t.Parallel()
 	compiledFunction := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			mk(isa.OpAllocIndirect, 0, 0, 0),
+			mk(isa.OpAllocateIndirect, 0, 0, 0),
 		},
 	}
 	_ = passes.RunPointerAliasAnalysis(t.Context(), compiledFunction)
@@ -61,8 +61,8 @@ func TestAliasAnalysisWildOnCall(t *testing.T) {
 	t.Parallel()
 	compiledFunction := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			mk(isa.OpAllocIndirect, 0, 0, 0),
-			mk(isa.OpAllocIndirect, 1, 0, 0),
+			mk(isa.OpAllocateIndirect, 0, 0, 0),
+			mk(isa.OpAllocateIndirect, 1, 0, 0),
 			isa.NewTier1Instruction(isa.SubOpCall, 0, 0),
 			mk(isa.OpMoveGeneral, 2, 0, 0),
 		},
@@ -76,9 +76,9 @@ func TestAliasAnalysisMovePropagatesClass(t *testing.T) {
 	t.Parallel()
 	compiledFunction := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			mk(isa.OpAllocIndirect, 0, 0, 0),
+			mk(isa.OpAllocateIndirect, 0, 0, 0),
 			mk(isa.OpMoveGeneral, 1, 0, 0),
-			mk(isa.OpAllocIndirect, 2, 0, 0),
+			mk(isa.OpAllocateIndirect, 2, 0, 0),
 		},
 	}
 	_ = passes.RunPointerAliasAnalysis(t.Context(), compiledFunction)
@@ -106,9 +106,9 @@ func TestAliasAnalysisMergeAtJumpTargetWidensToWild(t *testing.T) {
 	lo, hi := jumpOffset(2)
 	compiledFunction := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			mk(isa.OpAllocIndirect, 0, 0, 0),
+			mk(isa.OpAllocateIndirect, 0, 0, 0),
 			mk(isa.OpJumpIfFalse, 0, lo, hi),
-			mk(isa.OpAllocIndirect, 1, 0, 0),
+			mk(isa.OpAllocateIndirect, 1, 0, 0),
 			mk(isa.OpMoveGeneral, 0, 1, 0),
 			mk(isa.OpMoveGeneral, 2, 0, 0),
 		},
@@ -136,7 +136,7 @@ func TestMayAliasOutOfRangePCReturnsTrue(t *testing.T) {
 	t.Parallel()
 	compiledFunction := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			mk(isa.OpAllocIndirect, 0, 0, 0),
+			mk(isa.OpAllocateIndirect, 0, 0, 0),
 		},
 	}
 	_ = passes.RunPointerAliasAnalysis(t.Context(), compiledFunction)

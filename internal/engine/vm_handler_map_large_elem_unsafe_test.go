@@ -88,7 +88,7 @@ func setStringGeneral(t *testing.T, vm *VM, registers *Registers, m reflect.Valu
 	registers.General[0] = m
 	registers.Strings[1] = key
 	registers.General[2] = value
-	require.Equal(t, opContinue, handleMapSetStringGeneral(vm, frame, registers, isa.NewInstruction(isa.OpMapSetStringGeneral, 0, 1, 2)))
+	require.Equal(t, opContinue, handleSetMapStringGeneral(vm, frame, registers, isa.NewInstruction(isa.OpSetMapStringGeneral, 0, 1, 2)))
 }
 
 func nativeLookup[V any](m map[string]V, key string) (value V, ok bool, err error) {
@@ -101,7 +101,7 @@ func nativeLookup[V any](m map[string]V, key string) (value V, ok bool, err erro
 	return value, ok, nil
 }
 
-func TestMapSetStringGeneralLargeElemReadsBackNatively(t *testing.T) {
+func TestSetMapStringGeneralLargeElemReadsBackNatively(t *testing.T) {
 	t.Parallel()
 
 	t.Run("an array one word over the limit", func(t *testing.T) {
@@ -147,7 +147,7 @@ func TestMapSetStringGeneralLargeElemReadsBackNatively(t *testing.T) {
 	})
 }
 
-func TestMapSetStringGeneralLargeElemSurvivesGrowthAndDeletes(t *testing.T) {
+func TestSetMapStringGeneralLargeElemSurvivesGrowthAndDeletes(t *testing.T) {
 	t.Parallel()
 	vm, registers := newHandlerTestVM(t)
 
@@ -207,11 +207,11 @@ func TestMapReadLargeElemFastPathsMatchNativeValues(t *testing.T) {
 		fused   bool
 	}
 	tests := []readCase{
-		{name: "the string-keyed get", handler: handleMapGetStringGeneral, m: reflect.ValueOf(stringKeyed), hitKey: "k5", missKey: "nope", hit: largeElem136For(5)},
-		{name: "the string-keyed comma-ok", handler: handleMapIndexOkStringGeneral, m: reflect.ValueOf(stringKeyed), hitKey: "k9", missKey: "nope", hit: largeElem136For(9), fused: true},
-		{name: "the string-keyed fused jump", handler: handleMapIndexOkJumpIfFalseStringGeneral, m: reflect.ValueOf(stringKeyed), hitKey: "k3", missKey: "nope", hit: largeElem136For(3), fused: true},
-		{name: "the int-keyed comma-ok", handler: handleMapIndexOkIntGeneral, m: reflect.ValueOf(intKeyed), hitKey: int64(11), missKey: int64(99), hit: largeElem136For(11), fused: true},
-		{name: "the int-keyed fused jump", handler: handleMapIndexOkJumpIfFalseIntGeneral, m: reflect.ValueOf(intKeyed), hitKey: int64(2), missKey: int64(99), hit: largeElem136For(2), fused: true},
+		{name: "the string-keyed get", handler: handleGetMapStringGeneral, m: reflect.ValueOf(stringKeyed), hitKey: "k5", missKey: "nope", hit: largeElem136For(5)},
+		{name: "the string-keyed comma-ok", handler: handleGetMapStringGeneralOk, m: reflect.ValueOf(stringKeyed), hitKey: "k9", missKey: "nope", hit: largeElem136For(9), fused: true},
+		{name: "the string-keyed fused jump", handler: handleGetMapStringGeneralOkThenJumpIfFalse, m: reflect.ValueOf(stringKeyed), hitKey: "k3", missKey: "nope", hit: largeElem136For(3), fused: true},
+		{name: "the int-keyed comma-ok", handler: handleGetMapInt64GeneralOk, m: reflect.ValueOf(intKeyed), hitKey: int64(11), missKey: int64(99), hit: largeElem136For(11), fused: true},
+		{name: "the int-keyed fused jump", handler: handleGetMapInt64GeneralOkThenJumpIfFalse, m: reflect.ValueOf(intKeyed), hitKey: int64(2), missKey: int64(99), hit: largeElem136For(2), fused: true},
 	}
 
 	setKey := func(registers *Registers, key any) {
@@ -278,7 +278,7 @@ func TestMapElemStoredInlineBoundary(t *testing.T) {
 	}
 }
 
-func TestMapSetStringGeneralKeepsTheFastPathForInlineElements(t *testing.T) {
+func TestSetMapStringGeneralKeepsTheFastPathForInlineElements(t *testing.T) {
 	t.Parallel()
 	vm, registers := newHandlerTestVM(t)
 
@@ -288,14 +288,14 @@ func TestMapSetStringGeneralKeepsTheFastPathForInlineElements(t *testing.T) {
 	for key := range inline {
 		stored = key
 	}
-	setStringGeneral(t, vm, registers, reflect.ValueOf(inline), ArenaConcatString(vm.Arena, "", "k"), reflect.ValueOf(inlineElem128{2}))
+	setStringGeneral(t, vm, registers, reflect.ValueOf(inline), ArenaConcatenateString(vm.Arena, "", "k"), reflect.ValueOf(inlineElem128{2}))
 	for key := range inline {
 		require.Equal(t, stringDataAddress(stored), stringDataAddress(key), "an inline hit is written through the slot and keeps the map's own key")
 	}
 	require.Equal(t, inlineElem128{2}, inline["k"])
 
 	indirect := map[string]largeElem136{}
-	setStringGeneral(t, vm, registers, reflect.ValueOf(indirect), ArenaConcatString(vm.Arena, "k", "ey"), reflect.ValueOf(largeElem136For(3)))
+	setStringGeneral(t, vm, registers, reflect.ValueOf(indirect), ArenaConcatenateString(vm.Arena, "k", "ey"), reflect.ValueOf(largeElem136For(3)))
 	for key := range indirect {
 		require.False(t, vm.Arena.OwnsString(key), "the reflect fallback stores a materialised key")
 	}
@@ -338,9 +338,9 @@ func TestMapReadInlineElemFastPathsStillMatchNativeValues(t *testing.T) {
 		name    string
 		handler opcodeHandler
 	}{
-		{name: "map get", handler: handleMapGetStringGeneral},
-		{name: "comma-ok read", handler: handleMapIndexOkStringGeneral},
-		{name: "fused comma-ok jump", handler: handleMapIndexOkJumpIfFalseStringGeneral},
+		{name: "map get", handler: handleGetMapStringGeneral},
+		{name: "comma-ok read", handler: handleGetMapStringGeneralOk},
+		{name: "fused comma-ok jump", handler: handleGetMapStringGeneralOkThenJumpIfFalse},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

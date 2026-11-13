@@ -139,9 +139,9 @@ func TestWatchdogPolicyRejectsMutableOrMalformedFiles(t *testing.T) {
 
 func TestNativeWatchdogHandoff(t *testing.T) {
 	parent := sandboxtest.CgroupParent(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	group, err := newGroup(parent, Limits{})
+	group, err := newGroup(t.Context(), parent, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestNativeWatchdogHandoff(t *testing.T) {
 
 func checkWatchdogHandoffSubstitutions(t *testing.T, ctx context.Context, parent string, handoff *watchdogHandoff) {
 	t.Helper()
-	other, err := newGroup(parent, Limits{})
+	other, err := newGroup(t.Context(), parent, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}

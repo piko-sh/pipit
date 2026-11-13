@@ -133,12 +133,12 @@ func TestNamedScalarPoolAssignment(t *testing.T) {
 	t.Parallel()
 
 	named := declareNamedBasic(t, "PoolProbeWord", types.Typ[types.String])
-	first := typemodel.NamedScalarPoolTypeFor(named)
+	first := typemodel.NamedScalarPoolTypeFor(t.Context(), named)
 	require.NotNil(t, first)
 	require.Equal(t, reflect.String, first.Kind())
 	require.True(t, typemodel.IsNamedScalarPoolType(first))
 
-	second := typemodel.NamedScalarPoolTypeFor(named)
+	second := typemodel.NamedScalarPoolTypeFor(t.Context(), named)
 	require.Equal(t, first, second, "repeat assignment must be stable")
 
 	info, ok := typemodel.LookupNamedScalarPoolInfo(first)
@@ -146,11 +146,11 @@ func TestNamedScalarPoolAssignment(t *testing.T) {
 	require.Equal(t, "PoolProbeWord", info.BareName)
 	require.Equal(t, "poolprobe.PoolProbeWord", info.QualifiedName)
 
-	require.Equal(t, "poolprobe.PoolProbeWord", typemodel.NamedScalarDisplayType(first))
-	require.Equal(t, "string", typemodel.NamedScalarDisplayType(reflect.TypeFor[string]()))
+	require.Equal(t, "poolprobe.PoolProbeWord", typemodel.NamedTypeDisplayType(first))
+	require.Equal(t, "string", typemodel.NamedTypeDisplayType(reflect.TypeFor[string]()))
 
 	otherKind := declareNamedBasic(t, "PoolProbeWord", types.Typ[types.Int])
-	intPool := typemodel.NamedScalarPoolTypeFor(otherKind)
+	intPool := typemodel.NamedScalarPoolTypeFor(t.Context(), otherKind)
 	require.NotNil(t, intPool)
 	require.Equal(t, reflect.Int, intPool.Kind())
 	require.NotEqual(t, first, intPool, "same name with different underlying kinds must not share a pool entry")
@@ -162,11 +162,11 @@ func TestNamedScalarPoolUnifiesCompileAndLoadSpellings(t *testing.T) {
 	runeBasic, ok := types.Universe.Lookup("rune").Type().(*types.Basic)
 	require.True(t, ok)
 
-	fromCompile := typemodel.NamedScalarPoolTypeFor(declareNamedBasic(t, "PoolProbeOperator", runeBasic))
+	fromCompile := typemodel.NamedScalarPoolTypeFor(t.Context(), declareNamedBasic(t, "PoolProbeOperator", runeBasic))
 	require.NotNil(t, fromCompile)
 	require.Equal(t, reflect.Int32, fromCompile.Kind())
 
-	fromLoad := typemodel.NamedScalarPoolTypeForPath("pipit.test/poolprobe", "PoolProbeOperator", types.Int32)
+	fromLoad := typemodel.NamedScalarPoolTypeForPath(t.Context(), "pipit.test/poolprobe", "PoolProbeOperator", types.Int32)
 	require.Equal(t, fromCompile, fromLoad, "one source type must own one pool column")
 }
 

@@ -19,12 +19,17 @@
 package app
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"go/token"
 	"io"
 	"log/slog"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
+	"weak"
 
 	"pipit.sh/pipit/internal/buildfilter"
 	"pipit.sh/pipit/internal/clock"
@@ -35,8 +40,10 @@ import (
 
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/symtab"
+	"pipit.sh/pipit/internal/symtab/typemodel"
 
 	"pipit.sh/pipit/internal/isa"
+	"pipit.sh/pipit/internal/logging"
 	"pipit.sh/pipit/internal/policy"
 )
 
@@ -99,6 +106,13 @@ const (
 	defaultDeadlockGrace = time.Second
 )
 
+// errServiceClosed is returned by every compile and execution on a closed service.
+var errServiceClosed = fmt.Errorf("%w: the interpreter service is closed", policy.ErrClosed)
+
+// ErrInvalidOption reports a service option given a value it does not accept, such as a
+// limit that is not positive.
+var ErrInvalidOption = fmt.Errorf("invalid service option: %w", policy.ErrInvalidConfig)
+
 // Option configures the interpreter service.
 type Option func(*serviceConfig)
 
@@ -108,17 +122,30 @@ type Option func(*serviceConfig)
 // Safe for concurrent reads of the symbol registry after setup. All other state requires
 // a distinct Service per concurrent evaluation, typically via Clone.
 type Service struct {
+	// constructionLog keeps what construction and UseSymbolProviders log where no caller's
+	// context exists, until the next call that has one replays it (bindLogger).
+	constructionLog *logging.Deferred
+
+	// constructionErr holds the symbol providers the options named that were rejected at
+	// construction, until the first call that binds a context reports and returns it.
+	constructionErr error
+
 	// stderrWriter overrides the writer for print/println output; when nil, VMs fall back to
 	// os.Stderr, and REPL and notebook hosts set this to capture output for display in their
 	// own UI.
 	stderrWriter io.Writer
 
-	// fileSet is the go/token position table reused across every evaluation handled by this
-	// Service.
-	fileSet *token.FileSet
+	// initsRun records, per file set ExecuteInits has initialised, whether the following
+	// ExecuteEntrypoint must skip the initialisers. Keys are weak so the file set can be
+	// collected; a cleanup on it removes its entry, and Close drops them all.
+	initsRun map[weak.Pointer[program.CompiledFileSet]]bool
 
 	// symbols holds pre-registered native symbols available to interpreted code via import.
 	symbols *symtab.SymbolRegistry
+
+	// namedCompositeQuota is charged for every new named composite type the service's
+	// programs add, in every registry the service builds. Clones share it with the symbols.
+	namedCompositeQuota *typemodel.NamedCompositeQuota
 
 	// globals holds package-level variables shared between successive evaluations.
 	globals *engine.GlobalStore
@@ -127,178 +154,56 @@ type Service struct {
 	// NewService.
 	config *serviceConfig
 
+	// fileSet is the go/token position table reused across every evaluation handled by this
+	// Service.
+	fileSet *token.FileSet
+
+	// borrowDeclarations holds the host's declared borrow classes, frozen by the first
+	// evaluation; shared with clones, which share the symbols.
+	borrowDeclarations *engine.BorrowDeclarations
+
 	// pendingVarBridges accumulates one entry per non-main interpreted package compiled by
 	// CompileProgram, resolved into the symbol registry once ExecuteInits has run.
 	pendingVarBridges []pendingVarBridge
 
-	// initsRun records the file sets ExecuteInits has initialised, so the following
-	// ExecuteEntrypoint on the same file set does not run the initialisers a second time.
-	initsRun map[*program.CompiledFileSet]struct{}
+	// varInitReuse holds the global reuse state, including each file set's initialiser image
+	// and watch.
+	varInitReuse varInitReuseRegistry
+
+	// loadedGlobals tracks the slots programs loaded from bytecode hold, the regions their
+	// unloads freed, and the interface names loads registered.
+	loadedGlobals loadedGlobalRegistry
 
 	// limits holds resource constraints threaded into each VM.
 	limits engine.VMLimits
-
-	// initsMu guards initsRun.
-	initsMu sync.Mutex
 
 	// lastCostUsed holds the total computation cost consumed by the most recent execution,
 	// read via LastCostUsed.
 	lastCostUsed atomic.Int64
 
+	// initsMu guards initsRun.
+	initsMu sync.Mutex
+
+	// constructionMu guards constructionErr.
+	constructionMu sync.Mutex
+
 	// features controls which Go language constructs are allowed during compilation.
 	features policy.InterpFeature
+
+	// closed is set by Close; every later compile and execution returns errServiceClosed.
+	closed atomic.Bool
 }
 
-// NewService creates a new interpreter service.
-//
-// The symbol registry starts empty: without WithSymbolProvider the service runs the Go
-// language in full but resolves no import.
-//
-// Takes opts (Option variadic) which configure symbol providers, build tags, environment
-// variables, and other interpreter behaviour.
-//
-// Returns *Service which is ready to evaluate code.
-func NewService(opts ...Option) *Service {
-	config := newServiceConfig()
-	for _, opt := range opts {
-		opt(config)
-	}
-	config.fileMatcher = buildfilter.New(config.buildTags)
+// namedCompositeConfig holds the caps on named array, slice, map, channel and function
+// types a service's options set.
+type namedCompositeConfig struct {
+	// maxTypes caps the new types the service's programs may add
+	// (WithMaxNamedCompositeTypes). Zero selects typemodel.DefaultNamedCompositeQuota.
+	maxTypes int
 
-	symbols := symtab.NewSymbolRegistry(nil)
-	symbols.ProtectPackage(policy.PkgUnsafe)
-
-	features := config.features
-	if features == 0 {
-		features = policy.InterpFeaturesAll
-	}
-
-	s := &Service{fileSet: token.NewFileSet(),
-		globals:  engine.NewGlobalStore(),
-		symbols:  symbols,
-		config:   config,
-		features: features, stderrWriter: config.stderrWriter, pendingVarBridges: nil, initsRun: nil, initsMu: sync.Mutex{}, limits: engine.VMLimits{
-			CapabilityHook:           nil,
-			Tracker:                  nil,
-			Debug:                    nil,
-			DisableMinorGC:           false,
-			CallbackArenaRetireBytes: 0,
-			ArenaFactory:             nil,
-			CostTable:                nil,
-			Diagnostics:              nil,
-			MaxCallDepth:             0,
-			MaxStringSize:            0,
-			MaxOutputSize:            0,
-			CostBudget:               0,
-			MaxArenaBytes:            0,
-			MaxAllocSize:             0,
-			MaxGoroutines:            0,
-			YieldInterval:            0,
-			DeadlockGrace:            0,
-			CallbackTimeout:          0,
-			ForceGoDispatch:          false,
-			SafeMode:                 false}, lastCostUsed: atomic.Int64{},
-	}
-	if len(config.symbolProviders) > 0 {
-		s.UseSymbolProviders(config.symbolProviders...)
-	}
-	s.limits = s.buildLimits()
-	return s
-}
-
-// SetStderr overrides the writer for print/println output. Pass nil to restore the
-// default (os.Stderr).
-//
-// Takes writer (io.Writer) which receives print/println output, or nil to reset.
-func (s *Service) SetStderr(writer io.Writer) {
-	s.stderrWriter = writer
-}
-
-// Reset clears the interpreter state for reuse. The symbol registry and configuration are
-// preserved.
-func (s *Service) Reset() {
-	s.fileSet = token.NewFileSet()
-	s.globals.Reset()
-}
-
-// Clone creates a copy of the service sharing symbols but with fresh execution state.
-//
-// Returns *Service which is a new service with shared symbols and independent state.
-func (s *Service) Clone() *Service {
-	cloned := &Service{fileSet: token.NewFileSet(),
-		symbols:  s.symbols,
-		globals:  engine.NewGlobalStore(),
-		config:   s.config,
-		features: s.features, stderrWriter: nil, pendingVarBridges: nil, initsRun: nil, initsMu: sync.Mutex{}, limits: engine.VMLimits{
-			CapabilityHook:           nil,
-			Tracker:                  nil,
-			Debug:                    nil,
-			DisableMinorGC:           false,
-			CallbackArenaRetireBytes: 0,
-			ArenaFactory:             nil,
-			CostTable:                nil,
-			Diagnostics:              nil,
-			MaxCallDepth:             0,
-			MaxStringSize:            0,
-			MaxOutputSize:            0,
-			CostBudget:               0,
-			MaxArenaBytes:            0,
-			MaxAllocSize:             0,
-			MaxGoroutines:            0,
-			YieldInterval:            0,
-			DeadlockGrace:            0,
-			CallbackTimeout:          0,
-			ForceGoDispatch:          false,
-			SafeMode:                 false}, lastCostUsed: atomic.Int64{},
-	}
-	cloned.limits = cloned.buildLimits()
-	return cloned
-}
-
-// SetCapabilityHook installs or replaces the CapabilityHook on this Service, accepting
-// nil to revert to the permissive default. In-flight executions keep the hook they
-// started with.
-//
-// Takes hook (CapabilityHook) which is the new hook, or nil to clear.
-func (s *Service) SetCapabilityHook(hook policy.CapabilityHook) {
-	if s.config == nil {
-		s.config = newServiceConfig()
-	}
-	s.config.capabilityHook = hook
-	s.limits.CapabilityHook = hook
-}
-
-// CapabilityHook returns the currently installed CapabilityHook, or nil when no hook has
-// been configured. The returned value reflects the configured hook, not the permissive
-// fallback used at dispatch time.
-//
-// Returns CapabilityHook which is the configured hook, or nil.
-func (s *Service) CapabilityHook() policy.CapabilityHook {
-	if s.config == nil {
-		return nil
-	}
-	return s.config.capabilityHook
-}
-
-// LastCostUsed returns the total computation cost consumed by the most recent execution
-// when cost metering is enabled.
-//
-// Returns int64 which is the cost consumed, or 0 when cost metering is disabled.
-func (s *Service) LastCostUsed() int64 {
-	return s.lastCostUsed.Load()
-}
-
-// LeakedGoroutines reports how many goroutines spawned by this Service's executions were
-// still running when their execution gave up joining them. A non-zero count means the
-// Service may still have interpreted code running in the background and must not be
-// reused or pooled.
-//
-// Returns the cumulative count of goroutines that outlived their execution.
-func (s *Service) LeakedGoroutines() int64 {
-	if s.limits.Tracker == nil {
-		return 0
-	}
-	return s.limits.Tracker.LeakedGoroutines.Load()
+	// processLimit is the process-wide cap WithNamedCompositeProcessLimit sets when the
+	// service is built. Zero leaves the cap as it is.
+	processLimit int
 }
 
 // serviceConfig holds optional configuration for the interpreter service.
@@ -355,6 +260,10 @@ type serviceConfig struct {
 	// service is built is still honoured.
 	logger *slog.Logger
 
+	// invalidOptions joins an ErrInvalidOption error for every option given a value it does
+	// not accept.
+	invalidOptions error
+
 	// envOnce guards one-time application of environment overrides.
 	envOnce *sync.Once
 
@@ -391,6 +300,13 @@ type serviceConfig struct {
 	// maxSpecialisations caps the number of generic-function specialisations registered per
 	// generic callee. Zero selects defaultMaxSpecialisations (1000).
 	maxSpecialisations int
+
+	// maxLoadedNamedInterfaces caps the distinct interface names loaded bytecode may
+	// register. Zero selects defaultMaxLoadedNamedInterfaces.
+	maxLoadedNamedInterfaces int
+
+	// namedComposites holds the caps on named composite types the options set.
+	namedComposites namedCompositeConfig
 
 	// costBudget is the maximum total computation cost for a single execution. Zero means
 	// cost metering is disabled.
@@ -436,6 +352,38 @@ type serviceConfig struct {
 	// leaves callbacks unbounded beyond the wrapping execution's context.
 	callbackTimeout time.Duration
 
+	// finaliserTimeout bounds each run of a guest finaliser or cleanup
+	// (WithFinaliserTimeout). Zero selects the engine's default.
+	finaliserTimeout time.Duration
+
+	// abortUnwindCost is the total cost a stopped VM's pending defers may spend
+	// (WithAbortUnwindCost); zero selects the engine's default.
+	abortUnwindCost int64
+
+	// abortUnwindWall is the total wall time a stopped VM's pending defers may spend
+	// (WithAbortUnwindWall); zero selects the engine's default.
+	abortUnwindWall time.Duration
+
+	// abortUnwindDeferWallMax caps one deferred call's wall time during an unwinding
+	// (WithAbortUnwindDeferWallMax); zero selects the engine's default.
+	abortUnwindDeferWallMax time.Duration
+
+	// abortUnwindNativeGrace is how long a deferred call may stay in native code past its
+	// deadline (WithAbortUnwindNativeGrace); zero selects the engine's default.
+	abortUnwindNativeGrace time.Duration
+
+	// goroutineJoinUnwindCap bounds the join's wait for unwinding VMs
+	// (WithGoroutineJoinUnwindCap); zero selects the engine's default.
+	goroutineJoinUnwindCap time.Duration
+
+	// leakedUnwinderCap is how many unwindings left blocked in native code the service
+	// allows (WithLeakedUnwinderCap); zero selects the engine's default.
+	leakedUnwinderCap int64
+
+	// lockWalkMaxValues caps the values the abandoned-lock check visits
+	// (WithLockWalkMaxValues); zero selects the engine's default.
+	lockWalkMaxValues int
+
 	// features controls which Go language constructs are allowed during compilation. Zero
 	// value means InterpFeaturesAll.
 	features policy.InterpFeature
@@ -476,14 +424,218 @@ type serviceConfig struct {
 
 	// envSealed makes env the entire environment instead of an overlay on the host's.
 	envSealed bool
+
+	// licenceCheckerStrict makes a licence checker defect fail the compile instead of
+	// running the program abandoned (withLicenceCheckerStrict).
+	licenceCheckerStrict bool
+}
+
+// NewService creates a new interpreter service.
+//
+// Takes opts (Option variadic) which configure symbol providers, build tags, environment
+// variables, and other interpreter behaviour.
+//
+// Returns *Service which is ready to evaluate code.
+func NewService(opts ...Option) *Service {
+	config := newServiceConfig()
+	for _, opt := range opts {
+		opt(config)
+	}
+	config.fileMatcher = buildfilter.New(config.buildTags)
+
+	if config.namedComposites.processLimit > 0 {
+		typemodel.SetNamedCompositeProcessLimit(config.namedComposites.processLimit)
+	}
+	namedCompositeQuota := typemodel.NewNamedCompositeQuota(config.namedComposites.maxTypes)
+	symbols := symtab.NewSymbolRegistry(nil)
+	symbols.SetNamedCompositeQuota(namedCompositeQuota)
+	symbols.ProtectPackage(policy.PkgUnsafe)
+
+	features := config.features
+	if features == 0 {
+		features = policy.InterpFeaturesAll
+	}
+
+	service := &Service{
+		constructionLog:     logging.NewDeferred(),
+		constructionErr:     nil,
+		constructionMu:      sync.Mutex{},
+		stderrWriter:        config.stderrWriter,
+		initsRun:            nil,
+		symbols:             symbols,
+		namedCompositeQuota: namedCompositeQuota,
+		globals:             engine.NewGlobalStore(),
+		config:              config,
+		fileSet:             token.NewFileSet(),
+		borrowDeclarations:  engine.NewBorrowDeclarations(),
+		pendingVarBridges:   nil,
+		varInitReuse:        varInitReuseRegistry{},
+		loadedGlobals:       loadedGlobalRegistry{},
+		limits:              engine.VMLimits{},
+		lastCostUsed:        atomic.Int64{},
+		initsMu:             sync.Mutex{},
+		features:            features,
+		closed:              atomic.Bool{},
+	}
+	service.useConfiguredSymbolProviders()
+	service.limits = service.buildLimits()
+	runtime.AddCleanup(service, engine.StopGlobalReuseWatch, service.globals)
+	return service
+}
+
+// SetStderr overrides the writer for print/println output. Pass nil to restore the
+// default (os.Stderr).
+//
+// Takes writer (io.Writer) which receives print/println output, or nil to reset.
+func (s *Service) SetStderr(writer io.Writer) {
+	s.stderrWriter = writer
+}
+
+// Reset clears the interpreter state for reuse. The symbol registry and configuration are
+// preserved.
+//
+// Programs loaded from bytecode lose their package-variable slots, so running one
+// afterwards returns ErrProgramUnloaded. Load it again instead.
+func (s *Service) Reset() {
+	s.fileSet = token.NewFileSet()
+	s.forgetVariableInitImages()
+	s.invalidateLoadedPrograms()
+	s.globals.Reset()
+}
+
+// Close releases what the service holds beyond its own memory.
+//
+// It stops initialiser watches, drops file set reuse state and ExecuteInits records, and
+// forgets loaded programs' slots. The finalisers and cleanups its programs registered
+// stop as well.
+//
+// Returns error which is always nil.
+func (s *Service) Close() error {
+	if !s.closed.CompareAndSwap(false, true) {
+		return nil
+	}
+	s.dropAllVariableInitStates()
+	s.forgetInitsRun()
+	s.invalidateLoadedPrograms()
+	s.globals.CloseFinalisers()
+	return nil
+}
+
+// Clone creates a copy of the service sharing symbols but with fresh execution state.
+//
+// Returns *Service which is a new service with shared symbols and independent state.
+func (s *Service) Clone() *Service {
+	cloned := &Service{fileSet: token.NewFileSet(), constructionLog: logging.NewDeferred(), constructionErr: nil, constructionMu: sync.Mutex{},
+		symbols:             s.symbols,
+		namedCompositeQuota: s.namedCompositeQuota,
+		globals:             engine.NewGlobalStore(),
+		config:              s.config,
+		borrowDeclarations:  s.borrowDeclarations,
+		features:            s.features, stderrWriter: nil, pendingVarBridges: nil, initsRun: nil, initsMu: sync.Mutex{}, limits: engine.VMLimits{
+			CapabilityHook:           nil,
+			Tracker:                  nil,
+			Debug:                    nil,
+			DisableMinorGC:           false,
+			AbandonArenasOnRelease:   false,
+			CallbackArenaRetireBytes: 0,
+			ArenaFactory:             nil,
+			CostTable:                nil,
+			Diagnostics:              nil,
+			MaxCallDepth:             0,
+			MaxStringSize:            0,
+			MaxOutputSize:            0,
+			CostBudget:               0,
+			MaxArenaBytes:            0,
+			MaxAllocSize:             0,
+			MaxGoroutines:            0,
+			YieldInterval:            0,
+			DeadlockGrace:            0,
+			CallbackTimeout:          0,
+			AbortUnwindCost:          0,
+			AbortUnwindWall:          0,
+			AbortUnwindDeferWallMax:  0,
+			AbortUnwindNativeGrace:   0,
+			GoroutineJoinUnwindCap:   0,
+			LeakedUnwinderCap:        0,
+			LockWalkMaxValues:        0,
+			ForceGoDispatch:          false,
+			FinaliserTimeout:         0,
+			BorrowDeclarations:       nil,
+			SafeMode:                 false}, lastCostUsed: atomic.Int64{},
+		varInitReuse:  varInitReuseRegistry{},
+		loadedGlobals: loadedGlobalRegistry{},
+		closed:        atomic.Bool{},
+	}
+	cloned.limits = cloned.buildLimits()
+	runtime.AddCleanup(cloned, engine.StopGlobalReuseWatch, cloned.globals)
+	return cloned
+}
+
+// SetCapabilityHook installs or replaces the CapabilityHook on this Service, accepting
+// nil to revert to the permissive default. In-flight executions keep the hook they
+// started with.
+//
+// Takes hook (CapabilityHook) which is the new hook, or nil to clear.
+func (s *Service) SetCapabilityHook(hook policy.CapabilityHook) {
+	if s.config == nil {
+		s.config = newServiceConfig()
+	}
+	s.config.capabilityHook = hook
+	s.limits.CapabilityHook = hook
+}
+
+// CapabilityHook returns the currently installed CapabilityHook, or nil when no hook has
+// been configured. The returned value reflects the configured hook, not the permissive
+// fallback used at dispatch time.
+//
+// Returns CapabilityHook which is the configured hook, or nil.
+func (s *Service) CapabilityHook() policy.CapabilityHook {
+	if s.config == nil {
+		return nil
+	}
+	return s.config.capabilityHook
+}
+
+// LastCostUsed returns the total computation cost consumed by the most recent execution
+// when cost metering is enabled.
+//
+// Returns int64 which is the cost consumed, or 0 when cost metering is disabled.
+func (s *Service) LastCostUsed() int64 {
+	return s.lastCostUsed.Load()
+}
+
+// LeakedGoroutines reports how many goroutines spawned by this Service's executions were
+// still running when their execution gave up joining them. A non-zero count means the
+// Service may still have interpreted code running in the background and must not be
+// reused or pooled.
+//
+// Returns the cumulative count of goroutines that outlived their execution.
+func (s *Service) LeakedGoroutines() int64 {
+	if s.limits.Tracker == nil {
+		return 0
+	}
+	return s.limits.Tracker.LeakedGoroutines.Load()
+}
+
+// AbandonedLocks reports locks left held by the service's stopped executions.
+//
+// Returns the cumulative count of abandoned locks.
+func (s *Service) AbandonedLocks() int64 {
+	if s.limits.Tracker == nil {
+		return 0
+	}
+	return s.limits.Tracker.AbandonedLocks.Load()
 }
 
 // newServiceConfig returns a serviceConfig with its one-time guards initialised.
 //
 // Returns *serviceConfig which has its envOnce guard ready for use.
 func newServiceConfig() *serviceConfig {
-	config := &serviceConfig{
+	return &serviceConfig{
 		bytecodeStore:                nil,
+		maxLoadedNamedInterfaces:     0,
+		namedComposites:              namedCompositeConfig{maxTypes: 0, processLimit: 0},
+		finaliserTimeout:             0,
 		symbolProviders:              nil,
 		stderrWriter:                 nil,
 		clock:                        nil,
@@ -498,7 +650,8 @@ func newServiceConfig() *serviceConfig {
 		debugger:                     nil,
 		costTable:                    nil,
 		logger:                       nil,
-		envOnce:                      nil,
+		invalidOptions:               nil,
+		envOnce:                      new(sync.Once),
 		buildTags:                    nil,
 		fileMatcher:                  nil,
 		maxLiteralElements:           0,
@@ -520,6 +673,13 @@ func newServiceConfig() *serviceConfig {
 		yieldInterval:                0,
 		deadlockGrace:                defaultDeadlockGrace,
 		callbackTimeout:              0,
+		abortUnwindCost:              0,
+		abortUnwindWall:              0,
+		abortUnwindDeferWallMax:      0,
+		abortUnwindNativeGrace:       0,
+		goroutineJoinUnwindCap:       0,
+		leakedUnwinderCap:            0,
+		lockWalkMaxValues:            0,
 		features:                     0,
 		optimisations:                passes.DefaultOptions(),
 		bytecodeVerificationDisabled: false,
@@ -529,9 +689,8 @@ func newServiceConfig() *serviceConfig {
 		disableMinorGC:               false,
 		safeMode:                     false,
 		envConfigured:                false,
+		licenceCheckerStrict:         licenceCheckerStrictDefault.Load(),
 	}
-	config.envOnce = new(sync.Once)
-	return config
 }
 
 // processOverridesConfigured reports whether interpreted code sees an environment or
@@ -541,4 +700,47 @@ func newServiceConfig() *serviceConfig {
 // Returns bool which is true when WithEnv, WithSealedEnv or WithArgs was applied.
 func (c *serviceConfig) processOverridesConfigured() bool {
 	return c.envConfigured || c.args != nil
+}
+
+// useConfiguredSymbolProviders registers the symbol providers the options named. The
+// types packages it rejected are recorded, and the first call that binds a context
+// reports them through that context's logger and returns them (bindLogger).
+//
+// Concurrent access is guarded by a mutex. The service mutex guards the construction
+// error.
+func (s *Service) useConfiguredSymbolProviders() {
+	if len(s.config.symbolProviders) == 0 {
+		return
+	}
+	if err := s.UseSymbolProviders(s.config.symbolProviders...); err != nil {
+		s.constructionMu.Lock()
+		s.constructionErr = errors.Join(s.constructionErr, err)
+		s.constructionMu.Unlock()
+	}
+}
+
+// bindLogger binds the service's logger into ctx as the fallback for a ctx that carries
+// none, replays what was logged without a context (constructionLog), and takes the
+// construction error, logging it once.
+//
+// Returns context.Context which carries the logger.
+// Returns error which is the rejected symbol providers on the first call after
+// construction, or nil.
+//
+// Concurrent access is guarded by a mutex. The service mutex guards replay and removal of
+// construction diagnostics.
+func (s *Service) bindLogger(ctx context.Context) (context.Context, error) {
+	ctx, logger := logging.From(logging.WithFallbackLogger(ctx, s.config.logger))
+	if s.constructionLog != nil {
+		s.constructionLog.Replay(ctx)
+	}
+	s.constructionMu.Lock()
+	err := s.constructionErr
+	s.constructionErr = nil
+	s.constructionMu.Unlock()
+	if err != nil {
+		logger.WarnContext(ctx, "A symbol provider's types packages could not all be registered; importing those fails", logging.ErrAttr(err))
+		return ctx, fmt.Errorf("app: registering symbol providers: %w", err)
+	}
+	return ctx, nil
 }

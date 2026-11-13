@@ -27,7 +27,7 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-func TestStringIndexReadsOneByteAndGuardsBounds(t *testing.T) {
+func TestGetStringByteReadsOneByteAndGuardsBounds(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -41,7 +41,7 @@ func TestStringIndexReadsOneByteAndGuardsBounds(t *testing.T) {
 		{name: "the last byte of an ascii string", source: "abc", index: 2, want: 'c'},
 		{name: "a byte inside a multi-byte rune", source: "é", index: 1, want: 0xA9},
 		{name: "one past the end is refused", source: "abc", index: 3, wantMsg: "index out of range [3] with length 3"},
-		{name: "a negative index is refused", source: "abc", index: -1, wantMsg: "index out of range [-1] with length 3"},
+		{name: "a negative index is refused", source: "abc", index: -1, wantMsg: "index out of range [-1]"},
 		{name: "any index into an empty string is refused", source: "", index: 0, wantMsg: "index out of range [0] with length 0"},
 	}
 
@@ -53,9 +53,12 @@ func TestStringIndexReadsOneByteAndGuardsBounds(t *testing.T) {
 			registers.Strings[1] = tt.source
 			registers.Ints[2] = tt.index
 
-			got := handleStringIndex(vm, frame, registers, op(0, 1, 2))
+			got := handleGetStringByte(vm, frame, registers, op(0, 1, 2))
 			if tt.wantMsg != "" {
 				requireRuntimePanic(t, vm, got, tt.wantMsg)
+				if tt.index < 0 {
+					require.NotContains(t, vm.evalError.Error(), "with length", "Go names no length for a negative index")
+				}
 				return
 			}
 			require.Equal(t, opContinue, got, "an in-range byte read never leaves the dispatch loop")
@@ -64,7 +67,7 @@ func TestStringIndexReadsOneByteAndGuardsBounds(t *testing.T) {
 	}
 }
 
-func TestStringIndexToIntFusesTheWidening(t *testing.T) {
+func TestGetStringByteAsInt64FusesTheWidening(t *testing.T) {
 	t.Parallel()
 
 	t.Run("an in-range byte lands in the int bank", func(t *testing.T) {
@@ -74,7 +77,7 @@ func TestStringIndexToIntFusesTheWidening(t *testing.T) {
 		registers.Strings[1] = "xyz"
 		registers.Ints[2] = 1
 
-		got := handleStringIndexToInt(vm, frame, registers, op(0, 1, 2))
+		got := handleGetStringByteAsInt64(vm, frame, registers, op(0, 1, 2))
 		require.Equal(t, opContinue, got)
 		require.Equal(t, int64('y'), registers.Ints[0], "the fused form skips the uint bank entirely")
 	})
@@ -86,7 +89,7 @@ func TestStringIndexToIntFusesTheWidening(t *testing.T) {
 		registers.Strings[1] = "xyz"
 		registers.Ints[2] = 9
 
-		got := handleStringIndexToInt(vm, frame, registers, op(0, 1, 2))
+		got := handleGetStringByteAsInt64(vm, frame, registers, op(0, 1, 2))
 		requireRuntimePanic(t, vm, got, "index out of range [9] with length 3")
 	})
 }
@@ -100,7 +103,7 @@ func TestStringConversionHandlersCrossBanks(t *testing.T) {
 		vm, frame, registers := newStandardVM(t)
 		registers.Strings[1] = "hi"
 
-		got := handleStringToBytes(vm, frame, registers, op(0, 1, 0))
+		got := handleConvertStringToBytesBody(vm, frame, registers, op(0, 1, 0))
 		require.Equal(t, opContinue, got)
 		require.Equal(t, []byte("hi"), registers.General[0].Interface())
 	})
@@ -110,7 +113,7 @@ func TestStringConversionHandlersCrossBanks(t *testing.T) {
 
 		vm, frame, registers := newStandardVM(t)
 
-		got := handleStringToBytes(vm, frame, registers, op(0, 1, 0))
+		got := handleConvertStringToBytesBody(vm, frame, registers, op(0, 1, 0))
 		require.Equal(t, opContinue, got)
 		require.Empty(t, registers.General[0].Interface())
 	})
@@ -133,7 +136,7 @@ func TestStringConversionHandlersCrossBanks(t *testing.T) {
 			vm, frame, registers := newStandardVM(t)
 			registers.Ints[1] = tt.rune
 
-			got := handleRuneToString(vm, frame, registers, op(0, 1, 0))
+			got := handleConvertRuneToStringBody(vm, frame, registers, op(0, 1, 0))
 			require.Equal(t, opContinue, got)
 			require.Equal(t, tt.want, registers.Strings[0])
 		})
@@ -234,21 +237,21 @@ func TestReadRegisterConvertReadsTheNamedBank(t *testing.T) {
 		target any
 		want   any
 	}{
-		{name: "the int bank", kind: isa.RegisterInt, load: func(r *Registers) { r.Ints[1] = 5 }, target: int64(0), want: int64(5)},
+		{name: "the int bank", kind: isa.RegisterInt64, load: func(r *Registers) { r.Ints[1] = 5 }, target: int64(0), want: int64(5)},
 		{
-			name: "the int bank converted to a named type", kind: isa.RegisterInt,
+			name: "the int bank converted to a named type", kind: isa.RegisterInt64,
 			load: func(r *Registers) { r.Ints[1] = 5 }, target: namedInt(0), want: namedInt(5),
 		},
-		{name: "the float bank", kind: isa.RegisterFloat, load: func(r *Registers) { r.Floats[1] = 1.5 }, target: float64(0), want: 1.5},
+		{name: "the float bank", kind: isa.RegisterFloat64, load: func(r *Registers) { r.Floats[1] = 1.5 }, target: float64(0), want: 1.5},
 		{name: "the string bank", kind: isa.RegisterString, load: func(r *Registers) { r.Strings[1] = "s" }, target: "", want: "s"},
 		{name: "the bool bank", kind: isa.RegisterBool, load: func(r *Registers) { r.Bools[1] = true }, target: false, want: true},
-		{name: "the uint bank", kind: isa.RegisterUint, load: func(r *Registers) { r.Uints[1] = 9 }, target: uint64(0), want: uint64(9)},
+		{name: "the uint bank", kind: isa.RegisterUint64, load: func(r *Registers) { r.Uints[1] = 9 }, target: uint64(0), want: uint64(9)},
 		{
-			name: "the complex bank", kind: isa.RegisterComplex,
+			name: "the complex bank", kind: isa.RegisterComplex128,
 			load: func(r *Registers) { r.Complex[1] = 2i }, target: complex128(0), want: 2i,
 		},
 		{
-			name: "the int-slice bank", kind: isa.RegisterSliceInt,
+			name: "the int-slice bank", kind: isa.RegisterSliceInt64,
 			load: func(r *Registers) { r.SlicesInt[1] = []int64{1, 2} }, target: []int64(nil), want: []int64{1, 2},
 		},
 		{

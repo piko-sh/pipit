@@ -19,6 +19,7 @@
 package sandboxlinux
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -36,7 +37,7 @@ import (
 // Returns error when controller delegation or child creation fails.
 //
 // Safe for concurrent use; the parent mutex serialises delegation.
-func (group *Group) newChild(limits Limits) (*Group, error) {
+func (group *Group) newChild(ctx context.Context, limits Limits) (*Group, error) {
 	if group == nil {
 		return nil, errClosed
 	}
@@ -60,7 +61,7 @@ func (group *Group) newChild(limits Limits) (*Group, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: pinning aggregate parent: %w", ErrUnavailable, err)
 	}
-	return newGroupUnder(parent, settings)
+	return newGroupUnder(ctx, parent, settings)
 }
 
 // enableChildControllers verifies the complete private subtree controller set.

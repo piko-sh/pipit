@@ -21,6 +21,8 @@ Pipit's [compatibility limits](compatibility.md). For complete programs, see
 | `Compile` / `Execute` | Expression or statement source / compiled function | Compiled function / execution result |
 | `CompileFileSet` / `ExecuteEntrypoint` | Named files in one package / compiled package and entrypoint | Compiled package / entrypoint result |
 | `NewSession` / `Submit` | Interpreter / incremental source submission | Session / final expression result |
+| `SaveCompiled` / `LoadCompiled` | Key and compiled package / key | Saved bytecode / loaded package |
+| `UnloadCompiled` | Package that `LoadCompiled` returned | Its package variables released |
 | `MatchFile` | File name and content | Whether `CompileFileSet` and `CompileProgram` compile the file |
 
 Compilation and execution return errors. Ordinary integer results have type `int`;
@@ -53,41 +55,60 @@ access; import selection is not a process boundary.
 ## State and concurrency
 
 An interpreter owns mutable execution state, including package globals. `Reset`
-clears accumulated evaluation state. Separate `Eval` calls do not retain imports and declarations. Session submissions do.
+clears accumulated evaluation state. Separate `Eval` calls do not retain imports
+and declarations. Session submissions do.
 
-`Session.Inspect` describes retained imports and declarations; `Session.Reset`
-clears them. A failed submission does not guarantee rollback of mutations to
-existing runtime values.
+`Session.Inspect` describes retained imports and declarations. `Session.Reset`
+clears them. A failed submission may still have changed existing runtime values.
 
-Interpreters and sessions must not be evaluated concurrently. `Clone` shares the
-symbol registry and configuration but creates fresh execution state. Clones may still share
-host objects. Protect those objects with normal Go concurrency controls.
-Configure registrations before cloning.
+Interpreters and sessions must not be evaluated concurrently. `Clone` creates
+fresh execution state while sharing the symbol registry and configuration.
+Configure registrations before cloning, and protect any shared host objects with
+normal Go concurrency controls.
+
+`Close` releases interpreter resources. Later compilation and evaluation return
+an error wrapping `ErrClosed`. Closing again does nothing. It does not wait for
+in-flight evaluations. Each clone has its own lifecycle.
+
+### Loaded programs
+
+Call `UnloadCompiled` when you no longer need a program returned by `LoadCompiled`.
+This releases storage for its package variables once active runs finish. With the
+built-in directory store, loads of the same bytecode share this storage until all
+of them are unloaded.
+
+Running an unloaded program, or any loaded program after `Reset`, returns
+`ErrProgramUnloaded`. Do not call function values from a program after unloading it.
+Unloading twice does nothing. Unloading a program this interpreter did not load
+returns `ErrProgramNotLoaded`. If loaded programs fill the available storage,
+`LoadCompiled` returns `ErrGlobalSlotsExhausted`.
 
 ## Errors
 
-Use `errors.Is` to check for these exported error values:
+Use `errors.Is` to check for these exported error values.
 
-| Failure | Examples |
+| Failure | Errors and handling |
 |---|---|
-| Invalid source | `ErrParse`, `ErrTypeCheck`, `ErrCompilation`, `ErrCyclicImport`, `ErrEmbedUnsupported` (a `//go:embed` directive in a file the interpreter compiles) |
-| Function too large | `ErrRegisterOverflow`, for a statement that needs more live values than the interpreter has registers; the error names the function and the statement |
-| Disallowed feature/import | `ErrFeatureNotAllowed`, `ErrPackageNotInRegistry`, `ErrCapabilityDenied`; an import outside `WithImportAllowlist` is reported as `ErrParse` |
-| Resource limit | `ErrCostBudgetExceeded`, `ErrAllocationLimit`, `ErrOutputLimit`, `ErrGoroutineLimit`, `ErrStackOverflow` |
-| Cancellation | `ErrExecutionCancelled`; the context error remains in the chain. `ErrCallbackTimeout` for a closure that runs past `WithCallbackTimeout`; it also matches `ErrExecutionCancelled` |
+| Invalid source | `ErrParse`, `ErrTypeCheck`, `ErrCompilation`, `ErrCyclicImport`, `ErrEmbedUnsupported` |
+| Function too large | `ErrRegisterOverflow` names the function and statement. Split large statements or calls. |
+| Invalid option | `ErrInvalidOption` wraps `ErrInvalidConfig` and names the option. Every compilation and evaluation fails until the configuration is corrected. |
+| Disallowed feature or import | `ErrFeatureNotAllowed`, `ErrPackageNotInRegistry`, `ErrCapabilityDenied`. An import outside `WithImportAllowlist` is reported as `ErrParse`. |
+| Execution limit | `ErrCostBudgetExceeded`, `ErrAllocationLimit`, `ErrOutputLimit`, `ErrGoroutineLimit`, `ErrStackOverflow`, `ErrArenaBudgetExceeded` |
+| Named-type limit | `ErrNamedCompositeQuota`, `ErrNamedCompositeLimit`. See [named-type limits](compatibility.md#named-types-and-native-interfaces). |
+| Loaded programs | `ErrGlobalSlotsExhausted`, `ErrProgramUnloaded` (wraps `ErrClosed`), `ErrProgramNotLoaded`, `ErrNamedInterfaceLimit`, `ErrBytecodeVerification`. See [Loaded programs](#loaded-programs). |
+| Borrow declaration | `ErrBorrowDeclarationsFrozen`, `ErrBorrowDeclarationRefused`. See [Licensed reuse](#licensed-reuse). |
+| Cancellation | `ErrExecutionCancelled` keeps the context error in its chain. `ErrCallbackTimeout` also matches it. Deferred calls run within the [unwinding limits](#unwinding-limits). `ErrUnwindBlocked` reports one left blocked in native code. |
+| Abandoned lock | `ErrLockAbandoned` means a stopped evaluation left a lock held in package state. Later evaluations fail immediately. Use a fresh interpreter. `AbandonedLocks` reports the count. |
+| Too many blocked deferred calls | `ErrUnwindLeakLimit` means the limit set by `WithLeakedUnwinderCap` was reached. Later evaluations fail immediately. Use a fresh interpreter. |
 | Runtime failure | `ErrUncaughtPanic`, `ErrDeadlock`, `ErrDivisionByZero`, `ErrIndexOutOfRange` |
-| Interpreter defect | `ErrInterpreterInvariant`; report it as a Pipit bug |
+| Interpreter defect | `ErrInterpreterInvariant`. Report it as a Pipit bug. |
 
-`CompileProgram` keeps going after a package fails, so it can report every failed
-package at once. When more than one package fails, the error is a `ProblemList` with one
-problem per package, and `CompileProblems(err)` returns them; for a single problem it
-returns the error itself. Each problem names its package. The type errors of one package
-stay together as one problem, up to 10 of them. The message starts with the first
-problem, and the others follow, each after a blank line.
+`CompileProgram` can report failures from several packages at once. Use
+`CompileProblems(err)` to inspect them. Each problem names its package.
 
 The string-size and literal-element limits have no exported error value.
 `UncaughtPanicValue(err)` retrieves the value of an unrecovered panic. The exported
-errors and their descriptions are listed in [errors.go](https://github.com/piko-sh/pipit/blob/master/errors.go).
+errors are listed in [errors.go](https://github.com/piko-sh/pipit/blob/master/errors.go).
 
 ## Options
 
@@ -101,13 +122,16 @@ or a yield interval selects the Go dispatch loop. The public
 | `WithMaxExecutionTime(d)` | Duration per evaluation | 15 minutes |
 | `WithMaxAllocSize(n)` | Elements in one allocation | 1,073,741,824 |
 | `WithMaxGoroutines(n)` | Concurrent goroutines | 10,000 |
-| `WithMaxCallDepth(n)` | Interpreted calls | 10,000 |
+| `WithMaxCallDepth(n)` | Call depth, including closures, method values and native callbacks | 10,000 |
 | `WithMaxOutputSize(n)` | Bytes from `print` / `println` | 268,435,456 (256 MiB) |
 | `WithMaxSourceSize(n)` | Source bytes per compilation | No source-size limit |
 | `WithMaxStringSize(n)` | Bytes in one string built by concatenation, `strings.Repeat`, or rune appends | No string-size limit |
 | `WithMaxLiteralElements(n)` | Elements in one composite literal | No literal-element limit |
 | `WithCostBudget(n)` | Instruction cost | Metering disabled |
-| `WithCallbackTimeout(d)` | Duration of one call of an interpreted closure from native code, including time blocked on channels, `select` or sleep | No per-call limit; a negative value also disables it |
+| `WithCallbackTimeout(d)` | Duration of a native call into an interpreted closure, including blocked time | No per-call limit. Negative also disables it. |
+| `WithFinaliserTimeout(d)` | Duration of one finaliser or cleanup | 30 seconds, capped by a shorter `WithCallbackTimeout`. Must be positive. |
+
+Finalisers and cleanups have additional [compatibility limits](compatibility.md#finalisers-and-cleanups).
 
 With a debugger attached, the default execution timeout is disabled. Set an
 explicit timeout or pass a context with a deadline when you need a time limit.
@@ -137,10 +161,68 @@ Other options include:
   `WithImportAllowlist`
 - `WithStderr(w)` - where `print` and `println` write, instead of `os.Stderr`
 - `WithMaxArenaSizeBytes(n)` - bound the register arena, not all Go memory
+- `WithMaxLoadedNamedInterfaces(n)` - distinct interface names loaded bytecode may
+  add, default 65,536. Exceeding it returns `ErrNamedInterfaceLimit`.
+- `WithMaxNamedCompositeTypes(n)` - new named array, slice, map, channel and
+  function types per interpreter and its clones, default 4,096.
+- `WithNamedCompositeProcessLimit(n)` - the same types across the process,
+  default 65,536. The last configured value applies to every interpreter.
 - `WithAllowUnpinnedModules(true)` - accept module refs without an integrity pin (off by default; `LoadModule` returns
   `ErrUnpinnedModuleRef` otherwise)
-- `WithLogger(logger)` - the `*slog.Logger` receiving interpreter diagnostics;
-  isolated constructors take their logger in `IsolatedConfig` instead
+- `WithLogger(logger)` - fallback `*slog.Logger` for diagnostics. A logger set with
+  `ContextWithLogger(ctx, logger)` takes precedence for that call. Isolated
+  constructors use `IsolatedConfig.Logger` instead.
+
+Symbol-provider registration failures are logged and returned on the first call
+that takes a context, using that call's logger.
+
+### Unwinding limits
+
+When an evaluation is cancelled or exceeds a time, cost or arena limit, Pipit
+attempts its pending deferred calls. These options bound that work. Each must be
+positive. Invalid values make compilation and evaluation fail with `ErrInvalidOption`.
+
+| Option | Unit | Default |
+|---|---|---|
+| `WithAbortUnwindCost(n)` | Instruction cost all pending deferred calls may spend | 100,000 |
+| `WithAbortUnwindWall(d)` | Wall time all pending deferred calls may spend | 1 second |
+| `WithAbortUnwindDeferWallMax(d)` | Wall time one deferred call may spend | 500 ms |
+| `WithAbortUnwindNativeGrace(d)` | Time a deferred call may stay in a native call past its deadline before it is left blocked (`ErrUnwindBlocked`) | 200 ms |
+| `WithGoroutineJoinUnwindCap(d)` | Time, from its start, the wait for an evaluation's goroutines keeps extending while they unwind | 10 seconds |
+| `WithLeakedUnwinderCap(n)` | Deferred calls left blocked in native code before every later evaluation fails with `ErrUnwindLeakLimit` | 64 |
+| `WithLockWalkMaxValues(n)` | Values the abandoned-lock check visits from package variables; past it, unreached locks count as abandoned (`ErrLockAbandoned`) | 4,194,304 |
+
+## Licensed reuse
+
+Pipit reuses working storage only when no retained value can reach it. See
+[licensed reuse](licensed-reuse.md) for the guarantees.
+These declarations let more storage be reused. Make them before the first evaluation;
+a later declaration returns `ErrBorrowDeclarationsFrozen`.
+
+`DeclareNativeBorrowClass(function, class)` declares what one of your native
+functions does with its arguments:
+
+| Class | The function |
+|---|---|
+| `BorrowUnknown` | Declares nothing; its arguments are treated as kept (the default) |
+| `BorrowBorrows` | Keeps no reference to an argument once it returns |
+| `BorrowReadsOnly` | Keeps no reference, returns no alias and never writes through an argument |
+| `BorrowResultAliases` | May return a result that aliases an argument, but keeps no other reference |
+| `BorrowRetains` | May keep a reference to an argument |
+
+Pipit returns `ErrBorrowDeclarationRefused` for method values, functions with
+function or interface parameters, and functions whose Go escape information says
+they retain arguments. The existing class stays in force. Accepted declarations
+must be accurate to keep reuse safe.
+
+`DeclareTopLevelCalls(program)` lets host calls to script functions use ordinary
+execution reuse. Declare it only when both conditions hold.
+
+- The host calls them directly, outside any native function called by a script.
+- Their arguments cannot reach values belonging to a running program.
+
+`WithMaxArenaSizeBytes(n)` bounds an execution's working arena. Exceeding it returns
+`ErrArenaBudgetExceeded`. It does not bound other Go memory.
 
 ## Restricted and isolated APIs
 
@@ -178,7 +260,8 @@ Cancellation is cooperative: it cannot forcibly stop a parser, compiler, or nati
 call that does not check for it.
 
 Set `Hook` to customise capability checks and `Logger` to receive diagnostics.
-A nil logger uses `slog.Default()`. See the
+A logger in the context passed to `Eval` or `EvalFile` takes precedence over `Logger`,
+and a nil `Logger` with no logger in the context uses `slog.Default()`. See the
 [capability-hook example](api.md#control-native-calls-with-a-capability-hook).
 
 ### Isolated execution

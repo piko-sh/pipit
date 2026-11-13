@@ -210,10 +210,20 @@ func (c *Compiler) internStructFieldLayout(reflectStructType reflect.Type, field
 	return index, true
 }
 
-// emitStructFieldLayoutExtension emits the isa.OpExt extension word carrying the 16-bit
-// StructLayoutTable index following a subOpGet/SetStructFieldXxx primary word.
+// emitStructFieldLayoutExtension emits the isa.OpExtension extension word carrying the
+// 16-bit StructLayoutTable index following a subOpGet/SetStructFieldXxx primary word.
 //
 // Takes layoutIndex (uint16) which is the structLayoutTable index to encode.
 func (c *Compiler) emitStructFieldLayoutExtension(layoutIndex uint16) {
-	program.Emit(c.Function, isa.OpExt, uint8(layoutIndex&0xFF), uint8(layoutIndex>>8), 0)
+	c.emitStructFieldLayoutExtensionNaming(layoutIndex, 0)
+}
+
+// emitStructFieldLayoutExtensionNaming emits the extension word of an operation that
+// names a general register in the word's third byte, beside the layout index.
+//
+// Takes layoutIndex (uint16) which is the structLayoutTable index to encode.
+// Takes register (uint8) which is the general register.
+func (c *Compiler) emitStructFieldLayoutExtensionNaming(layoutIndex uint16, register uint8) {
+	low, high := isa.SplitWide(layoutIndex)
+	program.Emit(c.Function, isa.OpExtension, low, high, register)
 }

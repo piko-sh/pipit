@@ -25,8 +25,14 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-// narrow32Width is the truncation width the fused 32-bit operations perform.
-const narrow32Width = 32
+const (
+	// narrow32Width is the truncation width the fused 32-bit operations perform.
+	narrow32Width = 32
+
+	// instructionWithExtensionWords counts the words of an instruction that carries one
+	// extension word.
+	instructionWithExtensionWords = 2
+)
 
 // fuseNarrow32Pass folds a 32-bit truncation into the integer operation whose result it
 // narrows. It runs at the end of the post-purity stage, after every pass that reasons
@@ -65,11 +71,11 @@ func fuseNarrow32(body []isa.Instruction, jumpTargets map[int]bool) bool {
 			continue
 		}
 		truncation, ok := followingTruncation(body, jumpTargets, pc, kind, dest)
-		if !ok || (kind == isa.RegisterUint && feedsMaskedReturn(body, truncation)) {
+		if !ok || (kind == isa.RegisterUint64 && feedsMaskedReturn(body, truncation)) {
 			continue
 		}
 		body[pc] = fused
-		body[truncation] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+		body[truncation] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 		changed = true
 	}
 	return changed
@@ -79,51 +85,88 @@ func fuseNarrow32(body []isa.Instruction, jumpTargets map[int]bool) bool {
 //
 // Takes inst (isa.Instruction) which is the candidate operation.
 //
-// Returns the fused instruction, the destination bank and register, and whether inst has
-// a fused form.
+// Returns isa.Instruction which is the fused instruction.
+// Returns isa.RegisterKind which is the destination bank.
+// Returns uint8 which is the destination register.
+// Returns bool which is true when the operation has a fused form.
 func narrow32Form(inst isa.Instruction) (isa.Instruction, isa.RegisterKind, uint8, bool) {
 	fused := inst
 	switch inst.Op {
-	case isa.OpAddInt:
+	case isa.OpAddInt64:
 		fused.Op = isa.OpAddInt32
-	case isa.OpSubInt:
-		fused.Op = isa.OpSubInt32
-	case isa.OpMulInt:
-		fused.Op = isa.OpMulInt32
-	case isa.OpAddIntConst:
-		fused.Op = isa.OpAddInt32Const
-	case isa.OpSubIntConst:
-		fused.Op = isa.OpSubInt32Const
-	case isa.OpAddUint:
+	case isa.OpSubtractInt64:
+		fused.Op = isa.OpSubtractInt32
+	case isa.OpMultiplyInt64:
+		fused.Op = isa.OpMultiplyInt32
+	case isa.OpAddInt64Constant:
+		fused.Op = isa.OpAddInt32Constant
+	case isa.OpSubtractInt64Constant:
+		fused.Op = isa.OpSubtractInt32Constant
+	case isa.OpAddUint64:
 		fused.Op = isa.OpAddUint32
-		return fused, isa.RegisterUint, inst.A, true
+		return fused, isa.RegisterUint64, inst.A, true
+	case isa.OpSubtractUint64:
+		fused.Op = isa.OpSubtractUint32
+		return fused, isa.RegisterUint64, inst.A, true
+	case isa.OpMultiplyUint64:
+		fused.Op = isa.OpMultiplyUint32
+		return fused, isa.RegisterUint64, inst.A, true
 	case isa.OpDrillTier1:
-		return narrow32Tier2Form(inst)
+		return narrow32SubTierForm(inst)
 	default:
-		return inst, isa.RegisterInt, 0, false
+		return inst, isa.RegisterInt64, 0, false
 	}
-	return fused, isa.RegisterInt, inst.A, true
+	return fused, isa.RegisterInt64, inst.A, true
 }
 
-// narrow32Tier2Form maps the tier-2 int increment and decrement to their 32-bit forms.
+// narrow32SubTierForm maps the tier-1 uint constant arithmetic and the tier-2 int
+// increment and decrement to their 32-bit forms.
 //
 // Takes inst (isa.Instruction) which is the candidate operation.
 //
-// Returns the fused instruction, the destination bank and register, and whether inst has
-// a fused form.
-func narrow32Tier2Form(inst isa.Instruction) (isa.Instruction, isa.RegisterKind, uint8, bool) {
+// Returns isa.Instruction which is the fused instruction.
+// Returns isa.RegisterKind which is the destination bank.
+// Returns uint8 which is the destination register.
+// Returns bool which is true when the operation has a fused form.
+func narrow32SubTierForm(inst isa.Instruction) (isa.Instruction, isa.RegisterKind, uint8, bool) {
 	switch {
-	case isa.InstrIsTier2SubOp(inst, isa.SubOpTier2IncInt):
-		return isa.NewTier2Instruction(isa.SubOpTier2IncInt32, inst.C), isa.RegisterInt, inst.C, true
-	case isa.InstrIsTier2SubOp(inst, isa.SubOpTier2DecInt):
-		return isa.NewTier2Instruction(isa.SubOpTier2DecInt32, inst.C), isa.RegisterInt, inst.C, true
+	case isa.InstrIsTier1SubOp(inst, isa.SubOpAddUint64Constant):
+		return isa.NewTier1Instruction(isa.SubOpAddUint32Constant, inst.B, inst.C), isa.RegisterUint64, inst.B, true
+	case isa.InstrIsTier1SubOp(inst, isa.SubOpSubtractUint64Constant):
+		return isa.NewTier1Instruction(isa.SubOpSubtractUint32Constant, inst.B, inst.C), isa.RegisterUint64, inst.B, true
+	case isa.InstrIsTier2SubOp(inst, isa.SubOpTier2IncrementInt64):
+		return isa.NewTier2Instruction(isa.SubOpTier2IncrementInt32, inst.C), isa.RegisterInt64, inst.C, true
+	case isa.InstrIsTier2SubOp(inst, isa.SubOpTier2DecrementInt64):
+		return isa.NewTier2Instruction(isa.SubOpTier2DecrementInt32, inst.C), isa.RegisterInt64, inst.C, true
 	default:
-		return inst, isa.RegisterInt, 0, false
+		return inst, isa.RegisterInt64, 0, false
 	}
 }
 
-// followingTruncation finds a 32-bit truncation of reg right after pc, past any NOPs,
-// with no branch landing between them.
+// narrow32UintResult recognises the uint operations narrow32Form() and
+// narrow32SubTierForm() produce, each of which leaves its result truncated to 32 bits.
+//
+// Takes inst (isa.Instruction) which is the instruction.
+//
+// Returns register (uint8) which is the uint register written.
+// Returns words (int) which is how many words the instruction takes, its extension word
+// included.
+// Returns ok (bool) which is false for any other instruction.
+func narrow32UintResult(inst isa.Instruction) (register uint8, words int, ok bool) {
+	switch inst.Op {
+	case isa.OpAddUint32, isa.OpSubtractUint32, isa.OpMultiplyUint32:
+		return inst.A, 1, true
+	case isa.OpDrillTier1:
+		if sub := isa.SubOpcode(inst.A); sub == isa.SubOpAddUint32Constant || sub == isa.SubOpSubtractUint32Constant {
+			return inst.B, instructionWithExtensionWords, true
+		}
+	}
+	return 0, 0, false
+}
+
+// followingTruncation finds a 32-bit truncation of reg right after pc, past the
+// operation's own extension words and any NO_OPERATION words, with no branch landing
+// between them.
 //
 // Takes body ([]isa.Instruction) which is the instruction stream.
 // Takes jumpTargets (map[int]bool) which marks branch destinations.
@@ -131,17 +174,18 @@ func narrow32Tier2Form(inst isa.Instruction) (isa.Instruction, isa.RegisterKind,
 // Takes kind (isa.RegisterKind) which is the destination bank.
 // Takes reg (uint8) which is the destination register.
 //
-// Returns the truncation's PC and whether it was found.
+// Returns int which is the truncation's PC.
+// Returns bool which is true when a matching truncation was found.
 func followingTruncation(body []isa.Instruction, jumpTargets map[int]bool, pc int, kind isa.RegisterKind, reg uint8) (int, bool) {
 	for next := pc + 1; next < len(body); next++ {
 		if jumpTargets[next] {
 			return 0, false
 		}
 		inst := body[next]
-		if isCanonicalNop(inst) {
+		if isCanonicalNoOperation(inst) || inst.Op == isa.OpExtension {
 			continue
 		}
-		return next, inst.Op == isa.OpTruncateNarrow && inst.A == reg && inst.B == narrow32Width && isa.RegisterKind(inst.C) == kind
+		return next, inst.Op == isa.OpTruncateToWidth && inst.A == reg && inst.B == narrow32Width && isa.RegisterKind(inst.C) == kind
 	}
 	return 0, false
 }
@@ -155,21 +199,22 @@ func followingTruncation(body []isa.Instruction, jumpTargets map[int]bool, pc in
 //
 // Returns true when the truncation must stay for those matchers.
 func feedsMaskedReturn(body []isa.Instruction, pc int) bool {
-	next := nextNonNop(body, pc+1)
-	if next < len(body) && isa.InstrIsTier1SubOp(body[next], isa.SubOpMoveUint) {
-		next = nextNonNop(body, next+1)
+	next := nextNonNoOperation(body, pc+1)
+	if next < len(body) && isa.InstrIsTier1SubOp(body[next], isa.SubOpMoveUint64) {
+		next = nextNonNoOperation(body, next+1)
 	}
 	return next < len(body) && program.IsReturnInstruction(body[next])
 }
 
-// nextNonNop returns the first PC at or after pc that is not a NOP, or the body length.
+// nextNonNoOperation returns the first PC at or after pc that is not a NO_OPERATION, or
+// the body length.
 //
 // Takes body ([]isa.Instruction) which is the instruction stream.
 // Takes pc (int) which is the starting PC.
 //
 // Returns the PC.
-func nextNonNop(body []isa.Instruction, pc int) int {
-	for pc < len(body) && isCanonicalNop(body[pc]) {
+func nextNonNoOperation(body []isa.Instruction, pc int) int {
+	for pc < len(body) && isCanonicalNoOperation(body[pc]) {
 		pc++
 	}
 	return pc

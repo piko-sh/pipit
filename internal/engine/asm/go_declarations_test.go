@@ -19,6 +19,7 @@
 package asm
 
 import (
+	"go/ast"
 	"regexp"
 	"strings"
 	"testing"
@@ -90,10 +91,12 @@ func TestGoDeclarationsNameKnownHandlers(t *testing.T) {
 func TestInitSequenceOrdersSubOpTablesAfterTier1(t *testing.T) {
 	tier1Index, subOpIndex := -1, -1
 	for i, step := range initSequence() {
-		switch step.Call {
-		case "installTier1Dispatcher()":
+		function, ok := step.Call.Fun.(*ast.Ident)
+		require.True(t, ok, "init step %d calls a plain function", i)
+		switch function.Name {
+		case "installTier1Dispatcher":
 			tier1Index = i
-		case "initSubOpJumpTables()":
+		case "initSubOpJumpTables":
 			subOpIndex = i
 		default:
 		}

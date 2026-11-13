@@ -46,7 +46,7 @@ what a target does lives in that script's header comment.
 
 | Target                                                          | What it does                                                                                                            |
 |-----------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
-| `make check`                                                    | vet, both lint passes, module verification, the prose check and every generated-file validator                          |
+| `make check`                                                    | vet, lint, test-runner checks, module verification, the prose check and generated-file validation |
 | `make check-all`                                                | `check` plus `test` and `test-golden`                                                                                   |
 | `make test`, `test-short`                                       | the root facade and the CLI; the interpreter suites are integration tests and are not in this lane                     |
 | `make test-integration`                                         | every suite under `tests/integration`: the parity corpus, language, bytecode, golden, apps, debug, session, selfhost   |
@@ -57,6 +57,7 @@ what a target does lives in that script's header comment.
 | `make test-gotoolchain`, `test-gotoolchain-update`              | run the Go toolchain's own `$GOROOT/test` run-mode tests through `bin/pipit` and ratchet the passing set per Go version |
 | `make bench`, `bench-stability`                                 | run the benchmarks, and measure their run-to-run spread                                                                 |
 | `make lint-go`, `lint-scripts`, `lint-vet`, `lint-vet-tags`     | golangci-lint (layering included), shellcheck, and vet on one or every build configuration                              |
+| `make test-accounting`                                          | check that test commands report a failure when any suite fails |
 | `make generate-all` and `generate-*` (each with `-validate`)    | regenerate or validate each generated artefact                                                                          |
 | `make go-mod-tidy`, `go-mod-verify`                             | tidy the go.mod files that can be tidied; checksums and tidiness where it is meaningful                                 |
 

@@ -19,7 +19,7 @@
 package program
 
 const (
-	// MaxSmallConstant is the largest value that fits in isa.SubOpLoadIntConstSmall
+	// MaxSmallConstant is the largest value that fits in isa.SubOpLoadInt64Immediate
 	// (single-byte immediate 0-255).
 	MaxSmallConstant int64 = 255
 

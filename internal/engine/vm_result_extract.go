@@ -59,142 +59,182 @@ func extractScalarRegisterValueAs(arena *RegisterArena, registers *Registers, ki
 	if typemodel.IsNamedScalarPoolType(hint) {
 		hint = basicReflectTypeForKind(hint.Kind())
 	}
-	out := reflect.New(hint).Elem()
-	if !setScalarFromRegister(arena, out, registers, kind, index) {
+	basic, ok := basicScalarFromRegister(arena, registers, kind, index, hint.Kind())
+	if !ok {
 		return nil, false
 	}
-	return out.Interface(), true
+	if hint.PkgPath() == "" && basicReflectTypeForKind(hint.Kind()) == hint {
+		return basic, true
+	}
+	return reflect.ValueOf(basic).Convert(hint).Interface(), true
 }
 
-// setScalarFromRegister stores the register at index of bank kind into out, whose kind
-// decides which bank may hold it; an arena string is materialised on the way out.
+// basicScalarFromRegister reads the register at index of bank kind as the predeclared
+// type of valueKind, boxing it once with a plain conversion, which allocates nothing for
+// small integers, booleans and the zero value.
 //
-// Takes arena (*RegisterArena) which owns arena-resident strings; may be nil.
-// Takes out (reflect.Value) which is a settable value of the exact static type.
+// Takes arena (*RegisterArena) which owns arena-resident strings. It may be nil.
 // Takes registers (*Registers) which is the frame's register file.
 // Takes kind (isa.RegisterKind) which selects the bank.
 // Takes index (int) which is the register slot.
+// Takes valueKind (reflect.Kind) which is the result's kind.
 //
+// Returns any which holds the value at the predeclared type of valueKind.
 // Returns bool which is false when the bank or slot cannot hold the value.
-func setScalarFromRegister(arena *RegisterArena, out reflect.Value, registers *Registers, kind isa.RegisterKind, index int) bool {
-	switch out.Kind() {
+func basicScalarFromRegister(arena *RegisterArena, registers *Registers, kind isa.RegisterKind, index int, valueKind reflect.Kind) (any, bool) {
+	switch valueKind {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return setIntFromRegister(out, registers, kind, index)
+		if kind != isa.RegisterInt64 || index >= len(registers.Ints) {
+			return nil, false
+		}
+		return boxSignedAs(valueKind, registers.Ints[index]), true
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return setUintFromRegister(out, registers, kind, index)
-	case reflect.Float32, reflect.Float64:
-		return setFloatFromRegister(out, registers, kind, index)
-	case reflect.Bool:
-		return setBoolFromRegister(out, registers, kind, index)
-	case reflect.String:
-		return setStringFromRegister(arena, out, registers, kind, index)
-	case reflect.Complex64, reflect.Complex128:
-		return setComplexFromRegister(out, registers, kind, index)
+		if kind != isa.RegisterUint64 || index >= len(registers.Uints) {
+			return nil, false
+		}
+		return boxUnsignedAs(valueKind, registers.Uints[index]), true
+	case reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+		return basicFloatFromRegister(registers, kind, index, valueKind)
 	default:
-		return false
+		return basicNonNumericFromRegister(arena, registers, kind, index, valueKind)
 	}
 }
 
-// setIntFromRegister stores an int-bank register into out.
+// basicFloatFromRegister is basicScalarFromRegister for a float or a complex kind.
 //
-// Takes out (reflect.Value) which is a settable integer.
 // Takes registers (*Registers) which is the frame's register file.
 // Takes kind (isa.RegisterKind) which selects the bank.
 // Takes index (int) which is the register slot.
+// Takes valueKind (reflect.Kind) which is a float or complex kind.
 //
+// Returns any which holds the value at the predeclared type of valueKind.
 // Returns bool which is false when the bank or slot cannot hold the value.
-func setIntFromRegister(out reflect.Value, registers *Registers, kind isa.RegisterKind, index int) bool {
-	if kind != isa.RegisterInt || index >= len(registers.Ints) {
-		return false
+func basicFloatFromRegister(registers *Registers, kind isa.RegisterKind, index int, valueKind reflect.Kind) (any, bool) {
+	switch {
+	case kind == isa.RegisterFloat64 && index < len(registers.Floats) && valueKind == reflect.Float32:
+		return float32(registers.Floats[index]), true
+	case kind == isa.RegisterFloat64 && index < len(registers.Floats) && valueKind == reflect.Float64:
+		return registers.Floats[index], true
+	case kind == isa.RegisterComplex128 && index < len(registers.Complex) && valueKind == reflect.Complex64:
+		return complex64(registers.Complex[index]), true
+	case kind == isa.RegisterComplex128 && index < len(registers.Complex) && valueKind == reflect.Complex128:
+		return registers.Complex[index], true
+	default:
+		return nil, false
 	}
-	out.SetInt(registers.Ints[index])
-	return true
 }
 
-// setUintFromRegister stores a uint-bank register into out.
+// basicNonNumericFromRegister is basicScalarFromRegister for a bool or a string.
 //
-// Takes out (reflect.Value) which is a settable unsigned integer.
+// Takes arena (*RegisterArena) which owns arena-resident strings. It may be nil.
 // Takes registers (*Registers) which is the frame's register file.
 // Takes kind (isa.RegisterKind) which selects the bank.
 // Takes index (int) which is the register slot.
+// Takes valueKind (reflect.Kind) which is the result's kind.
 //
-// Returns bool which is false when the bank or slot cannot hold the value.
-func setUintFromRegister(out reflect.Value, registers *Registers, kind isa.RegisterKind, index int) bool {
-	if kind != isa.RegisterUint || index >= len(registers.Uints) {
-		return false
+// Returns any which holds the value.
+// Returns bool which is false when the bank or slot cannot hold the value, or the kind is
+// no scalar kind.
+func basicNonNumericFromRegister(arena *RegisterArena, registers *Registers, kind isa.RegisterKind, index int, valueKind reflect.Kind) (any, bool) {
+	switch {
+	case valueKind == reflect.Bool && kind == isa.RegisterBool && index < len(registers.Bools):
+		return registers.Bools[index], true
+	case valueKind == reflect.Bool && kind == isa.RegisterInt64 && index < len(registers.Ints):
+		return registers.Ints[index] != 0, true
+	case valueKind == reflect.String && kind == isa.RegisterString && index < len(registers.Strings):
+		return materialiseString(arena, registers.Strings[index]), true
+	default:
+		return nil, false
 	}
-	out.SetUint(registers.Uints[index])
-	return true
 }
 
-// setFloatFromRegister stores a float-bank register into out.
+// boxSignedAs boxes value as the predeclared signed integer type of valueKind. The common
+// int and int64 results stay small enough to inline, so a result that does not escape is
+// not boxed on the heap.
 //
-// Takes out (reflect.Value) which is a settable float.
-// Takes registers (*Registers) which is the frame's register file.
-// Takes kind (isa.RegisterKind) which selects the bank.
-// Takes index (int) which is the register slot.
+// Takes valueKind (reflect.Kind) which is a signed integer kind.
+// Takes value (int64) which is the register's value.
 //
-// Returns bool which is false when the bank or slot cannot hold the value.
-func setFloatFromRegister(out reflect.Value, registers *Registers, kind isa.RegisterKind, index int) bool {
-	if kind != isa.RegisterFloat || index >= len(registers.Floats) {
-		return false
+// Returns any which holds the value at that type.
+func boxSignedAs(valueKind reflect.Kind, value int64) any {
+	switch valueKind {
+	case reflect.Int64:
+		return value
+	case reflect.Int:
+		return int(value)
+	default:
+		return boxNarrowSignedAs(valueKind, value)
 	}
-	out.SetFloat(registers.Floats[index])
-	return true
 }
 
-// setBoolFromRegister stores a bool held in the bool bank, or as an int flag, into out.
+// boxNarrowSignedAs boxes value as int8, int16 or int32, truncated as Go's conversion and
+// reflect's SetInt truncate it. The value is wrapped into the type's range first, so the
+// range-checked conversion that follows never clamps.
 //
-// Takes out (reflect.Value) which is a settable bool.
-// Takes registers (*Registers) which is the frame's register file.
-// Takes kind (isa.RegisterKind) which selects the bank.
-// Takes index (int) which is the register slot.
+// Takes valueKind (reflect.Kind) which is a narrow signed integer kind.
+// Takes value (int64) which is the register's value.
 //
-// Returns bool which is false when the bank or slot cannot hold the value.
-func setBoolFromRegister(out reflect.Value, registers *Registers, kind isa.RegisterKind, index int) bool {
-	if kind == isa.RegisterBool && index < len(registers.Bools) {
-		out.SetBool(registers.Bools[index])
-		return true
+// Returns any which holds the value truncated to that type.
+func boxNarrowSignedAs(valueKind reflect.Kind, value int64) any {
+	switch valueKind {
+	case reflect.Int8:
+		return safeconv.Int64ToInt8(wrapSignedInto(value, math.MinInt8, math.MaxUint8))
+	case reflect.Int16:
+		return safeconv.Int64ToInt16(wrapSignedInto(value, math.MinInt16, math.MaxUint16))
+	default:
+		return safeconv.Int64ToInt32(wrapSignedInto(value, math.MinInt32, math.MaxUint32))
 	}
-	if kind == isa.RegisterInt && index < len(registers.Ints) {
-		out.SetBool(registers.Ints[index] != 0)
-		return true
-	}
-	return false
 }
 
-// setStringFromRegister stores a string-bank register into out, materialising an
-// arena-resident string first.
+// boxUnsignedAs boxes value as the predeclared unsigned integer type of valueKind. The
+// common uint, uint64 and uintptr results stay small enough to inline.
 //
-// Takes arena (*RegisterArena) which owns arena-resident strings; may be nil.
-// Takes out (reflect.Value) which is a settable string.
-// Takes registers (*Registers) which is the frame's register file.
-// Takes kind (isa.RegisterKind) which selects the bank.
-// Takes index (int) which is the register slot.
+// Takes valueKind (reflect.Kind) which is an unsigned integer kind.
+// Takes value (uint64) which is the register's value.
 //
-// Returns bool which is false when the bank or slot cannot hold the value.
-func setStringFromRegister(arena *RegisterArena, out reflect.Value, registers *Registers, kind isa.RegisterKind, index int) bool {
-	if kind != isa.RegisterString || index >= len(registers.Strings) {
-		return false
+// Returns any which holds the value at that type.
+func boxUnsignedAs(valueKind reflect.Kind, value uint64) any {
+	switch valueKind {
+	case reflect.Uint64:
+		return value
+	case reflect.Uintptr:
+		return uintptr(value)
+	case reflect.Uint:
+		return uint(value)
+	default:
+		return boxNarrowUnsignedAs(valueKind, value)
 	}
-	out.SetString(materialiseString(arena, registers.Strings[index]))
-	return true
 }
 
-// setComplexFromRegister stores a complex-bank register into out.
+// boxNarrowUnsignedAs boxes value as uint8, uint16 or uint32, truncated as Go's
+// conversion and reflect's SetUint truncate it. The value is masked to the type's width
+// first, so the range-checked conversion that follows never clamps.
 //
-// Takes out (reflect.Value) which is a settable complex number.
-// Takes registers (*Registers) which is the frame's register file.
-// Takes kind (isa.RegisterKind) which selects the bank.
-// Takes index (int) which is the register slot.
+// Takes valueKind (reflect.Kind) which is a narrow unsigned integer kind.
+// Takes value (uint64) which is the register's value.
 //
-// Returns bool which is false when the bank or slot cannot hold the value.
-func setComplexFromRegister(out reflect.Value, registers *Registers, kind isa.RegisterKind, index int) bool {
-	if kind != isa.RegisterComplex || index >= len(registers.Complex) {
-		return false
+// Returns any which holds the value truncated to that type.
+func boxNarrowUnsignedAs(valueKind reflect.Kind, value uint64) any {
+	switch valueKind {
+	case reflect.Uint8:
+		return safeconv.Uint64ToUint8(value & math.MaxUint8)
+	case reflect.Uint16:
+		return safeconv.Uint64ToUint16(value & math.MaxUint16)
+	default:
+		return safeconv.Uint64ToUint32(value & math.MaxUint32)
 	}
-	out.SetComplex(registers.Complex[index])
-	return true
+}
+
+// wrapSignedInto keeps the low bits of value and sign-extends them, giving the value Go's
+// conversion to a narrower signed integer produces, held in an int64.
+//
+// Takes value (int64) which is the value to wrap.
+// Takes minimum (int64) which is the narrower type's minimum.
+// Takes mask (int64) which is the narrower type's width as a mask of ones.
+//
+// Returns int64 which lies in the narrower type's range.
+func wrapSignedInto(value, minimum, mask int64) int64 {
+	return (value-minimum)&mask + minimum
 }
 
 // extractRegisterValueAs reads a result register and clothes it in hint, the exact static

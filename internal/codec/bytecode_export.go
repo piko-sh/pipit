@@ -19,9 +19,12 @@
 package codec
 
 import (
+	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/symtab"
@@ -35,8 +38,6 @@ import (
 // not describe its constants.
 var errInconsistentGeneralConstants = errors.New("general constants disagree with their descriptors")
 
-// Type aliases expose internal types to the adapter layer for bytecode serialisation
-// without duplicating struct definitions.
 type (
 	// RegisterKindValue is the exported alias for isa.RegisterKind.
 	RegisterKindValue = isa.RegisterKind
@@ -157,6 +158,18 @@ type VarLocationData struct {
 // CallSiteData is a serialisation-safe representation of a function call site's static
 // metadata.
 type CallSiteData struct {
+	// ArgumentStaticTypeNames holds each argument's bare source-level named type, empty for
+	// an unnamed type.
+	ArgumentStaticTypeNames []string
+
+	// ArgumentStaticTypeStrings holds each argument's qualified source-level type string.
+	ArgumentStaticTypeStrings []string
+
+	// LinkedTypeArgs describes the type arguments of a call through a generic function's
+	// linked sibling. The reader rebuilds them with the symbol registry
+	// (ResolveLinkedTypeArgs).
+	LinkedTypeArgs []descriptor.TypeDescriptorData
+
 	// Arguments records where each argument lives in the caller's frame.
 	Arguments []VarLocationData
 
@@ -219,6 +232,32 @@ type TypeNameData struct {
 	TypeDescriptor descriptor.TypeDescriptorData
 }
 
+// ReceiverMethodData holds one receiver method table entry for serialisation.
+type ReceiverMethodData struct {
+	// ReceiverTypeDescriptor describes the receiver's runtime type.
+	ReceiverTypeDescriptor descriptor.TypeDescriptorData
+
+	// Method is the function index of the method's shared body.
+	Method uint16
+
+	// Function is the function index of the body to run.
+	Function uint16
+}
+
+// receiverMethodSortEntry is one receiver method table entry with the strings it sorts
+// by, worked out once per entry.
+type receiverMethodSortEntry struct {
+	// key is the table entry's key.
+	key program.ReceiverMethodKey
+
+	// receiver is the receiver type's printed form.
+	receiver string
+
+	// packagePath is the receiver type's package path, which tells apart two receivers that
+	// print alike.
+	packagePath string
+}
+
 // CompiledFunctionData holds serialisation-safe fields for constructing a
 // CompiledFunction. Used by the unpack adapter to rebuild after deserialisation.
 type CompiledFunctionData struct {
@@ -236,6 +275,10 @@ type CompiledFunctionData struct {
 
 	// TypeNames is the mapping of reflect types to their string names.
 	TypeNames map[reflect.Type]string
+
+	// ReceiverMethods maps a generic type's method and a receiver's runtime type to the body
+	// compiled for that receiver's type arguments.
+	ReceiverMethods map[program.ReceiverMethodKey]uint16
 
 	// Name is the qualified name of the function.
 	Name string
@@ -606,11 +649,40 @@ func TypeTableDescriptors(compiledFunction *program.CompiledFunction) []descript
 	return result
 }
 
-// TypeNames returns the type names map as serialisation-safe data.
+// TypeTableLength returns the number of entries in the type table.
 //
-// Driven by compiledFunction.TypeNames, which is the authoritative set. A name still
-// needs a descriptor to survive the round trip (the reader rebuilds the reflect.Type from
-// the descriptor), so names whose type is absent from TypeTable are omitted.
+// Takes compiledFunction (*CompiledFunction) which is the source function.
+//
+// Returns int which is the entry count.
+func TypeTableLength(compiledFunction *program.CompiledFunction) int {
+	return len(compiledFunction.TypeTable)
+}
+
+// TypeTableDescriptorAt returns one type table descriptor as serialisation-safe data.
+//
+// Takes compiledFunction (*CompiledFunction) which is the source function.
+// Takes index (int) which is a valid type table index.
+//
+// Returns TypeDescriptorData which describes how to reconstruct the entry's type.
+func TypeTableDescriptorAt(compiledFunction *program.CompiledFunction, index int) descriptor.TypeDescriptorData {
+	return ExportTypeDescriptor(program.TypeTableDescriptorAt(compiledFunction, index))
+}
+
+// TypeTableDerivedType reports the type a type table entry's descriptor is derived from.
+//
+// Takes compiledFunction (*CompiledFunction) which is the source function.
+// Takes index (int) which is a valid type table index.
+//
+// Returns reflect.Type which is the entry's type.
+// Returns bool which is false when the entry has a stored descriptor.
+func TypeTableDerivedType(compiledFunction *program.CompiledFunction, index int) (reflect.Type, bool) {
+	if index < len(compiledFunction.TypeTableDescriptors) {
+		return nil, false
+	}
+	return compiledFunction.TypeTable[index], true
+}
+
+// TypeNames returns the type names map as serialisation-safe data.
 //
 // Takes compiledFunction (*CompiledFunction) which is the source function.
 //
@@ -631,7 +703,7 @@ func TypeNames(compiledFunction *program.CompiledFunction) map[reflect.Type]Type
 	for reflectType, name := range compiledFunction.TypeNames {
 		typeDescriptor, ok := descriptorFor[reflectType]
 		if !ok {
-			continue
+			typeDescriptor = descriptor.ReflectTypeToDescriptor(reflectType)
 		}
 		result[reflectType] = TypeNameData{
 			Name:           name,
@@ -684,6 +756,37 @@ func UpvalueDescriptors(compiledFunction *program.CompiledFunction) []UpvalueDes
 // Returns []VarLocationData which describes where each named result is stored.
 func NamedResultLocations(compiledFunction *program.CompiledFunction) []VarLocationData {
 	return exportVarLocations(compiledFunction.NamedResultLocations)
+}
+
+// ReceiverMethods returns the receiver method table as serialisation-safe data, sorted by
+// method, body, receiver type and the receiver's package path so the encoding is
+// deterministic. Each receiver is printed once rather than at every comparison.
+//
+// Takes compiledFunction (*CompiledFunction) which is the source function.
+//
+// Returns []ReceiverMethodData which pairs each entry with its receiver's descriptor.
+func ReceiverMethods(compiledFunction *program.CompiledFunction) []ReceiverMethodData {
+	table := compiledFunction.ReceiverMethods()
+	if len(table) == 0 {
+		return nil
+	}
+	entries := make([]receiverMethodSortEntry, 0, len(table))
+	for key := range table {
+		entries = append(entries, receiverMethodSortEntry{key: key, receiver: key.Receiver.String(), packagePath: key.Receiver.PkgPath()})
+	}
+	slices.SortFunc(entries, func(a, b receiverMethodSortEntry) int {
+		return cmp.Or(cmp.Compare(a.key.Method, b.key.Method), cmp.Compare(table[a.key], table[b.key]),
+			cmp.Compare(a.receiver, b.receiver), cmp.Compare(a.packagePath, b.packagePath))
+	})
+	result := make([]ReceiverMethodData, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, ReceiverMethodData{
+			ReceiverTypeDescriptor: ExportTypeDescriptor(descriptor.ReflectTypeToDescriptor(entry.key.Receiver)),
+			Method:                 entry.key.Method,
+			Function:               table[entry.key],
+		})
+	}
+	return result
 }
 
 // MethodTable returns the method table mapping method names to function indices.
@@ -800,8 +903,26 @@ func NewCompiledFunctionFromData(d *CompiledFunctionData) *program.CompiledFunct
 		StructLayoutTable:    makeStructLayoutTableFromData(d.StructLayoutTable),
 	}
 	function.SetMethodTable(d.MethodTable)
+	function.SetReceiverMethods(d.ReceiverMethods)
+	function.ResultReflectTypes = resultTypesOfSignature(d.SignatureReflectType, len(d.ResultKinds))
 
 	return function
+}
+
+// resultTypesOfSignature returns the exact result types a loaded function's signature
+// records, which typed-bank results are boxed as when they leave the function (a []int
+// result lives in the bank as []int64), or nil when the signature is absent or does not
+// match the result count.
+//
+// Takes signature (reflect.Type) which is the function's signature, or nil.
+// Takes resultCount (int) which is the number of results in the signature.
+//
+// Returns []reflect.Type which holds one type per result, or nil.
+func resultTypesOfSignature(signature reflect.Type, resultCount int) []reflect.Type {
+	if signature == nil || signature.Kind() != reflect.Func || signature.NumOut() != resultCount || resultCount == 0 {
+		return nil
+	}
+	return slices.Collect(signature.Outs())
 }
 
 // makeStructLayoutTableFromData reconstructs the in-memory layout table from its
@@ -878,17 +999,19 @@ func MakeCallSite(data CallSiteData) program.CallSite {
 		returns[i] = MakeVarLocation(returnLocation)
 	}
 	return program.CallSite{
-		Arguments:              arguments,
-		Returns:                returns,
-		FunctionIndex:          data.FunctionIndex,
-		ClosureRegister:        data.ClosureRegister,
-		NativeRegister:         data.NativeRegister,
-		IsClosure:              data.IsClosure,
-		IsNative:               data.IsNative,
-		IsMethod:               data.IsMethod,
-		MethodReceiverRegister: data.MethodReceiverRegister,
-		IsEllipsisSpread:       data.IsEllipsisSpread,
-		BlocksHostGoroutine:    data.BlocksHostGoroutine,
+		Arguments:                 arguments,
+		Returns:                   returns,
+		FunctionIndex:             data.FunctionIndex,
+		ClosureRegister:           data.ClosureRegister,
+		NativeRegister:            data.NativeRegister,
+		IsClosure:                 data.IsClosure,
+		IsNative:                  data.IsNative,
+		IsMethod:                  data.IsMethod,
+		MethodReceiverRegister:    data.MethodReceiverRegister,
+		IsEllipsisSpread:          data.IsEllipsisSpread,
+		BlocksHostGoroutine:       data.BlocksHostGoroutine,
+		ArgumentStaticTypeNames:   data.ArgumentStaticTypeNames,
+		ArgumentStaticTypeStrings: data.ArgumentStaticTypeStrings,
 	}
 }
 
@@ -928,8 +1051,8 @@ func ImportGeneralConstantDescriptor(data GeneralConstantDescriptorData) descrip
 //
 // Returns reflect.Value which is the reconstructed runtime value.
 // Returns error when the symbol or type cannot be found.
-func ReconstructGeneralConstant(constantDescriptor GeneralConstantDescriptorData, registry *symtab.SymbolRegistry) (reflect.Value, error) {
-	return symtab.ReconstructConstant(ImportGeneralConstantDescriptor(constantDescriptor), registry)
+func ReconstructGeneralConstant(ctx context.Context, constantDescriptor GeneralConstantDescriptorData, registry *symtab.SymbolRegistry) (reflect.Value, error) {
+	return symtab.ReconstructConstant(ctx, ImportGeneralConstantDescriptor(constantDescriptor), registry)
 }
 
 // DescriptorToReflectType reconstructs a reflect.Type from serialisation-safe descriptor
@@ -941,8 +1064,8 @@ func ReconstructGeneralConstant(constantDescriptor GeneralConstantDescriptorData
 //
 // Returns reflect.Type which is the reconstructed runtime type.
 // Returns error when a named type cannot be found.
-func DescriptorToReflectType(typeDescriptorData descriptor.TypeDescriptorData, registry *symtab.SymbolRegistry) (reflect.Type, error) {
-	return symtab.ReflectTypeFor(ImportTypeDescriptor(typeDescriptorData), registry)
+func DescriptorToReflectType(ctx context.Context, typeDescriptorData descriptor.TypeDescriptorData, registry *symtab.SymbolRegistry) (reflect.Type, error) {
+	return symtab.ReflectTypeFor(ctx, ImportTypeDescriptor(typeDescriptorData), registry)
 }
 
 // ExportTypeDescriptor converts an internal symtab.TypeDescriptor to serialisation-safe
@@ -974,19 +1097,20 @@ func importTypeDescriptorAtDepth(data descriptor.TypeDescriptorData, depth int, 
 		panic("codec: type descriptor exceeds maximum depth; corrupt or tampered bytecode payload")
 	}
 	return descriptor.TypeDescriptor{
-		PackagePath: data.PackagePath,
-		Name:        data.Name,
-		BasicKind:   data.BasicKind,
-		Length:      int(data.Length),
-		Dir:         int(data.Dir),
-		Kind:        descriptor.TypeDescriptorKind(data.Kind),
-		IsVariadic:  data.IsVariadic,
-		Element:     importTypeDescriptorPointer(data.Elem, depth+1, memo),
-		Key:         importTypeDescriptorPointer(data.Key, depth+1, memo),
-		Value:       importTypeDescriptorPointer(data.Value, depth+1, memo),
-		Fields:      importTypeDescriptorFields(data.Fields, depth+1, memo),
-		Params:      importTypeDescriptorList(data.Params, depth+1, memo),
-		Results:     importTypeDescriptorList(data.Results, depth+1, memo),
+		PackagePath:   data.PackagePath,
+		Name:          data.Name,
+		BasicKind:     data.BasicKind,
+		Length:        int(data.Length),
+		Dir:           int(data.Dir),
+		Kind:          descriptor.TypeDescriptorKind(data.Kind),
+		IsVariadic:    data.IsVariadic,
+		BackReference: data.BackReference,
+		Element:       importTypeDescriptorPointer(data.Elem, depth+1, memo),
+		Key:           importTypeDescriptorPointer(data.Key, depth+1, memo),
+		Value:         importTypeDescriptorPointer(data.Value, depth+1, memo),
+		Fields:        importTypeDescriptorFields(data.Fields, depth+1, memo),
+		Params:        importTypeDescriptorList(data.Params, depth+1, memo),
+		Results:       importTypeDescriptorList(data.Results, depth+1, memo),
 	}
 }
 
@@ -1048,6 +1172,7 @@ func importTypeDescriptorFields(fields []descriptor.TypeDescriptorFieldData, dep
 			Tag:         fields[i].Tag,
 			PackagePath: fields[i].PackagePath,
 			Typ:         *importTypeDescriptorPointer(&fields[i].Typ, depth, memo),
+			Embedded:    fields[i].Embedded,
 		}
 	}
 	return out
@@ -1070,19 +1195,20 @@ func exportTypeDescriptorAtDepth(typeDescriptor descriptor.TypeDescriptor, depth
 		panic("codec: type descriptor exceeds maximum depth; circular reference in type tree")
 	}
 	return descriptor.TypeDescriptorData{
-		PackagePath: typeDescriptor.PackagePath,
-		Name:        typeDescriptor.Name,
-		BasicKind:   typeDescriptor.BasicKind,
-		Length:      safeconv.IntToInt32(typeDescriptor.Length),
-		Dir:         safeconv.IntToInt32(typeDescriptor.Dir),
-		Kind:        uint8(typeDescriptor.Kind),
-		IsVariadic:  typeDescriptor.IsVariadic,
-		Elem:        exportTypeDescriptorPointer(typeDescriptor.Element, depth+1),
-		Key:         exportTypeDescriptorPointer(typeDescriptor.Key, depth+1),
-		Value:       exportTypeDescriptorPointer(typeDescriptor.Value, depth+1),
-		Fields:      exportTypeDescriptorFields(typeDescriptor.Fields, depth+1),
-		Params:      exportTypeDescriptorList(typeDescriptor.Params, depth+1),
-		Results:     exportTypeDescriptorList(typeDescriptor.Results, depth+1),
+		PackagePath:   typeDescriptor.PackagePath,
+		Name:          typeDescriptor.Name,
+		BasicKind:     typeDescriptor.BasicKind,
+		Length:        safeconv.IntToInt32(typeDescriptor.Length),
+		Dir:           safeconv.IntToInt32(typeDescriptor.Dir),
+		Kind:          uint8(typeDescriptor.Kind),
+		IsVariadic:    typeDescriptor.IsVariadic,
+		BackReference: typeDescriptor.BackReference,
+		Elem:          exportTypeDescriptorPointer(typeDescriptor.Element, depth+1),
+		Key:           exportTypeDescriptorPointer(typeDescriptor.Key, depth+1),
+		Value:         exportTypeDescriptorPointer(typeDescriptor.Value, depth+1),
+		Fields:        exportTypeDescriptorFields(typeDescriptor.Fields, depth+1),
+		Params:        exportTypeDescriptorList(typeDescriptor.Params, depth+1),
+		Results:       exportTypeDescriptorList(typeDescriptor.Results, depth+1),
 	}
 }
 
@@ -1133,6 +1259,7 @@ func exportTypeDescriptorFields(fields []descriptor.TypeDescriptorField, depth i
 			Tag:         fields[i].Tag,
 			PackagePath: fields[i].PackagePath,
 			Typ:         exportTypeDescriptorAtDepth(fields[i].Typ, depth),
+			Embedded:    fields[i].Embedded,
 		}
 	}
 	return out
@@ -1161,18 +1288,61 @@ func exportGeneralConstantDescriptor(constantDescriptor descriptor.GeneralConsta
 // Returns CallSiteData which is the serialisation-safe representation.
 func exportCallSite(site *program.CallSite) CallSiteData {
 	return CallSiteData{
-		Arguments:              exportVarLocations(site.Arguments),
-		Returns:                exportVarLocations(site.Returns),
-		FunctionIndex:          site.FunctionIndex,
-		ClosureRegister:        site.ClosureRegister,
-		NativeRegister:         site.NativeRegister,
-		IsClosure:              site.IsClosure,
-		IsNative:               site.IsNative,
-		IsMethod:               site.IsMethod,
-		MethodReceiverRegister: site.MethodReceiverRegister,
-		IsEllipsisSpread:       site.IsEllipsisSpread,
-		BlocksHostGoroutine:    site.BlocksHostGoroutine,
+		Arguments:                 exportVarLocations(site.Arguments),
+		Returns:                   exportVarLocations(site.Returns),
+		FunctionIndex:             site.FunctionIndex,
+		ClosureRegister:           site.ClosureRegister,
+		NativeRegister:            site.NativeRegister,
+		IsClosure:                 site.IsClosure,
+		IsNative:                  site.IsNative,
+		IsMethod:                  site.IsMethod,
+		MethodReceiverRegister:    site.MethodReceiverRegister,
+		IsEllipsisSpread:          site.IsEllipsisSpread,
+		BlocksHostGoroutine:       site.BlocksHostGoroutine,
+		ArgumentStaticTypeNames:   site.ArgumentStaticTypeNames,
+		ArgumentStaticTypeStrings: site.ArgumentStaticTypeStrings,
+		LinkedTypeArgs:            exportLinkedTypeArgs(site.LinkedTypeArgs),
 	}
+}
+
+// exportLinkedTypeArgs describes a linked call's type arguments for serialisation.
+//
+// Takes typeArgs ([]reflect.Type) which are the type arguments.
+//
+// Returns []descriptor.TypeDescriptorData which holds one descriptor per type argument,
+// or nil when there are none.
+func exportLinkedTypeArgs(typeArgs []reflect.Type) []descriptor.TypeDescriptorData {
+	if len(typeArgs) == 0 {
+		return nil
+	}
+	result := make([]descriptor.TypeDescriptorData, len(typeArgs))
+	for i, typeArg := range typeArgs {
+		result[i] = ExportTypeDescriptor(descriptor.ReflectTypeToDescriptor(typeArg))
+	}
+	return result
+}
+
+// ResolveLinkedTypeArgs rebuilds the type arguments of a linked call read from bytecode.
+//
+// Takes data ([]descriptor.TypeDescriptorData) which describes them.
+// Takes registry (*symtab.SymbolRegistry) which resolves host types.
+//
+// Returns []reflect.Type which holds the type arguments, nil when there are none.
+// Returns error when a type cannot be rebuilt, which would leave the sibling without
+// arguments it needs.
+func ResolveLinkedTypeArgs(ctx context.Context, data []descriptor.TypeDescriptorData, registry *symtab.SymbolRegistry) ([]reflect.Type, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	result := make([]reflect.Type, len(data))
+	for i := range data {
+		typeArg, err := DescriptorToReflectType(ctx, data[i], registry)
+		if err != nil {
+			return nil, fmt.Errorf("linked type argument %d: %w", i, err)
+		}
+		result[i] = typeArg
+	}
+	return result, nil
 }
 
 // exportVarLocations converts a slice of internal VarLocation to serialisation-safe data.

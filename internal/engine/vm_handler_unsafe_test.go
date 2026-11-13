@@ -127,7 +127,7 @@ func TestUnsafeStringDataCopiesAwayFromTheStringBacking(t *testing.T) {
 		vm, _, registers := newStandardVM(t)
 		registers.Strings[1] = "pipit"
 
-		require.Equal(t, opContinue, handleUnsafeStringData(vm, nil, registers, op(0, 1, 0)))
+		require.Equal(t, opContinue, handleUnsafeStringDataBody(vm, nil, registers, op(0, 1, 0)))
 
 		pointer := registers.General[0]
 		require.Equal(t, reflect.Pointer, pointer.Kind())
@@ -140,7 +140,7 @@ func TestUnsafeStringDataCopiesAwayFromTheStringBacking(t *testing.T) {
 		vm, _, registers := newStandardVM(t)
 		registers.Strings[1] = ""
 
-		require.Equal(t, opContinue, handleUnsafeStringData(vm, nil, registers, op(0, 1, 0)))
+		require.Equal(t, opContinue, handleUnsafeStringDataBody(vm, nil, registers, op(0, 1, 0)))
 
 		pointer := registers.General[0]
 		require.Equal(t, reflect.Pointer, pointer.Kind())

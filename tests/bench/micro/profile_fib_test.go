@@ -1,5 +1,3 @@
-//go:build bench
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +16,11 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build bench
+
 package bench
 
 import (
-	"context"
 	"os"
 	"runtime"
 	"runtime/pprof"
@@ -66,6 +65,11 @@ const (
 	`
 )
 
+type allocSnapshot struct {
+	totalAlloc uint64
+	mallocs    uint64
+}
+
 func TestProfileFibInnerLoop(t *testing.T) {
 	if testing.Short() {
 		t.Skip("profile run")
@@ -74,12 +78,12 @@ func TestProfileFibInnerLoop(t *testing.T) {
 	symbolRegistry := symtab.NewSymbolRegistry(stdlib.Exports())
 	service.UseSymbols(symbolRegistry)
 
-	compiledFileSet, err := service.CompileFileSet(context.Background(), map[string]string{
+	compiledFileSet, err := service.CompileFileSet(t.Context(), map[string]string{
 		"main.go": fibInnerLoopSource,
 	})
 	require.NoError(t, err, "compile")
 
-	_, err = service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun")
+	_, err = service.ExecuteEntrypoint(t.Context(), compiledFileSet, "EntrypointRun")
 	require.NoError(t, err, "warmup execute")
 
 	cpuFile, err := os.Create("/tmp/pipit_fib.prof")
@@ -91,7 +95,7 @@ func TestProfileFibInnerLoop(t *testing.T) {
 	require.NoError(t, pprof.StartCPUProfile(cpuFile), "start cpu profile")
 
 	for range 5 {
-		_, err := service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun")
+		_, err := service.ExecuteEntrypoint(t.Context(), compiledFileSet, "EntrypointRun")
 		require.NoError(t, err, "execute")
 	}
 
@@ -108,11 +112,6 @@ func TestProfileFibInnerLoop(t *testing.T) {
 	require.NoError(t, pprof.WriteHeapProfile(memFile), "write heap profile")
 
 	t.Logf("wrote /tmp/pipit_fib.prof (CPU) and /tmp/pipit_fib.memprof (heap)")
-}
-
-type allocSnapshot struct {
-	totalAlloc uint64
-	mallocs    uint64
 }
 
 func readAllocs() allocSnapshot {

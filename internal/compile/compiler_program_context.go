@@ -33,6 +33,7 @@ import (
 	"pipit.sh/pipit/internal/compile/passes"
 	"pipit.sh/pipit/internal/compile/patterns"
 	"pipit.sh/pipit/internal/compile/scope"
+	"pipit.sh/pipit/internal/compile/typemap"
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/policy"
@@ -41,14 +42,14 @@ import (
 
 // programContext is the per-compilation state shared by all function compilers.
 type programContext struct {
-	// reflectTypeCache caches reflect.Type synthesis for named types, preventing mutually
-	// recursive types from producing structurally distinct reflect.Types per cycle entry
-	// point.
-	reflectTypeCache map[types.Type]reflect.Type
+	// functionDeclarations maps each top-level function name to its declaration, so the
+	// escape classifier can follow an address passed to a package function into its body.
+	functionDeclarations map[string]*ast.FuncDecl
 
-	// RootFunction is the top-level function where all compiled functions are registered.
-	// For sub-compilers, this points to the parent's root function.
-	RootFunction *program.CompiledFunction
+	// sliceFlows summarises which operands each function, method and function literal stores
+	// (escape.ComputeSliceFlows), computed from sliceFlowDeclarations on first use and again
+	// whenever more are declared.
+	sliceFlows *escape.SliceFlows
 
 	// globals is the runtime global store used for allocating package-level variable slots
 	// at compile time.
@@ -74,33 +75,61 @@ type programContext struct {
 	// variables get a pointer cell (program.GlobalVariableInfo.IsIndirect).
 	addressTakenGlobals map[string]bool
 
-	// functionTable maps function names to indices in rootFunction.functions.
-	functionTable map[string]uint16
+	// reflectTypeCache caches reflect.Type synthesis for named types, preventing mutually
+	// recursive types from producing structurally distinct reflect.Types per cycle entry
+	// point, and remembers the groups of self-referential named composite types.
+	reflectTypeCache *typemap.TypeCache
 
-	// functionDeclarations maps each top-level function name to its declaration, so the
-	// escape classifier can follow an address passed to a package function into its body.
-	// Methods are not recorded.
-	functionDeclarations map[string]*ast.FuncDecl
-
-	// sliceFlows summarises which operands each function, method and function literal stores
-	// (escape.ComputeSliceFlows), computed from sliceFlowDeclarations on first use and again
-	// whenever more are declared.
-	sliceFlows *escape.SliceFlows
-
-	// FileSet is the file set from parsing.
-	FileSet *token.FileSet
-
-	// debugFiles is the file table every function's source map shares when debug info is
-	// enabled. The root compiler allocates it; sub-compilers reuse the pointer.
-	debugFiles *[]string
+	// unaddressableGlobals maps the slot of each package variable past the last slot an
+	// instruction can address to the error naming it.
+	unaddressableGlobals map[int]error
 
 	// keptRegisterSettings retains each body's successful settings for retries of an
 	// enclosing body.
 	keptRegisterSettings map[keptSettingsKey]registerSettings
 
+	// debugFiles is the file table every function's source map shares when debug info is
+	// enabled. The root compiler allocates it; sub-compilers reuse the pointer.
+	debugFiles *[]string
+
+	// namedCompositeTypes remembers typemap.IsNamedCompositeType per named type for the
+	// compile (isNamedCompositeType).
+	namedCompositeTypes map[*types.Named]bool
+
+	// methodTypeOwners maps the runtime type of each non-generic named type that declares
+	// methods to that type, so two such types sharing a runtime type fail the compile
+	// (checkMethodTypeIsDistinct).
+	methodTypeOwners map[reflect.Type]*types.Named
+
+	// RootFunction is the top-level function where all compiled functions are registered.
+	// For sub-compilers, this points to the parent's root function.
+	RootFunction *program.CompiledFunction
+
+	// walkedInstanceTypes records each type noteReceiverInstances has walked, so a type is
+	// searched for generic instantiations once per compile.
+	walkedInstanceTypes map[types.Type]struct{}
+
+	// functionTable maps function names to indices in rootFunction.functions.
+	functionTable map[string]uint16
+
+	// receiverInstanceTypes records the runtime type of each instantiation whose methods
+	// have been entered in the root's receiver method table.
+	receiverInstanceTypes map[reflect.Type]struct{}
+
+	// FileSet is the file set from parsing.
+	FileSet *token.FileSet
+
 	// runtimePackageName qualifies runtime function names: the import path of the package
 	// being compiled, or its package name for main and path-less packages.
 	runtimePackageName string
+
+	// pendingReceiverInstances holds the instantiations of generic types with methods that
+	// compiled code builds runtime types for, waiting for compileReceiverInstances.
+	pendingReceiverInstances []*types.Named
+
+	// sharedLoopVariableFiles are the files whose recorded Go version is before go1.22, so
+	// their loops share one variable across iterations. Worked out on first use.
+	sharedLoopVariableFiles []*ast.File
 
 	// initFunctionIndices holds indices (into rootFunction.functions) of init() functions in
 	// source order, for auto-execution before _eval_.
@@ -114,16 +143,16 @@ type programContext struct {
 	// smallest index first.
 	freeFunctionSlots []uint16
 
-	// sliceFlowsDeclared is the sliceFlowDeclarations count sliceFlows was computed from.
-	sliceFlowsDeclared int
+	// maxLiteralElements is the maximum number of elements in a single composite literal.
+	// Zero means unlimited.
+	maxLiteralElements int
 
 	// maxExpressionDepth caps the recursion depth when compiling nested expressions. Zero
 	// means use defaultMaxExpressionDepth (1024).
 	maxExpressionDepth int
 
-	// maxLiteralElements is the maximum number of elements in a single composite literal.
-	// Zero means unlimited.
-	maxLiteralElements int
+	// sliceFlowsDeclared is the sliceFlowDeclarations count sliceFlows was computed from.
+	sliceFlowsDeclared int
 
 	// features controls which Go language constructs are allowed during compilation.
 	features policy.InterpFeature
@@ -132,50 +161,11 @@ type programContext struct {
 	// inliner and the AST-pattern recognisers all consult it.
 	passOptions passes.Options
 
+	// sharedLoopVariableFilesKnown is true once sharedLoopVariableFiles is worked out.
+	sharedLoopVariableFilesKnown bool
+
 	// debugEnabled is true when debug info generation is active.
 	debugEnabled bool
-}
-
-// newProgramContext builds the shared per-program state from a CompilerConfig.
-//
-// Takes config (CompilerConfig) which provides the inputs.
-//
-// Returns *programContext ready for use by function compilers.
-func newProgramContext(config CompilerConfig) *programContext {
-	functionTable := config.FunctionTable
-	if functionTable == nil {
-		functionTable = make(map[string]uint16)
-	}
-	globalVariables := config.GlobalVariables
-	if globalVariables == nil {
-		globalVariables = make(map[string]program.GlobalVariableInfo)
-	}
-	return new(programContext{
-		FileSet:               config.FileSet,
-		Info:                  config.Info,
-		RootFunction:          config.RootFunction,
-		globals:               config.Globals,
-		symbols:               config.Symbols,
-		globalVariables:       globalVariables,
-		addressTakenGlobals:   nil,
-		functionTable:         functionTable,
-		functionDeclarations:  make(map[string]*ast.FuncDecl),
-		sliceFlowDeclarations: nil,
-		sliceFlows:            nil,
-		sliceFlowsDeclared:    0,
-		initFunctionIndices:   nil,
-		features:              config.Features,
-		passOptions:           config.Passes,
-		patterns:              patternRegistry(config.Patterns),
-		debugEnabled:          config.DebugEnabled,
-		runtimePackageName:    "",
-		maxLiteralElements:    config.MaxLiteralElements,
-		maxExpressionDepth:    config.MaxExpressionDepth,
-		reflectTypeCache:      nil,
-		debugFiles:            nil,
-		freeFunctionSlots:     nil,
-		keptRegisterSettings:  make(map[keptSettingsKey]registerSettings),
-	})
 }
 
 // stmtScratch is the per-statement state a function compiler mutates as it descends into
@@ -209,7 +199,7 @@ type stmtScratch struct {
 }
 
 // loopPostScope tracks the for-loop init-clause variables so the post statement can
-// suppress opWriteSharedCell for them under Go 1.22+ per-iteration scoping, while keeping
+// suppress opSetSharedCell for them under Go 1.22+ per-iteration scoping, while keeping
 // it for outer-scope variables.
 type loopPostScope struct {
 	// initDecls holds the (register, kind) pairs of the variables declared in the init
@@ -264,6 +254,60 @@ type finishFlags struct {
 
 	// classifyEscapes records which allocation sites stay arena-safe.
 	classifyEscapes bool
+
+	// returnAtEnd adds an explicit return to void bodies that can fall through.
+	returnAtEnd bool
+}
+
+// newProgramContext builds the shared per-program state from a CompilerConfig.
+//
+// Takes config (CompilerConfig) which provides the inputs.
+//
+// Returns *programContext ready for use by function compilers.
+func newProgramContext(config CompilerConfig) *programContext {
+	functionTable := config.FunctionTable
+	if functionTable == nil {
+		functionTable = make(map[string]uint16)
+	}
+	globalVariables := config.GlobalVariables
+	if globalVariables == nil {
+		globalVariables = make(map[string]program.GlobalVariableInfo)
+	}
+	return new(programContext{
+		FileSet:                      config.FileSet,
+		Info:                         config.Info,
+		RootFunction:                 config.RootFunction,
+		globals:                      config.Globals,
+		symbols:                      config.Symbols,
+		globalVariables:              globalVariables,
+		addressTakenGlobals:          nil,
+		functionTable:                functionTable,
+		functionDeclarations:         make(map[string]*ast.FuncDecl),
+		sliceFlowDeclarations:        nil,
+		sliceFlows:                   nil,
+		sliceFlowsDeclared:           0,
+		initFunctionIndices:          nil,
+		features:                     config.Features,
+		passOptions:                  config.Passes,
+		patterns:                     patternRegistry(config.Patterns),
+		debugEnabled:                 config.DebugEnabled,
+		runtimePackageName:           "",
+		maxLiteralElements:           config.MaxLiteralElements,
+		maxExpressionDepth:           config.MaxExpressionDepth,
+		reflectTypeCache:             nil,
+		debugFiles:                   nil,
+		freeFunctionSlots:            nil,
+		keptRegisterSettings:         make(map[keptSettingsKey]registerSettings),
+		methodTypeOwners:             nil,
+		namedCompositeTypes:          nil,
+		unaddressableGlobals:         nil,
+		sharedLoopVariableFiles:      nil,
+		sharedLoopVariableFilesKnown: false,
+
+		walkedInstanceTypes:      nil,
+		receiverInstanceTypes:    nil,
+		pendingReceiverInstances: nil,
+	})
 }
 
 // withLoopPost runs fn with loopPost set for the init-declared registers in initDecls,
@@ -329,13 +373,24 @@ func (c *Compiler) prepareBody(spec bodySpec) {
 	c.analyseBody(spec)
 }
 
-// analyseBody runs the shared per-body analyses and records the type information used
-// by emitters.
+// analyseBody runs the shared per-body analyses and records the type information used by
+// emitters.
 //
 // Takes spec (bodySpec) which names the body, its parameters and its result types.
 func (c *Compiler) analyseBody(spec bodySpec) {
-	c.heapPromotedNames = escape.CollectHeapPromotedNames(c.EscapeContext(), spec.body)
-	c.closureCapturedNames = escape.CollectClosureCapturedNamesAll(spec.body)
+	facts, shape := scanBody(c.Info, spec.body)
+	c.heapPromotedNames, c.closureCapturedNames = nil, nil
+	if shape.literals || shape.addresses {
+		c.heapPromotedNames = escape.CollectHeapPromotedNames(c.EscapeContext(), spec.body)
+	}
+	if shape.literals {
+		c.closureCapturedNames = escape.CollectClosureCapturedNamesAll(spec.body)
+	}
+	c.byteViews = readOnlyByteViews{conversions: nil, variables: nil}
+	if shape.conversions {
+		c.byteViews = c.collectReadOnlyByteViews(spec.body)
+	}
+	c.namedRetypes = nil
 	c.Scopes.SetUnspillableNames(c.unspillableNames(spec.body, c.closureCapturedNames))
 	c.flowingSliceNames = escape.CollectFlowingSliceNames(c.Info, spec.signature, spec.body, c.lookupSliceFlow)
 	c.writtenLocalNames = escape.CollectWrittenLocalNames(spec.body)
@@ -343,34 +398,38 @@ func (c *Compiler) analyseBody(spec bodySpec) {
 		c.captureCheckNames = escape.CollectDirectlyAssignedNames(c.Info, spec.body)
 	}
 	c.classifyTypedSliceLocals(spec.body)
-	c.inPlaceAppendAliases = appendlower.CollectAliases(c.Info, appendlower.Body{
-		Receiver:   spec.receiver,
-		Parameters: spec.signature.Params,
-		Entry:      nil,
-		Block:      spec.body,
-		Repeats:    false,
-	})
-	c.hasRecover = bodyContainsRecoverCall(c.Info, spec.body)
+	c.inPlaceAppendAliases = nil
+	if shape.appends {
+		c.inPlaceAppendAliases = appendlower.CollectAliases(c.Info, appendlower.Body{
+			Receiver:   spec.receiver,
+			Parameters: spec.signature.Params,
+			Entry:      nil,
+			Block:      spec.body,
+			Repeats:    false,
+		})
+	}
+	c.hasRecover = facts.recovers
 	c.Function.HasRecover = c.hasRecover
-	c.Function.InspectsCallStack = bodyInspectsCallStack(c.Info, spec.body)
-	c.hasDefers = bodyContainsDefer(spec.body)
+	c.Function.InspectsCallStack = facts.inspectsCallStack
+	c.hasDefers = facts.defers
 	c.currentBody = spec.body
 	c.currentResultTypes = spec.resultTypes
 }
 
-// finishBody runs the epilogue every function kind shares: the tail-call rewrite, the
-// resource check, the register count, defer classification, escape classification, the
-// optimiser and the scope pop. Errors come back unwrapped; the caller adds the function
-// name.
+// finishBody runs the shared function epilogue.
 //
 // Takes compiledFunction (*program.CompiledFunction) which received the body.
 // Takes body (*ast.BlockStmt) which is the compiled body, for escape classification.
 // Takes flags (finishFlags) which selects the optional steps.
 //
-// Returns the first error from the resource check, escape classification or optimiser.
+// Returns error which is the first resource, escape-classification or optimiser error,
+// unwrapped.
 func (c *Compiler) finishBody(ctx context.Context, compiledFunction *program.CompiledFunction, body *ast.BlockStmt, flags finishFlags) error {
 	if flags.tailCall {
 		c.rewriteTrailingCallAsTailCall(compiledFunction)
+	}
+	if flags.returnAtEnd {
+		c.returnAtEndOfVoidBody(compiledFunction, body)
 	}
 	if err := c.resourceError(); err != nil {
 		return err

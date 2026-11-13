@@ -35,12 +35,12 @@ const (
 	maxStrconvBase = 36
 )
 
-// runMakeMethodExpr is the body of the MakeMethodExpr sub-op.
+// handleMakeMethodExpression is the body of the MakeMethodExpr sub-op.
 //
 // Kept as a separate function rather than inlined into the switch because it performs
-// multi-instruction extension-word reading and reflect.MakeFunc closure construction.
-// Operand layout: instruction.b = destination general register, instruction.c = embedded
-// field path length. The function index is in the next extension word; per-field
+// multi-instruction extension-word reading and reflect.MakeFunc closure construction. The
+// operand layout has instruction.b = destination general register, instruction.c =
+// embedded field path length. The function index is in the next extension word. per-field
 // traversal indices follow.
 //
 // Takes vm (*VM) which provides the function table.
@@ -52,7 +52,7 @@ const (
 //
 // Panics when the generated method-expression closure is invoked without a receiver or
 // with an out-of-range embedded field index.
-func runMakeMethodExpr(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMakeMethodExpression(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	fieldCount := int(instruction.C)
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
@@ -77,6 +77,7 @@ func runMakeMethodExpr(vm *VM, frame *CallFrame, registers *Registers, instructi
 	if fieldCount > 0 {
 		signature = eraseReceiverParameter(signature)
 	}
+	vm.exportGuestCode()
 	bound := newBoundMethodVM(vm, callee, nil)
 	boundFieldPath := fieldPath
 	registers.General[instruction.B] = reflect.MakeFunc(signature, func(arguments []reflect.Value) []reflect.Value {

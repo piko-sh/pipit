@@ -21,15 +21,16 @@ package engine
 import "pipit.sh/pipit/internal/isa"
 
 const (
-	// RangeCheckUintFusionNopCount is the trailing-nop count after a fused range-check
-	// pattern's two extension words.
-	RangeCheckUintFusionNopCount = isa.RangeCheckUintFusionNopCount
+	// RangeCheckUintFusionNoOperationCount is the trailing-nop count after a fused
+	// range-check pattern's two extension words.
+	RangeCheckUintFusionNoOperationCount = isa.RangeCheckUintFusionNoOperationCount
 
-	// eqUintConstJumpFalseNopCount is the trailing-nop count for the equality-const fusion.
-	eqUintConstJumpFalseNopCount = isa.EqUintConstJumpFalseNopCount
+	// equalUint64ImmediateThenJumpIfFalseNoOperationCount is the trailing-nop count for the
+	// equality-const fusion.
+	equalUint64ImmediateThenJumpIfFalseNoOperationCount = isa.EqualUint64ImmediateThenJumpIfFalseNoOperationCount
 )
 
-// handleSubOpRangeCheckUintJumpFalse implements the fused range-check super-instruction
+// handleInRangeUint64ThenJumpIfFalse implements the fused range-check super-instruction
 // that collapses `value >= lo && value <= hi` into a single dispatch.
 //
 // Takes frame (*CallFrame) which provides access to the bytecode body and program
@@ -38,12 +39,12 @@ const (
 // Takes instr (instruction) which encodes the value register index in its C field.
 //
 // Returns OpResult indicating the next execution step.
-func handleSubOpRangeCheckUintJumpFalse(_ *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+func handleInRangeUint64ThenJumpIfFalse(_ *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	ext1 := readExtensionWord(frame)
 	frame.ProgramCounter++
 	ext2 := readExtensionWord(frame)
 	frame.ProgramCounter++
-	frame.ProgramCounter += RangeCheckUintFusionNopCount
+	frame.ProgramCounter += RangeCheckUintFusionNoOperationCount
 	value := registers.Uints[instr.C]
 	lo := uint64(ext1.A)
 	hi := uint64(ext1.B)
@@ -54,8 +55,8 @@ func handleSubOpRangeCheckUintJumpFalse(_ *VM, frame *CallFrame, registers *Regi
 	return opContinue
 }
 
-// handleSubOpEqUintConstJumpFalse implements the equality-and-jump fusion that collapses
-// `LoadUintConstSmall + EqUint + JumpIfFalse` into a single dispatch.
+// handleEqualUint64ImmediateThenJumpIfFalse implements the equality-and-jump fusion that
+// collapses `LoadUintConstSmall + EqualUint64 + JumpIfFalse` into a single dispatch.
 //
 // Takes frame (*CallFrame) which provides the bytecode body and program counter.
 // Takes registers (*Registers) which provides the uint register bank.
@@ -63,10 +64,10 @@ func handleSubOpRangeCheckUintJumpFalse(_ *VM, frame *CallFrame, registers *Regi
 // constant in C.
 //
 // Returns OpResult indicating the next execution step.
-func handleSubOpEqUintConstJumpFalse(_ *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+func handleEqualUint64ImmediateThenJumpIfFalse(_ *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	ext1 := readExtensionWord(frame)
 	frame.ProgramCounter++
-	frame.ProgramCounter += eqUintConstJumpFalseNopCount
+	frame.ProgramCounter += equalUint64ImmediateThenJumpIfFalseNoOperationCount
 	if registers.Uints[instr.B] != uint64(instr.C) {
 		offset := isa.JoinOffset(ext1.A, ext1.B)
 		frame.ProgramCounter += int(offset)

@@ -120,6 +120,7 @@ func (vm *VM) syncHasGoroutinesFlag() {
 // private copy.
 func (vm *VM) dropRuntimeCallInfoFills() {
 	vm.PrivateACITables = nil
+	vm.asmClosurePins = nil
 	vm.AsmMethodEntryTables = nil
 	vm.asmCallInfoBasesByFunction = nil
 	vm.asmCallInfoBasesPrivate = false
@@ -245,7 +246,7 @@ func asmCalleeStaticallyEligible(callee *program.CompiledFunction) bool {
 	if callee.IsVariadic || len(callee.UpvalueDescriptors) > 0 {
 		return false
 	}
-	if callee.NumRegisters[isa.RegisterComplex] > 0 {
+	if callee.NumRegisters[isa.RegisterComplex128] > 0 {
 		return false
 	}
 	return !asmCalleeParameterLayoutPerturbed(callee)

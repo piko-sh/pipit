@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxlinux
 
@@ -48,10 +48,10 @@ func runJournalledOwner(t *testing.T, config WorkerConfig, root, mode string) {
 	var owner *FilesystemBroker
 	var err error
 	if mode == "journal-owner-aggregate" || mode == "journal-owner-collision" {
-		parent, err = newGroup(config.CgroupParent, config.Limits)
+		parent, err = newGroup(t.Context(), config.CgroupParent, config.Limits)
 		if parent != nil {
 			defer func() {
-				ctx, cancel := context.WithTimeout(context.Background(), workerCleanupTimeout)
+				ctx, cancel := context.WithTimeout(t.Context(), workerCleanupTimeout)
 				defer cancel()
 				if err := parent.closeGroup(ctx); err != nil {
 					t.Error(err)
@@ -62,16 +62,16 @@ func runJournalledOwner(t *testing.T, config WorkerConfig, root, mode string) {
 			t.Fatal(err)
 		}
 		storage = checkpointedOwnerStorage(t)
-		storage.Binding, err = RecoveryHostBinding(context.Background(), config.Digest)
+		storage.Binding, err = RecoveryHostBinding(t.Context(), config.Digest)
 		if err != nil {
 			t.Fatal(err)
 		}
-		owner, err = OpenCheckpointedFilesystemBrokerInGroup(context.Background(), config, grants, sandboxbroker.FilesystemLimits{}, storage, parent)
+		owner, err = OpenCheckpointedFilesystemBrokerInGroup(t.Context(), config, grants, sandboxbroker.FilesystemLimits{}, storage, parent)
 	} else {
-		owner, err = OpenJournalledFilesystemBroker(context.Background(), config, grants, sandboxbroker.FilesystemLimits{}, directory)
+		owner, err = OpenJournalledFilesystemBroker(t.Context(), config, grants, sandboxbroker.FilesystemLimits{}, directory)
 	}
 	if owner != nil {
-		defer owner.Close()
+		defer owner.Close(t.Context())
 	}
 	if mode == "journal-owner-startup-failure" {
 		if err == nil || owner == nil || !owner.recovery.complete || owner.process.releaseAdmission != nil {
@@ -99,7 +99,7 @@ func runJournalledOwner(t *testing.T, config WorkerConfig, root, mode string) {
 			t.Fatal(err)
 		}
 	}
-	response, err := owner.Execute(context.Background(), []byte(`{"operation":"fs.write","root":"data","path":"file","data":"bmV3"}`))
+	response, err := owner.Execute(t.Context(), []byte(`{"operation":"fs.write","root":"data","path":"file","data":"bmV3"}`))
 	if err != nil || response.Written != 3 {
 		t.Fatal("journalled owner write:", response, err)
 	}
@@ -115,15 +115,15 @@ func runJournalledOwner(t *testing.T, config WorkerConfig, root, mode string) {
 	prepareJournalledOwnerFailure(t, owner, root, staging, mode)
 	if mode == "journal-owner-concurrent" {
 		results := make(chan error, 2)
-		go func() { results <- owner.Close() }()
-		go func() { results <- owner.Close() }()
+		go func() { results <- owner.Close(t.Context()) }()
+		go func() { results <- owner.Close(t.Context()) }()
 		for range 2 {
 			if err := <-results; err != nil {
 				t.Fatal("concurrent close failed:", err)
 			}
 		}
 	} else {
-		err = owner.Close()
+		err = owner.Close(t.Context())
 		if err != nil && owner.recovery.checkpoint != nil {
 			assertCheckpointedOwnerStoresLeased(t, storage)
 		}
@@ -147,7 +147,7 @@ func runJournalledOwner(t *testing.T, config WorkerConfig, root, mode string) {
 	if _, err := owner.recovery.journal.RecoveryRecords(); !errors.Is(err, sandboxbroker.ErrClosed) {
 		t.Fatal("completed owner retained journal descriptors:", err)
 	}
-	if _, err := owner.Execute(context.Background(), nil); !errors.Is(err, sandboxbroker.ErrClosed) {
+	if _, err := owner.Execute(t.Context(), nil); !errors.Is(err, sandboxbroker.ErrClosed) {
 		t.Fatal("closed owner accepted work:", err)
 	}
 	data, err := os.ReadFile(filepath.Join(root, "file"))
@@ -164,7 +164,7 @@ func prepareJournalledOwnerFailure(t *testing.T, owner *FilesystemBroker, root, 
 	t.Helper()
 	switch mode {
 	case "journal-owner-remnant":
-		if err := owner.client.Close(); err != nil {
+		if err := owner.client.Close(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 		target := filepath.Join(root, "file")
@@ -186,7 +186,7 @@ func prepareJournalledOwnerFailure(t *testing.T, owner *FilesystemBroker, root, 
 		}
 		t.Cleanup(func() { _ = unix.Unlinkat(int(owner.process.group.directory.Fd()), "owner-blocker", unix.AT_REMOVEDIR) })
 	case "journal-owner-denied":
-		if _, err := owner.Execute(context.Background(), []byte("{}")); err == nil {
+		if _, err := owner.Execute(t.Context(), []byte("{}")); err == nil {
 			t.Fatal("invalid request succeeded")
 		}
 	}
@@ -199,12 +199,12 @@ func retryJournalledOwner(t *testing.T, owner *FilesystemBroker, staging, mode s
 		if failure == nil || owner.recovery.complete {
 			t.Fatal("cleanup failure discarded ownership:", failure)
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 		next, err := OpenJournalledFilesystemBroker(ctx, config, nil, sandboxbroker.FilesystemLimits{}, "relative")
 		cancel()
 		if next != nil || !errors.Is(err, context.DeadlineExceeded) {
 			if next != nil {
-				_ = next.Close()
+				_ = next.Close(t.Context())
 			}
 			t.Fatal("failed recovery released lifecycle admission:", err)
 		}
@@ -230,7 +230,7 @@ func retryJournalledOwner(t *testing.T, owner *FilesystemBroker, staging, mode s
 				t.Fatal(err)
 			}
 		}
-		if err := owner.Close(); err != nil {
+		if err := owner.Close(t.Context()); err != nil {
 			t.Fatal("recovery retry failed:", err)
 		}
 	case "journal-owner-denied":

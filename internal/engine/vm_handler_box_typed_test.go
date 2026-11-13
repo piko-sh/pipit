@@ -42,7 +42,7 @@ func TestBoxTypedToGeneralProducesTheDeclaredType(t *testing.T) {
 		sourceKind isa.RegisterKind
 	}{
 		{
-			name: "a plain int", targetType: reflect.TypeFor[int](), sourceKind: isa.RegisterInt,
+			name: "a plain int", targetType: reflect.TypeFor[int](), sourceKind: isa.RegisterInt64,
 			seed: func(r *Registers) { r.Ints[0] = 42 },
 			check: func(t *testing.T, b reflect.Value) {
 				t.Helper()
@@ -50,7 +50,7 @@ func TestBoxTypedToGeneralProducesTheDeclaredType(t *testing.T) {
 			},
 		},
 		{
-			name: "a narrow int", targetType: reflect.TypeFor[int8](), sourceKind: isa.RegisterInt,
+			name: "a narrow int", targetType: reflect.TypeFor[int8](), sourceKind: isa.RegisterInt64,
 			seed: func(r *Registers) { r.Ints[0] = -5 },
 			check: func(t *testing.T, b reflect.Value) {
 				t.Helper()
@@ -58,7 +58,7 @@ func TestBoxTypedToGeneralProducesTheDeclaredType(t *testing.T) {
 			},
 		},
 		{
-			name: "a named int keeps its own type", targetType: reflect.TypeFor[boxNamedInt](), sourceKind: isa.RegisterInt,
+			name: "a named int keeps its own type", targetType: reflect.TypeFor[boxNamedInt](), sourceKind: isa.RegisterInt64,
 			seed: func(r *Registers) { r.Ints[0] = 7 },
 			check: func(t *testing.T, b reflect.Value) {
 				t.Helper()
@@ -67,7 +67,7 @@ func TestBoxTypedToGeneralProducesTheDeclaredType(t *testing.T) {
 			},
 		},
 		{
-			name: "an unsigned value", targetType: reflect.TypeFor[uint32](), sourceKind: isa.RegisterUint,
+			name: "an unsigned value", targetType: reflect.TypeFor[uint32](), sourceKind: isa.RegisterUint64,
 			seed: func(r *Registers) { r.Uints[0] = 42 },
 			check: func(t *testing.T, b reflect.Value) {
 				t.Helper()
@@ -75,7 +75,7 @@ func TestBoxTypedToGeneralProducesTheDeclaredType(t *testing.T) {
 			},
 		},
 		{
-			name: "a float", targetType: reflect.TypeFor[float32](), sourceKind: isa.RegisterFloat,
+			name: "a float", targetType: reflect.TypeFor[float32](), sourceKind: isa.RegisterFloat64,
 			seed: func(r *Registers) { r.Floats[0] = 1.5 },
 			check: func(t *testing.T, b reflect.Value) {
 				t.Helper()
@@ -107,7 +107,7 @@ func TestBoxTypedToGeneralProducesTheDeclaredType(t *testing.T) {
 			},
 		},
 		{
-			name: "a complex value", targetType: reflect.TypeFor[complex128](), sourceKind: isa.RegisterComplex,
+			name: "a complex value", targetType: reflect.TypeFor[complex128](), sourceKind: isa.RegisterComplex128,
 			seed: func(r *Registers) { r.Complex[0] = 1 + 2i },
 			check: func(t *testing.T, b reflect.Value) {
 				t.Helper()
@@ -152,7 +152,7 @@ func TestBoxTypedToGeneralFallsBackToTheSourceBank(t *testing.T) {
 		sourceKind isa.RegisterKind
 	}{
 		{
-			name: "an integer source", sourceKind: isa.RegisterInt,
+			name: "an integer source", sourceKind: isa.RegisterInt64,
 			seed: func(r *Registers) { r.Ints[0] = 42 },
 			check: func(t *testing.T, b reflect.Value) {
 				t.Helper()
@@ -160,7 +160,7 @@ func TestBoxTypedToGeneralFallsBackToTheSourceBank(t *testing.T) {
 			},
 		},
 		{
-			name: "a float source", sourceKind: isa.RegisterFloat,
+			name: "a float source", sourceKind: isa.RegisterFloat64,
 			seed: func(r *Registers) { r.Floats[0] = 1.5 },
 			check: func(t *testing.T, b reflect.Value) {
 				t.Helper()
@@ -184,7 +184,7 @@ func TestBoxTypedToGeneralFallsBackToTheSourceBank(t *testing.T) {
 			},
 		},
 		{
-			name: "an unsigned source", sourceKind: isa.RegisterUint,
+			name: "an unsigned source", sourceKind: isa.RegisterUint64,
 			seed: func(r *Registers) { r.Uints[0] = 42 },
 			check: func(t *testing.T, b reflect.Value) {
 				t.Helper()
@@ -226,11 +226,11 @@ func TestBoxTypedSliceAsWrapsTheMatchingBank(t *testing.T) {
 		wantOK     bool
 	}{
 		{
-			name: "an integer slice", targetType: reflect.TypeFor[[]int64](), sourceKind: isa.RegisterSliceInt,
+			name: "an integer slice", targetType: reflect.TypeFor[[]int64](), sourceKind: isa.RegisterSliceInt64,
 			seed: func(r *Registers) { r.SlicesInt[0] = []int64{1, 2} }, wantLen: 2, wantOK: true,
 		},
 		{
-			name: "a float slice", targetType: reflect.TypeFor[[]float64](), sourceKind: isa.RegisterSliceFloat,
+			name: "a float slice", targetType: reflect.TypeFor[[]float64](), sourceKind: isa.RegisterSliceFloat64,
 			seed: func(r *Registers) { r.slicesFloat[0] = []float64{1} }, wantLen: 1, wantOK: true,
 		},
 		{
@@ -242,12 +242,36 @@ func TestBoxTypedSliceAsWrapsTheMatchingBank(t *testing.T) {
 			seed: func(r *Registers) { r.slicesBool[0] = []bool{true} }, wantLen: 1, wantOK: true,
 		},
 		{
-			name: "an unsigned slice", targetType: reflect.TypeFor[[]uint64](), sourceKind: isa.RegisterSliceUint,
+			name: "an unsigned slice", targetType: reflect.TypeFor[[]uint64](), sourceKind: isa.RegisterSliceUint64,
 			seed: func(r *Registers) { r.slicesUint[0] = []uint64{1} }, wantLen: 1, wantOK: true,
 		},
 		{
-			name: "a scalar bank is not a typed slice", targetType: reflect.TypeFor[[]int64](), sourceKind: isa.RegisterInt,
+			name: "a scalar bank is not a typed slice", targetType: reflect.TypeFor[[]int64](), sourceKind: isa.RegisterInt64,
 			seed: func(r *Registers) { r.Ints[0] = 1 }, wantOK: false,
+		},
+		{
+			name: "a float bank declared with wider elements", targetType: reflect.TypeFor[[]complex128](), sourceKind: isa.RegisterSliceFloat64,
+			seed: func(r *Registers) { r.slicesFloat[0] = []float64{1} }, wantOK: false,
+		},
+		{
+			name: "a string bank declared as integers", targetType: reflect.TypeFor[[]int64](), sourceKind: isa.RegisterSliceString,
+			seed: func(r *Registers) { r.slicesString[0] = []string{"a"} }, wantOK: false,
+		},
+		{
+			name: "a boolean bank declared with wider elements", targetType: reflect.TypeFor[[]int64](), sourceKind: isa.RegisterSliceBool,
+			seed: func(r *Registers) { r.slicesBool[0] = []bool{true} }, wantOK: false,
+		},
+		{
+			name: "a byte bank declared as strings", targetType: reflect.TypeFor[[]string](), sourceKind: isa.RegisterSliceByte,
+			seed: func(r *Registers) { r.slicesByte[0] = []byte{1} }, wantOK: false,
+		},
+		{
+			name: "an integer bank declared as floats", targetType: reflect.TypeFor[[]float64](), sourceKind: isa.RegisterSliceInt64,
+			seed: func(r *Registers) { r.SlicesInt[0] = []int64{1} }, wantOK: false,
+		},
+		{
+			name: "a float bank declared with narrower elements", targetType: reflect.TypeFor[[]float32](), sourceKind: isa.RegisterSliceFloat64,
+			seed: func(r *Registers) { r.slicesFloat[0] = []float64{1.5, 2} }, wantLen: 2, wantOK: true,
 		},
 	}
 
@@ -262,7 +286,11 @@ func TestBoxTypedSliceAsWrapsTheMatchingBank(t *testing.T) {
 
 			require.Equal(t, tt.wantOK, ok)
 			if tt.wantOK {
+				require.Equal(t, tt.targetType, boxed.Type())
 				require.Equal(t, tt.wantLen, boxed.Len())
+				if tt.targetType == reflect.TypeFor[[]float32]() {
+					require.Equal(t, []float32{1.5, 2}, boxed.Interface(), "a narrower float is copied, not reinterpreted")
+				}
 			}
 		})
 	}

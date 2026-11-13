@@ -19,6 +19,7 @@
 package engine
 
 import (
+	"errors"
 	"reflect"
 	"sync/atomic"
 	"unsafe"
@@ -38,13 +39,87 @@ const (
 	inlineBinopUintMaxMaskWidth = 64
 )
 
-// handleCallMethodInlineable dispatches isa.SubOpCallMethodInlineable.
+// pushInlineEvalFrame pushes an inner Eval's frame for a nested run, as an ordinary call
+// pushes it, leaving the arguments to the caller.
 //
-// Behaves identically to handleCallMethod at the bytecode level (same operand shape, same
-// call-site lookup) but the runtime path consults a per-CallSite per-receiver-type
-// inlineDescriptor cache and, on a known fused shape (binary-op Eval), runs the body
-// inline in the caller's frame. On a non-inlineable shape it falls back to the standard
-// dispatch via dispatchMethodCallSite.
+// Takes site (*CallSite) which describes the outer call.
+// Takes callee (*CompiledFunction) which is the inner Eval target.
+//
+// Returns *CallFrame which is the pushed frame.
+// Returns int which is its index, the nested run's base.
+func (vm *VM) pushInlineEvalFrame(site *program.CallSite, callee *program.CompiledFunction) (*CallFrame, int) {
+	vm.FramePointer++
+	if vm.FramePointer >= len(vm.CallStack) {
+		vm.growCallStack()
+	}
+	pushedFrameIndex := vm.FramePointer
+	f := &vm.CallStack[pushedFrameIndex]
+	if vm.Arena != nil {
+		vm.Arena.SaveInto(&f.arenaSave)
+		callee.EnsurePrecomputedAllocCounts()
+		vm.Arena.allocRegistersIntoCached(&f.Registers, &callee.PrecomputedAllocCounts, callee.NonZeroBankMask)
+	} else {
+		f.Registers = NewRegisters(callee.NumRegisters)
+	}
+	f.Function = callee
+	f.ProgramCounter = 0
+	f.returnDestination = site.Returns
+	f.deferBase = len(vm.deferStack)
+	if f.simpleDefer != nil {
+		f.simpleDefer.active = false
+	}
+	f.upvalues = nil
+	f.hasGeneralAlloc = callee.NumRegisters[isa.RegisterGeneral] > 0
+	releaseSharedCellMap(f.sharedCells)
+	f.sharedCells = nil
+	vm.recordFrameSnapshot(pushedFrameIndex, nil)
+	return f, pushedFrameIndex
+}
+
+// runInlineEvalFrame runs a pushed inner Eval frame to its return and reads its uint
+// result.
+//
+// Takes pushedFrameIndex (int) which is the frame's index.
+//
+// Returns uint64 which is the inner uint result.
+// Returns OpResult which signals continuation, or what surfaceNestedRunError decided.
+func (vm *VM) runInlineEvalFrame(pushedFrameIndex int) (uint64, OpResult) {
+	previousFlag := vm.inlineDispatchExpectUintResult
+	vm.inlineDispatchExpectUintResult = true
+	_, err := vm.run(pushedFrameIndex)
+	uintResult := vm.inlineDispatchUintResult
+	vm.inlineDispatchExpectUintResult = previousFlag
+	if err != nil {
+		return 0, vm.surfaceNestedRunError(err)
+	}
+	return uintResult, opContinue
+}
+
+// surfaceNestedRunError hands the error a nested run inside a handler returned to the
+// dispatch that called the handler.
+//
+// Takes err (error) which is the nested run's error.
+//
+// Returns OpResult which is the unwinding's result, or opPanicError with vm.evalError
+// set.
+func (vm *VM) surfaceNestedRunError(err error) OpResult {
+	if vm.panicking {
+		if guestPanic, ok := errors.AsType[*uncaughtPanicError](err); ok && guestPanic.prefix == uncaughtPanicPrefix {
+			if unwindErr := vm.unwindPanic(); unwindErr != nil {
+				vm.evalError = unwindErr
+				return opPanicError
+			}
+			if vm.FramePointer < vm.baseFramePointer {
+				return opDone
+			}
+			return opFrameChanged
+		}
+	}
+	vm.evalError = err
+	return opPanicError
+}
+
+// handleCallMethodInlineable dispatches isa.SubOpCallMethodInlineable.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -91,7 +166,9 @@ func handleCallMethodInlineable(vm *VM, frame *CallFrame, registers *Registers, 
 		return runInlineBinopUint(vm, frame, registers, site, descriptor)
 	}
 	if descriptor.Callee.TinyLeafShape != program.TinyLeafNone {
-		return runTinyLeafInline(vm, registers, site, descriptor.Callee)
+		if result, ran := runTinyLeafInline(vm, registers, site, descriptor.Callee); ran {
+			return result
+		}
 	}
 	return pushCompiledFrame(vm, registers, site, descriptor.Callee)
 }
@@ -171,18 +248,19 @@ func classifyAndCacheFromMethodIC(site *program.CallSite, recvType reflect.Type)
 
 // classifyInlineShape walks callee.body for known fused shapes.
 //
-// The binop matcher accepts:
+// The binop matcher accepts the following instructions.
 //
 //	GET_STRUCT_FIELD_GENERAL leftDest recv=0 leftLayoutIdx
 //	CALL_METHOD[_INLINEABLE] + ext     (left.Eval(env))
 //	GET_STRUCT_FIELD_GENERAL rightDest recv=0 rightLayoutIdx
 //	CALL_METHOD[_INLINEABLE] + ext     (right.Eval(env))
 //	{ADD|SUB|MUL}_UINT result leftReg rightReg
-//	(optional) LOAD_UINT_CONST or {isa.OpDrillTier1,isa.SubOpLoadUintConstSmall}
-//	(optional) BIT_AND_UINT result result maskReg
-//	TIER2_RETURN
+//	(optional) LOAD_UINT64_CONSTANT or {isa.OpDrillTier1,isa.SubOpLoadUint64Immediate}
+//	(optional) BIT_AND_UINT64 result result maskReg
+//	RETURN
 //
-// NOPs between ops are skipped. Any unrecognised op aborts the match.
+// no-operation instructions between ops are skipped. Any unrecognised op aborts the
+// match.
 //
 // Takes callee (*CompiledFunction) which is the function whose body is scanned.
 //
@@ -280,7 +358,7 @@ func matchFieldEvalPair(callee *program.CompiledFunction, start int) (layoutIdx,
 // Returns bool which is true when the op matches.
 func matchReceiverFieldLoad(callee *program.CompiledFunction, start int) (uint8, int, bool) {
 	body := callee.Body
-	pos := findNextNonNop(body, start)
+	pos := findNextNonNoOperation(body, start)
 	if pos < 0 || body[pos].Op != isa.OpGetStructFieldGeneral || body[pos].B != 0 {
 		return 0, 0, false
 	}
@@ -302,7 +380,7 @@ func matchReceiverFieldLoad(callee *program.CompiledFunction, start int) (uint8,
 // Returns bool which is true when the call matches.
 func matchInlineableEvalCall(callee *program.CompiledFunction, start int) (uint8, int, bool) {
 	body := callee.Body
-	pos := findNextNonNop(body, start)
+	pos := findNextNonNoOperation(body, start)
 	if pos < 0 || pos+1 >= len(body) {
 		return 0, 0, false
 	}
@@ -321,8 +399,8 @@ func matchInlineableEvalCall(callee *program.CompiledFunction, start int) (uint8
 	return site.Returns[0].Register, pos + 2, true
 }
 
-// matchUintBinop matches the ADD_UINT, SUB_UINT or MUL_UINT that combines the two Eval
-// results in left-then-right order.
+// matchUintBinop matches the ADD_UINT64, SUBTRACT_UINT64 or MULTIPLY_UINT64 that combines
+// the two Eval results in left-then-right order.
 //
 // Takes body ([]isa.Instruction) which is the function body slice.
 // Takes start (int) which is the body index to resume scanning from.
@@ -333,13 +411,13 @@ func matchInlineableEvalCall(callee *program.CompiledFunction, start int) (uint8
 // Returns int which is the body index just after the binop.
 // Returns bool which is true when the binop matches.
 func matchUintBinop(body []isa.Instruction, start int, leftReg, rightReg uint8) (isa.Instruction, int, bool) {
-	pos := findNextNonNop(body, start)
+	pos := findNextNonNoOperation(body, start)
 	if pos < 0 {
 		return isa.Instruction{}, 0, false
 	}
 	instr := body[pos]
 	switch instr.Op {
-	case isa.OpAddUint, isa.OpSubUint, isa.OpMulUint:
+	case isa.OpAddUint64, isa.OpSubtractUint64, isa.OpMultiplyUint64:
 	default:
 		return isa.Instruction{}, 0, false
 	}
@@ -349,7 +427,7 @@ func matchUintBinop(body []isa.Instruction, start int, leftReg, rightReg uint8) 
 	return instr, pos + 1, true
 }
 
-// matchOptionalNarrowMask matches an optional TRUNCATE_NARROW of the binop result and
+// matchOptionalNarrowMask matches an optional TRUNCATE_TO_WIDTH of the binop result and
 // turns its width into a mask.
 //
 // Widths of zero or of inlineBinopUintMaxMaskWidth and above leave the op in place, so
@@ -361,10 +439,11 @@ func matchUintBinop(body []isa.Instruction, start int, leftReg, rightReg uint8) 
 //
 // Returns applies (bool) which is true when a mask was matched.
 // Returns value (uint64) which is the mask, or zero when none applies.
-// Returns next (int) which is the index to resume from, or -1 when only NOPs remain.
+// Returns next (int) which is the index to resume from, or -1 when only no-operation
+// instructions remain.
 func matchOptionalNarrowMask(body []isa.Instruction, start int, resultReg uint8) (applies bool, value uint64, next int) {
-	pos := findNextNonNop(body, start)
-	if pos < 0 || body[pos].Op != isa.OpTruncateNarrow || body[pos].A != resultReg {
+	pos := findNextNonNoOperation(body, start)
+	if pos < 0 || body[pos].Op != isa.OpTruncateToWidth || body[pos].A != resultReg {
 		return false, 0, pos
 	}
 	width := int(body[pos].B)
@@ -374,45 +453,48 @@ func matchOptionalNarrowMask(body []isa.Instruction, start int, resultReg uint8)
 	return true, (uint64(1) << width) - 1, pos + 1
 }
 
-// skipOptionalResultMove skips an optional MOVE_UINT that copies the binop result into
+// skipOptionalResultMove skips an optional MOVE_UINT64 that copies the binop result into
 // the return register.
 //
 // Takes body ([]isa.Instruction) which is the function body slice.
-// Takes start (int) which is the body index to resume from, or -1 when only NOPs remain.
+// Takes start (int) which is the body index to resume from, or -1 when only no-operation
+// instructions remain.
 // Takes resultReg (uint8) which is the register holding the binop result.
 //
-// Returns int which is the index to resume from, or -1 when only NOPs remain.
+// Returns int which is the index to resume from, or -1 when only no-operation
+// instructions remain.
 func skipOptionalResultMove(body []isa.Instruction, start int, resultReg uint8) int {
 	if start < 0 {
 		return start
 	}
-	pos := findNextNonNop(body, start)
+	pos := findNextNonNoOperation(body, start)
 	if pos < 0 {
 		return pos
 	}
 	instr := body[pos]
-	if instr.Op == isa.OpDrillTier1 && isa.SubOpcode(instr.A) == isa.SubOpMoveUint && instr.C == resultReg {
+	if instr.Op == isa.OpDrillTier1 && isa.SubOpcode(instr.A) == isa.SubOpMoveUint64 && instr.C == resultReg {
 		return pos + 1
 	}
 	return pos
 }
 
-// matchTrailingReturn matches the TIER2_RETURN that ends the binop shape, with only NOPs
-// after it.
+// matchTrailingReturn matches the RETURN that ends the binop shape, with only
+// no-operation instructions after it.
 //
 // Takes body ([]isa.Instruction) which is the function body slice.
-// Takes start (int) which is the body index to resume from, or -1 when only NOPs remain.
+// Takes start (int) which is the body index to resume from, or -1 when only no-operation
+// instructions remain.
 //
 // Returns bool which is true when the body ends with the return.
 func matchTrailingReturn(body []isa.Instruction, start int) bool {
 	if start < 0 {
 		return false
 	}
-	pos := findNextNonNop(body, start)
+	pos := findNextNonNoOperation(body, start)
 	if pos < 0 || !isTier2Return(body[pos]) {
 		return false
 	}
-	return !hasNonNopAfter(body, pos+1)
+	return !hasNonNoOperationAfter(body, pos+1)
 }
 
 // runInlineBinopUint executes a classified binop-shape inline.
@@ -469,11 +551,11 @@ func runInlineBinopUint(vm *VM, _ *CallFrame, registers *Registers, site *progra
 
 	var result uint64
 	switch descriptor.BinopOpcode {
-	case isa.OpAddUint:
+	case isa.OpAddUint64:
 		result = leftResult + rightResult
-	case isa.OpSubUint:
+	case isa.OpSubtractUint64:
 		result = leftResult - rightResult
-	case isa.OpMulUint:
+	case isa.OpMultiplyUint64:
 		result = leftResult * rightResult
 	default:
 		return pushCompiledFrame(vm, registers, site, descriptor.Callee)
@@ -550,7 +632,9 @@ func invokeInlineEvalInner(vm *VM, registers *Registers, site *program.CallSite,
 	}
 
 	if callee.TinyLeafShape != program.TinyLeafNone {
-		return invokeInlineEvalTinyLeaf(vm, registers, site, receiver, returnReg, callee)
+		if value, result, ran := invokeInlineEvalTinyLeaf(vm, registers, site, receiver, returnReg, callee); ran {
+			return value, result
+		}
 	}
 	return invokeInlineEvalFullFrame(vm, registers, site, receiver, envValue, returnReg, callee)
 }
@@ -616,15 +700,12 @@ func publishInnerCallee(descriptor *program.InlineDescriptor, recvType reflect.T
 
 // resolveInlineEvalCallee resolves the Eval method for recvType.
 //
-// Looks up the method through rootFunction's methodTable. Used when the outer site's
-// methodICSlots misses on a concrete type (which happens regularly for the inner-Eval
-// targets because the outer site only ever sees the tree root's type). Goes through
-// resolveReceiverTypeName to handle pipit's synthetic _pipitID_*-named struct types.
-//
 // Takes vm (*VM) which carries the rootFunction and functions table.
 // Takes recvType (reflect.Type) which is the receiver type.
 //
-// Returns the resolved callee and ok=true, or nil and false.
+// Returns the resolved callee and ok=true, or false when the method is unknown or no body
+// was compiled for a generic receiver's type arguments, leaving the call to the ordinary
+// dispatch, which reports that.
 func resolveInlineEvalCallee(vm *VM, recvType reflect.Type) (*program.CompiledFunction, bool) {
 	if vm == nil || vm.rootFunction == nil || vm.rootFunction.MethodTable() == nil {
 		return nil, false
@@ -637,7 +718,7 @@ func resolveInlineEvalCallee(vm *VM, recvType reflect.Type) (*program.CompiledFu
 	if !ok || int(functionIndex) >= len(vm.functions) {
 		return nil, false
 	}
-	return vm.functions[functionIndex], true
+	return vm.rootFunction.ReceiverMethodBody(recvType, vm.functions[functionIndex])
 }
 
 // invokeInlineEvalTinyLeaf dispatches an inner Eval to a tinyLeaf, bypassing
@@ -652,15 +733,19 @@ func resolveInlineEvalCallee(vm *VM, recvType reflect.Type) (*program.CompiledFu
 //
 // Returns uint64 which is the inner uint result.
 // Returns OpResult which signals continuation or a panic.
-func invokeInlineEvalTinyLeaf(vm *VM, registers *Registers, site *program.CallSite, receiver reflect.Value, returnReg uint8, callee *program.CompiledFunction) (uint64, OpResult) {
+// Returns bool which is false when the leaf could not run in place, in which case the
+// inner Eval is still to be made in a frame.
+func invokeInlineEvalTinyLeaf(
+	vm *VM, registers *Registers, site *program.CallSite, receiver reflect.Value, returnReg uint8, callee *program.CompiledFunction,
+) (uint64, OpResult, bool) {
 	savedRecv := registers.General[site.Arguments[0].Register]
 	registers.General[site.Arguments[0].Register] = receiver
-	res := runTinyLeafInline(vm, registers, site, callee)
+	result, ran := runTinyLeafInline(vm, registers, site, callee)
 	registers.General[site.Arguments[0].Register] = savedRecv
-	if res != opContinue {
-		return 0, res
+	if !ran || result != opContinue {
+		return 0, result, ran
 	}
-	return registers.Uints[returnReg], opContinue
+	return registers.Uints[returnReg], opContinue, true
 }
 
 // invokeInlineEvalFullFrame dispatches an inner Eval via a full frame, manually placing
@@ -668,62 +753,27 @@ func invokeInlineEvalTinyLeaf(vm *VM, registers *Registers, site *program.CallSi
 // the standard-path fallback.
 //
 // Takes vm (*VM) which drives the synchronous sub-dispatch loop.
-// Takes registers (*Registers) which holds the caller's banks.
 // Takes site (*CallSite) which describes the outer call.
 // Takes receiver (reflect.Value) which is the inner receiver.
 // Takes envValue (reflect.Value) which is the env argument.
 // Takes callee (*CompiledFunction) which is the inner Eval target.
 //
 // Returns uint64 which is the inner uint result.
-// Returns OpResult which signals continuation or a panic.
-func invokeInlineEvalFullFrame(vm *VM, registers *Registers, site *program.CallSite, receiver, envValue reflect.Value, _ uint8, callee *program.CompiledFunction) (uint64, OpResult) {
+// Returns OpResult which signals continuation, a panic resumed in the caller's frames, or
+// a stop (runInlineEvalFrame).
+func invokeInlineEvalFullFrame(vm *VM, _ *Registers, site *program.CallSite, receiver, envValue reflect.Value, _ uint8, callee *program.CompiledFunction) (uint64, OpResult) {
 	if vm.FramePointer >= vm.callDepthLimit() {
 		return 0, opStackOverflow
 	}
 	if !inlineEvalFullFrameCalleeAcceptable(callee) {
-		return invokeInlineEvalViaStandardPath(vm, registers, site, callee)
+		return invokeInlineEvalViaStandardPath(vm, site, receiver, envValue, callee)
 	}
-
-	vm.FramePointer++
-	if vm.FramePointer >= len(vm.CallStack) {
-		vm.growCallStack()
+	frame, pushedFrameIndex := vm.pushInlineEvalFrame(site, callee)
+	frame.Registers.General[0] = receiver
+	if !placeInlineEvalEnv(&frame.Registers, callee.ParameterKinds[1], envValue, vm.Arena) {
+		placeInlineEvalArguments(&frame.Registers, callee, receiver, envValue, vm.Arena)
 	}
-	pushedFrameIndex := vm.FramePointer
-	f := &vm.CallStack[pushedFrameIndex]
-	if vm.Arena != nil {
-		vm.Arena.SaveInto(&f.arenaSave)
-		callee.EnsurePrecomputedAllocCounts()
-		vm.Arena.allocRegistersIntoCached(&f.Registers, callee.PrecomputedAllocCounts, callee.NonZeroBankMask)
-	} else {
-		f.Registers = NewRegisters(callee.NumRegisters)
-	}
-	f.Function = callee
-	f.ProgramCounter = 0
-	f.returnDestination = site.Returns
-	f.deferBase = len(vm.deferStack)
-	if f.simpleDefer != nil {
-		f.simpleDefer.active = false
-	}
-	f.upvalues = nil
-	f.hasGeneralAlloc = callee.NumRegisters[isa.RegisterGeneral] > 0
-	releaseSharedCellMap(f.sharedCells)
-	f.sharedCells = nil
-	vm.recordFrameSnapshot(pushedFrameIndex, nil)
-	f.Registers.General[0] = receiver
-	if !placeInlineEvalEnv(&f.Registers, callee.ParameterKinds[1], envValue, vm.Arena) {
-		vm.FramePointer--
-		return invokeInlineEvalViaStandardPath(vm, registers, site, callee)
-	}
-
-	previousFlag := vm.inlineDispatchExpectUintResult
-	vm.inlineDispatchExpectUintResult = true
-	_, err := vm.run(pushedFrameIndex)
-	uintResult := vm.inlineDispatchUintResult
-	vm.inlineDispatchExpectUintResult = previousFlag
-	if err != nil {
-		return 0, opPanicError
-	}
-	return uintResult, opContinue
+	return vm.runInlineEvalFrame(pushedFrameIndex)
 }
 
 // inlineEvalFullFrameCalleeAcceptable reports whether callee's signature and per-bank
@@ -739,16 +789,16 @@ func inlineEvalFullFrameCalleeAcceptable(callee *program.CompiledFunction) bool 
 		callee.ParameterKinds[0] != isa.RegisterGeneral ||
 		!isInlineEvalEnvKind(callee.ParameterKinds[1]) ||
 		len(callee.ResultKinds) < 1 ||
-		callee.ResultKinds[0] != isa.RegisterUint {
+		callee.ResultKinds[0] != isa.RegisterUint64 {
 		return false
 	}
-	if callee.NumRegisters[isa.RegisterGeneral] < 1 || callee.NumRegisters[isa.RegisterUint] < 1 {
+	if callee.NumRegisters[isa.RegisterGeneral] < 1 || callee.NumRegisters[isa.RegisterUint64] < 1 {
 		return false
 	}
 	if callee.ParameterKinds[1] == isa.RegisterGeneral && callee.NumRegisters[isa.RegisterGeneral] < 2 {
 		return false
 	}
-	if callee.ParameterKinds[1] == isa.RegisterSliceUint && callee.NumRegisters[isa.RegisterSliceUint] < 1 {
+	if callee.ParameterKinds[1] == isa.RegisterSliceUint64 && callee.NumRegisters[isa.RegisterSliceUint64] < 1 {
 		return false
 	}
 	return true
@@ -758,9 +808,9 @@ func inlineEvalFullFrameCalleeAcceptable(callee *program.CompiledFunction) bool 
 //
 // Takes kind (isa.RegisterKind) which is the callee's env parameter kind.
 //
-// Returns true for RegisterGeneral and RegisterSliceUint.
+// Returns true for RegisterGeneral and RegisterSliceUint64.
 func isInlineEvalEnvKind(kind isa.RegisterKind) bool {
-	return kind == isa.RegisterGeneral || kind == isa.RegisterSliceUint
+	return kind == isa.RegisterGeneral || kind == isa.RegisterSliceUint64
 }
 
 // readInlineEnvAsReflect extracts the outer caller's env argument as a reflect.Value
@@ -781,13 +831,13 @@ func readInlineEnvAsReflect(registers *Registers, argLocation program.VarLocatio
 	switch argLocation.Kind {
 	case isa.RegisterGeneral:
 		return registers.General[argLocation.Register], true
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		slice := registers.slicesUint[argLocation.Register]
 		if slice == nil {
 			return reflect.Value{}, true
 		}
 		return reflect.ValueOf(slice), true
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		slice := registers.SlicesInt[argLocation.Register]
 		if slice == nil {
 			return reflect.Value{}, true
@@ -813,7 +863,7 @@ func placeInlineEvalEnv(registers *Registers, envKind isa.RegisterKind, envValue
 	case isa.RegisterGeneral:
 		registers.General[1] = envValue
 		return true
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		if !envValue.IsValid() {
 			registers.slicesUint[0] = nil
 			return true
@@ -829,30 +879,58 @@ func placeInlineEvalEnv(registers *Registers, envKind isa.RegisterKind, envValue
 	}
 }
 
-// invokeInlineEvalViaStandardPath is the safety fallback path.
+// invokeInlineEvalViaStandardPath is the fallback for an inner Eval whose callee
+// invokeInlineEvalFullFrame cannot place by hand, such as one whose env parameter is a
+// []int.
 //
-// Used when the callee's signature does not match the expected (recv, env) -> uint shape,
-// or the callee's pre-allocated bank cannot accommodate the manual placement. Pays the
-// full pushCompiledFrame + copyCallArgs cost but stays correct in unusual edge cases
-// (which the inline-eval classifier should never produce in practice).
+// The callee's frame is pushed as the full-frame path pushes it, and the receiver and env
+// are placed by the callee's parameter kinds (placeInlineEvalArguments). It must not go
+// through pushCompiledFrame with the outer site. That site's arguments are the outer
+// call's own, not the inner receiver, and a nested run based at the caller's frame would
+// go on to run the caller's body.
 //
 // Takes vm (*VM) which drives the synchronous sub-dispatch loop.
-// Takes registers (*Registers) which holds the caller's banks.
 // Takes site (*CallSite) which describes the outer call.
+// Takes receiver (reflect.Value) which is the inner receiver.
+// Takes envValue (reflect.Value) which is the env argument.
 // Takes callee (*CompiledFunction) which is the inner Eval target.
 //
 // Returns uint64 which is the inner uint result.
-// Returns OpResult which signals continuation or a panic.
-func invokeInlineEvalViaStandardPath(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) (uint64, OpResult) {
-	fpBefore := vm.FramePointer
-	res := pushCompiledFrame(vm, registers, site, callee)
-	if res == opPanicError || res == opStackOverflow {
-		return 0, res
+// Returns OpResult which signals continuation, a panic resumed in the caller's frames, or
+// a stop (runInlineEvalFrame).
+func invokeInlineEvalViaStandardPath(vm *VM, site *program.CallSite, receiver, envValue reflect.Value, callee *program.CompiledFunction) (uint64, OpResult) {
+	if len(callee.ParameterKinds) < 2 || callee.ParameterKinds[0] != isa.RegisterGeneral ||
+		len(callee.ResultKinds) < 1 || callee.ResultKinds[0] != isa.RegisterUint64 {
+		vm.evalError = newInvariantError("inline Eval callee %s does not take a receiver and an env and return a uint", callee.Name)
+		return 0, opPanicError
 	}
-	if vm.FramePointer > fpBefore {
-		if _, err := vm.run(fpBefore); err != nil {
-			return 0, opPanicError
-		}
+	frame, pushedFrameIndex := vm.pushInlineEvalFrame(site, callee)
+	placeInlineEvalArguments(&frame.Registers, callee, receiver, envValue, vm.Arena)
+	return vm.runInlineEvalFrame(pushedFrameIndex)
+}
+
+// placeInlineEvalArguments places an inner Eval's receiver and env by the callee's
+// parameter kinds, as a go statement places its arguments (placeReflectArgs). A nil env
+// leaves the zero value in its register.
+//
+// Takes registers (*Registers) which is the callee's frame.
+// Takes callee (*CompiledFunction) which is the inner Eval target.
+// Takes receiver (reflect.Value) which is the inner receiver.
+// Takes envValue (reflect.Value) which is the env argument, invalid when nil.
+// Takes arena (*RegisterArena) which provides any widening backing.
+func placeInlineEvalArguments(registers *Registers, callee *program.CompiledFunction, receiver, envValue reflect.Value, arena *RegisterArena) {
+	if envValue.IsValid() {
+		placeReflectArgs(registers, []reflect.Value{receiver, envValue}, callee.ParameterKinds, arena)
+		return
 	}
-	return registers.Uints[site.Returns[0].Register], opContinue
+	placeReflectArgs(registers, []reflect.Value{receiver}, callee.ParameterKinds, arena)
+	switch callee.ParameterKinds[1] {
+	case isa.RegisterGeneral:
+		registers.General[1] = reflect.Value{}
+	case isa.RegisterSliceInt64:
+		registers.SlicesInt[0] = nil
+	case isa.RegisterSliceUint64:
+		registers.slicesUint[0] = nil
+	default:
+	}
 }

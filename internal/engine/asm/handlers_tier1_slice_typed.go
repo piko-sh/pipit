@@ -60,93 +60,91 @@ const (
 	// (complex128).
 	elementSizeShiftStride16 uint8 = 4
 
-	// goSymbolAppendSliceIntDirect is the Plan-9 ASM symbol of the
-	// asmCallAppendSliceIntDirect Go trampoline (append element to a []int64 typed-bank
-	// slice).
-	goSymbolAppendSliceIntDirect = "·asmCallAppendSliceIntDirect(SB)"
+	// goSymbolAppendSliceInt64 is the Plan-9 ASM symbol of the asmCallAppendSliceInt64 Go
+	// trampoline (append element to a []int64 typed-bank slice).
+	goSymbolAppendSliceInt64 = "·asmCallAppendSliceInt64(SB)"
 
-	// goSymbolAppendSliceFloatDirect is the Plan-9 ASM symbol of the
-	// asmCallAppendSliceFloatDirect Go trampoline.
-	goSymbolAppendSliceFloatDirect = "·asmCallAppendSliceFloatDirect(SB)"
+	// goSymbolAppendSliceFloat64 is the Plan-9 ASM symbol of the asmCallAppendSliceFloat64
+	// Go trampoline.
+	goSymbolAppendSliceFloat64 = "·asmCallAppendSliceFloat64(SB)"
 
-	// goSymbolAppendSliceStringDirect is the Plan-9 ASM symbol of the
-	// asmCallAppendSliceStringDirect Go trampoline.
-	goSymbolAppendSliceStringDirect = "·asmCallAppendSliceStringDirect(SB)"
+	// goSymbolAppendSliceString is the Plan-9 ASM symbol of the asmCallAppendSliceString Go
+	// trampoline.
+	goSymbolAppendSliceString = "·asmCallAppendSliceString(SB)"
 
-	// goSymbolAppendSliceBoolDirect is the Plan-9 ASM symbol of the
-	// asmCallAppendSliceBoolDirect Go trampoline.
-	goSymbolAppendSliceBoolDirect = "·asmCallAppendSliceBoolDirect(SB)"
+	// goSymbolAppendSliceBool is the Plan-9 ASM symbol of the asmCallAppendSliceBool Go
+	// trampoline.
+	goSymbolAppendSliceBool = "·asmCallAppendSliceBool(SB)"
 
-	// goSymbolAppendSliceUintDirect is the Plan-9 ASM symbol of the
-	// asmCallAppendSliceUintDirect Go trampoline.
-	goSymbolAppendSliceUintDirect = "·asmCallAppendSliceUintDirect(SB)"
+	// goSymbolAppendSliceUint64 is the Plan-9 ASM symbol of the asmCallAppendSliceUint64 Go
+	// trampoline.
+	goSymbolAppendSliceUint64 = "·asmCallAppendSliceUint64(SB)"
 
-	// goSymbolAppendSliceByteDirect is the Plan-9 ASM symbol of the
-	// asmCallAppendSliceByteDirect Go trampoline (the element is read from the uint bank and
-	// truncated to a byte).
-	goSymbolAppendSliceByteDirect = "·asmCallAppendSliceByteDirect(SB)"
+	// goSymbolAppendSliceByte is the Plan-9 ASM symbol of the asmCallAppendSliceByte Go
+	// trampoline (the element is read from the uint bank and truncated to a byte).
+	goSymbolAppendSliceByte = "·asmCallAppendSliceByte(SB)"
 )
 
-// handlerSliceGetIntDirect builds the tier-0 ints[A] = slicesInt[B][ints[C]] handler with
-// bounds check.
+// handlerGetSliceInt64Element builds the tier-0 ints[A] = slicesInt[B][ints[C]] handler
+// with bounds check.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSliceGetIntDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerGetSliceInt64Element() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSliceGetIntDirect",
-		Comment:   "handlerSliceGetIntDirect sets ints[A] = slicesInt[B][ints[C]] with bounds check.",
+		Name:      "handlerGetSliceInt64Element",
+		Comment:   "handlerGetSliceInt64Element sets ints[A] = slicesInt[B][ints[C]] with bounds check.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitTypedSliceIntGetDirect(emitter, contextOffsetSlicesIntBase)
+			architecture.EmitGetSliceInt64Element(emitter, contextOffsetSlicesIntBase)
 		},
 	}
 }
 
-// handlerSliceSetIntDirect builds the tier-0 slicesInt[A][ints[B]] = ints[C] handler with
-// bounds check.
+// handlerSetSliceInt64Element builds the tier-0 slicesInt[A][ints[B]] = ints[C] handler
+// with bounds check.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSliceSetIntDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerSetSliceInt64Element() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSliceSetIntDirect",
-		Comment:   "handlerSliceSetIntDirect sets slicesInt[A][ints[B]] = ints[C] with bounds check.",
+		Name:      "handlerSetSliceInt64Element",
+		Comment:   "handlerSetSliceInt64Element sets slicesInt[A][ints[B]] = ints[C] with bounds check.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitTypedSliceIntSetDirect(emitter, contextOffsetSlicesIntBase)
+			architecture.EmitSetSliceInt64Element(emitter, contextOffsetSlicesIntBase)
 		},
 	}
 }
 
-// handlerSliceGetIntDirectUnchecked builds the tier-0 ints[A] = slicesInt[B][ints[C]]
+// handlerGetSliceInt64ElementUnchecked builds the tier-0 ints[A] = slicesInt[B][ints[C]]
 // handler without a bounds check (BCE-proven sites only).
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSliceGetIntDirectUnchecked() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerGetSliceInt64ElementUnchecked() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSliceGetIntDirectUnchecked",
-		Comment:   "handlerSliceGetIntDirectUnchecked sets ints[A] = slicesInt[B][ints[C]] without a bounds check (BCE-proven).",
+		Name:      "handlerGetSliceInt64ElementUnchecked",
+		Comment:   "handlerGetSliceInt64ElementUnchecked sets ints[A] = slicesInt[B][ints[C]] without a bounds check (BCE-proven).",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitTypedSliceIntGetDirectUnchecked(emitter, contextOffsetSlicesIntBase)
+			architecture.EmitGetSliceInt64ElementUnchecked(emitter, contextOffsetSlicesIntBase)
 		},
 	}
 }
 
-// handlerSliceSetIntDirectUnchecked builds the tier-0 slicesInt[A][ints[B]] = ints[C]
+// handlerSetSliceInt64ElementUnchecked builds the tier-0 slicesInt[A][ints[B]] = ints[C]
 // handler without a bounds check (BCE-proven sites only).
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSliceSetIntDirectUnchecked() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerSetSliceInt64ElementUnchecked() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSliceSetIntDirectUnchecked",
-		Comment:   "handlerSliceSetIntDirectUnchecked sets slicesInt[A][ints[B]] = ints[C] without a bounds check (BCE-proven).",
+		Name:      "handlerSetSliceInt64ElementUnchecked",
+		Comment:   "handlerSetSliceInt64ElementUnchecked sets slicesInt[A][ints[B]] = ints[C] without a bounds check (BCE-proven).",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitTypedSliceIntSetDirectUnchecked(emitter, contextOffsetSlicesIntBase)
+			architecture.EmitSetSliceInt64ElementUnchecked(emitter, contextOffsetSlicesIntBase)
 		},
 	}
 }
@@ -157,160 +155,153 @@ func handlerSliceSetIntDirectUnchecked() asmgen.HandlerDefinition[BytecodeArchit
 // Returns []HandlerDefinition[BytecodeArchitecturePort] which is the handler list.
 func tier1SliceTypedHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		handlerSliceGetIntDirect(),
-		handlerSliceSetIntDirect(),
-		handlerSliceGetIntDirectUnchecked(),
-		handlerSliceSetIntDirectUnchecked(),
-		handlerSubOpLenSliceIntDirect(),
-		handlerSubOpLenSliceFloatDirect(),
-		handlerSubOpLenSliceStringDirect(),
-		handlerSubOpLenSliceBoolDirect(),
-		handlerSubOpLenSliceUintDirect(),
-		handlerSubOpLenSliceByteDirect(),
-		handlerSubOpSliceGetFloatDirect(),
-		handlerSubOpSliceSetFloatDirect(),
-		handlerSubOpSliceGetUintDirect(),
-		handlerSubOpSliceSetUintDirect(),
-		handlerSubOpSliceGetBoolDirect(),
-		handlerSubOpSliceSetBoolDirect(),
-		handlerSubOpSliceGetStringDirect(),
-		handlerSubOpSliceGetByteDirect(),
-		handlerSubOpSliceSetByteDirect(),
-		handlerSubOpSliceByteSlice(),
-		handlerSubOpMoveSliceInt(),
-		handlerSubOpMoveSliceFloat(),
-		handlerSubOpMoveSliceString(),
-		handlerSubOpMoveSliceBool(),
-		handlerSubOpMoveSliceUint(),
-		handlerSubOpMoveSliceByte(),
-		handlerSubOpSliceSliceIntDirect(),
-		handlerSubOpSliceSliceFloatDirect(),
-		handlerSubOpSliceSliceStringDirect(),
-		handlerSubOpSliceSliceBoolDirect(),
-		handlerSubOpSliceSliceUintDirect(),
-		handlerSubOpAppendSliceIntDirect(),
-		handlerSubOpAppendSliceFloatDirect(),
-		handlerSubOpAppendSliceStringDirect(),
-		handlerSubOpAppendSliceBoolDirect(),
-		handlerSubOpAppendSliceUintDirect(),
-		handlerSubOpAppendSliceByteDirect(),
+		handlerGetSliceInt64Element(),
+		handlerSetSliceInt64Element(),
+		handlerGetSliceInt64ElementUnchecked(),
+		handlerSetSliceInt64ElementUnchecked(),
+		handlerLengthSliceInt64(),
+		handlerLengthSliceFloat64(),
+		handlerLengthSliceString(),
+		handlerLengthSliceBool(),
+		handlerLengthSliceUint64(),
+		handlerLengthSliceByte(),
+		handlerGetSliceFloat64Element(),
+		handlerSetSliceFloat64Element(),
+		handlerGetSliceUint64Element(),
+		handlerSetSliceUint64Element(),
+		handlerGetSliceBoolElement(),
+		handlerSetSliceBoolElement(),
+		handlerGetSliceStringElement(),
+		handlerGetSliceByteElement(),
+		handlerGetSliceByteElementInt64(),
+		handlerSetSliceByteElement(),
+		handlerSetSliceByteElementRun(),
+		handlerSliceSliceByte(),
+		handlerMoveSliceInt64(),
+		handlerMoveSliceFloat64(),
+		handlerMoveSliceString(),
+		handlerMoveSliceBool(),
+		handlerMoveSliceUint64(),
+		handlerMoveSliceByte(),
+		handlerSliceSliceInt64(),
+		handlerSliceSliceFloat64(),
+		handlerSliceSliceString(),
+		handlerSliceSliceBool(),
+		handlerSliceSliceUint64(),
+		handlerAppendSliceInt64(),
+		handlerAppendSliceFloat64(),
+		handlerAppendSliceString(),
+		handlerAppendSliceBool(),
+		handlerAppendSliceUint64(),
+		handlerAppendSliceByte(),
 	}
 }
 
-// handlerSubOpAppendSliceIntDirect builds the tier-1 handler for
-// isa.SubOpAppendSliceIntDirect: slicesInt[B] = append(slicesInt[C], ints[ext.A]).
-// 3-operand shim wrapping asmCallAppendSliceIntDirect so the grow path can take Go's
-// mallocgc; the trampoline pattern matches the existing make-slice family.
+// handlerAppendSliceInt64 builds the tier-1 handler for isa.SubOpAppendSliceInt64
+// computes slicesInt[B] = append(slicesInt[C], ints[ext.A]). 3-operand shim wrapping
+// asmCallAppendSliceInt64 so the grow path can take Go's mallocgc.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpAppendSliceIntDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return inlineGoThreeOperandShim("handlerSubOpAppendSliceIntDirect",
-		"handlerSubOpAppendSliceIntDirect - 3-operand shim wrapping ·asmCallAppendSliceIntDirect (typed-bank []int64 append).",
-		goSymbolAppendSliceIntDirect)
+func handlerAppendSliceInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return inlineGoThreeOperandShim("handlerAppendSliceInt64",
+		"handlerAppendSliceInt64 - 3-operand shim wrapping ·asmCallAppendSliceInt64 (typed-bank []int64 append).",
+		goSymbolAppendSliceInt64)
 }
 
-// handlerSubOpAppendSliceFloatDirect builds the tier-1 handler for
-// isa.SubOpAppendSliceFloatDirect: slicesFloat[B] = append(slicesFloat[C],
-// floats[ext.A]).
+// handlerAppendSliceFloat64 builds the tier-1 handler for isa.SubOpAppendSliceFloat64
+// computes slicesFloat[B] = append(slicesFloat[C], floats[ext.A]).
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpAppendSliceFloatDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return inlineGoThreeOperandShim("handlerSubOpAppendSliceFloatDirect",
-		"handlerSubOpAppendSliceFloatDirect - 3-operand shim wrapping ·asmCallAppendSliceFloatDirect (typed-bank []float64 append).",
-		goSymbolAppendSliceFloatDirect)
+func handlerAppendSliceFloat64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return inlineGoThreeOperandShim("handlerAppendSliceFloat64",
+		"handlerAppendSliceFloat64 - 3-operand shim wrapping ·asmCallAppendSliceFloat64 (typed-bank []float64 append).",
+		goSymbolAppendSliceFloat64)
 }
 
-// handlerSubOpAppendSliceStringDirect builds the tier-1 handler for
-// isa.SubOpAppendSliceStringDirect: slicesString[B] = append(slicesString[C],
-// strings[ext.A]). The trampoline routes the element through materialiseString so an
-// arena-borrowed header gets a proper backing before being held by the destination slice.
+// handlerAppendSliceString builds the tier-1 handler for isa.SubOpAppendSliceString
+// computes slicesString[B] = append(slicesString[C], strings[ext.A]). The trampoline
+// routes the element through materialiseString so an arena-borrowed header gets a proper
+// backing before being held by the destination slice.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpAppendSliceStringDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return inlineGoThreeOperandShim("handlerSubOpAppendSliceStringDirect",
-		"handlerSubOpAppendSliceStringDirect - 3-operand shim wrapping ·asmCallAppendSliceStringDirect (typed-bank []string append).",
-		goSymbolAppendSliceStringDirect)
+func handlerAppendSliceString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return inlineGoThreeOperandShim("handlerAppendSliceString",
+		"handlerAppendSliceString - 3-operand shim wrapping ·asmCallAppendSliceString (typed-bank []string append).",
+		goSymbolAppendSliceString)
 }
 
-// handlerSubOpAppendSliceBoolDirect builds the tier-1 handler for
-// isa.SubOpAppendSliceBoolDirect: slicesBool[B] = append(slicesBool[C], bools[ext.A]).
+// handlerAppendSliceBool builds the tier-1 handler for isa.SubOpAppendSliceBool computes
+// slicesBool[B] = append(slicesBool[C], bools[ext.A]).
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpAppendSliceBoolDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return inlineGoThreeOperandShim("handlerSubOpAppendSliceBoolDirect",
-		"handlerSubOpAppendSliceBoolDirect - 3-operand shim wrapping ·asmCallAppendSliceBoolDirect (typed-bank []bool append).",
-		goSymbolAppendSliceBoolDirect)
+func handlerAppendSliceBool() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return inlineGoThreeOperandShim("handlerAppendSliceBool",
+		"handlerAppendSliceBool - 3-operand shim wrapping ·asmCallAppendSliceBool (typed-bank []bool append).",
+		goSymbolAppendSliceBool)
 }
 
-// handlerSubOpAppendSliceUintDirect builds the tier-1 handler for
-// isa.SubOpAppendSliceUintDirect: slicesUint[B] = append(slicesUint[C], uints[ext.A]).
+// handlerAppendSliceUint64 builds the tier-1 handler for isa.SubOpAppendSliceUint64
+// computes slicesUint[B] = append(slicesUint[C], uints[ext.A]).
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpAppendSliceUintDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return inlineGoThreeOperandShim("handlerSubOpAppendSliceUintDirect",
-		"handlerSubOpAppendSliceUintDirect - 3-operand shim wrapping ·asmCallAppendSliceUintDirect (typed-bank []uint64 append).",
-		goSymbolAppendSliceUintDirect)
+func handlerAppendSliceUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return inlineGoThreeOperandShim("handlerAppendSliceUint64",
+		"handlerAppendSliceUint64 - 3-operand shim wrapping ·asmCallAppendSliceUint64 (typed-bank []uint64 append).",
+		goSymbolAppendSliceUint64)
 }
 
-// handlerSubOpAppendSliceByteDirect builds the tier-1 handler for
-// isa.SubOpAppendSliceByteDirect: slicesByte[B] = append(slicesByte[C],
-// byte(uints[ext.A])). The element is read from the uint bank and truncated to a byte,
-// matching the convention slicesByte uses for its element ABI.
+// handlerAppendSliceByte builds the tier-1 handler for isa.SubOpAppendSliceByte computes
+// slicesByte[B] = append(slicesByte[C], byte(uints[ext.A])). The element is read from the
+// uint bank and truncated to a byte, matching the convention slicesByte uses for its
+// element ABI.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpAppendSliceByteDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return inlineGoThreeOperandShim("handlerSubOpAppendSliceByteDirect",
-		"handlerSubOpAppendSliceByteDirect - 3-operand shim wrapping ·asmCallAppendSliceByteDirect (typed-bank []byte append).",
-		goSymbolAppendSliceByteDirect)
+func handlerAppendSliceByte() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return inlineGoThreeOperandShim("handlerAppendSliceByte",
+		"handlerAppendSliceByte - 3-operand shim wrapping ·asmCallAppendSliceByte (typed-bank []byte append).",
+		goSymbolAppendSliceByte)
 }
 
-// handlerSubOpMoveSliceInt builds the tier-1 handler for isa.SubOpMoveSliceInt:
-// slicesInt[B] = slicesInt[C]. Pure register-to-register slice-header move; no bounds
-// check.
+// handlerMoveSliceInt64 builds the tier-1 handler for isa.SubOpMoveSliceInt64.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMoveSliceInt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return moveSliceHandler("handlerSubOpMoveSliceInt", contextOffsetSlicesIntBase, "slicesInt")
+func handlerMoveSliceInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return moveSliceHandler("handlerMoveSliceInt64", contextOffsetSlicesIntBase, "slicesInt")
 }
 
-// handlerSubOpMoveSliceFloat builds the tier-1 handler for isa.SubOpMoveSliceFloat:
-// slicesFloat[B] = slicesFloat[C].
+// handlerMoveSliceFloat64 builds the tier-1 handler for isa.SubOpMoveSliceFloat64.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMoveSliceFloat() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return moveSliceHandler("handlerSubOpMoveSliceFloat", contextOffsetSlicesFloatBase, "slicesFloat")
+func handlerMoveSliceFloat64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return moveSliceHandler("handlerMoveSliceFloat64", contextOffsetSlicesFloatBase, "slicesFloat")
 }
 
-// handlerSubOpMoveSliceString builds the tier-1 handler for isa.SubOpMoveSliceString:
-// slicesString[B] = slicesString[C].
+// handlerMoveSliceString builds the tier-1 handler for isa.SubOpMoveSliceString.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMoveSliceString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return moveSliceHandler("handlerSubOpMoveSliceString", contextOffsetSlicesStringBase, "slicesString")
+func handlerMoveSliceString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return moveSliceHandler("handlerMoveSliceString", contextOffsetSlicesStringBase, "slicesString")
 }
 
-// handlerSubOpMoveSliceBool builds the tier-1 handler for isa.SubOpMoveSliceBool:
-// slicesBool[B] = slicesBool[C].
+// handlerMoveSliceBool builds the tier-1 handler for isa.SubOpMoveSliceBool.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMoveSliceBool() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return moveSliceHandler("handlerSubOpMoveSliceBool", contextOffsetSlicesBoolBase, "slicesBool")
+func handlerMoveSliceBool() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return moveSliceHandler("handlerMoveSliceBool", contextOffsetSlicesBoolBase, "slicesBool")
 }
 
-// handlerSubOpMoveSliceUint builds the tier-1 handler for isa.SubOpMoveSliceUint:
-// slicesUint[B] = slicesUint[C].
+// handlerMoveSliceUint64 builds the tier-1 handler for isa.SubOpMoveSliceUint64.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMoveSliceUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return moveSliceHandler("handlerSubOpMoveSliceUint", contextOffsetSlicesUintBase, "slicesUint")
+func handlerMoveSliceUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return moveSliceHandler("handlerMoveSliceUint64", contextOffsetSlicesUintBase, "slicesUint")
 }
 
-// handlerSubOpMoveSliceByte builds the tier-1 handler for isa.SubOpMoveSliceByte:
-// slicesByte[B] = slicesByte[C].
+// handlerMoveSliceByte builds the tier-1 handler for isa.SubOpMoveSliceByte.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMoveSliceByte() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return moveSliceHandler("handlerSubOpMoveSliceByte", contextOffsetSlicesByteBase, "slicesByte")
+func handlerMoveSliceByte() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return moveSliceHandler("handlerMoveSliceByte", contextOffsetSlicesByteBase, "slicesByte")
 }
 
 // moveSliceHandler builds a tier-1 handler that copies a 24-byte typed-slice header
@@ -333,49 +324,45 @@ func moveSliceHandler(name, contextOffset, bankLabel string) asmgen.HandlerDefin
 	})
 }
 
-// handlerSubOpSliceSliceIntDirect builds the tier-1 handler for
-// isa.SubOpSliceSliceIntDirect: slicesInt[A] = slicesInt[C][low:high]. Element stride 8
-// bytes.
+// handlerSliceSliceInt64 builds the tier-1 handler for isa.SubOpSliceSliceInt64 computes
+// slicesInt[A] = slicesInt[C][low:high]. Element stride 8 bytes.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpSliceSliceIntDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return sliceSliceHandler("handlerSubOpSliceSliceIntDirect", contextOffsetSlicesIntBase, "slicesInt", elementSizeShiftStride8)
+func handlerSliceSliceInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return sliceSliceHandler("handlerSliceSliceInt64", contextOffsetSlicesIntBase, "slicesInt", elementSizeShiftStride8)
 }
 
-// handlerSubOpSliceSliceFloatDirect builds the tier-1 handler for
-// isa.SubOpSliceSliceFloatDirect: slicesFloat[A] = slicesFloat[C][low:high]. Element
-// stride 8 bytes.
+// handlerSliceSliceFloat64 builds the tier-1 handler for isa.SubOpSliceSliceFloat64
+// computes slicesFloat[A] = slicesFloat[C][low:high]. Element stride 8 bytes.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpSliceSliceFloatDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return sliceSliceHandler("handlerSubOpSliceSliceFloatDirect", contextOffsetSlicesFloatBase, "slicesFloat", elementSizeShiftStride8)
+func handlerSliceSliceFloat64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return sliceSliceHandler("handlerSliceSliceFloat64", contextOffsetSlicesFloatBase, "slicesFloat", elementSizeShiftStride8)
 }
 
-// handlerSubOpSliceSliceStringDirect builds the tier-1 handler for
-// isa.SubOpSliceSliceStringDirect: slicesString[A] = slicesString[C][low:high]. Element
-// stride 16 bytes (Go string header: data pointer + length).
+// handlerSliceSliceString builds the tier-1 handler for isa.SubOpSliceSliceString
+// computes slicesString[A] = slicesString[C][low:high]. Element stride 16 bytes (Go
+// string header with data pointer and length).
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpSliceSliceStringDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return sliceSliceHandler("handlerSubOpSliceSliceStringDirect", contextOffsetSlicesStringBase, "slicesString", elementSizeShiftStride16)
+func handlerSliceSliceString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return sliceSliceHandler("handlerSliceSliceString", contextOffsetSlicesStringBase, "slicesString", elementSizeShiftStride16)
 }
 
-// handlerSubOpSliceSliceBoolDirect builds the tier-1 handler for
-// isa.SubOpSliceSliceBoolDirect: slicesBool[A] = slicesBool[C][low:high]. Element stride
-// 1 byte.
+// handlerSliceSliceBool builds the tier-1 handler for isa.SubOpSliceSliceBool computes
+// slicesBool[A] = slicesBool[C][low:high]. Element stride 1 byte.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpSliceSliceBoolDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return sliceSliceHandler("handlerSubOpSliceSliceBoolDirect", contextOffsetSlicesBoolBase, "slicesBool", elementSizeShiftStride1)
+func handlerSliceSliceBool() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return sliceSliceHandler("handlerSliceSliceBool", contextOffsetSlicesBoolBase, "slicesBool", elementSizeShiftStride1)
 }
 
-// handlerSubOpSliceSliceUintDirect builds the tier-1 handler for
-// isa.SubOpSliceSliceUintDirect: slicesUint[A] = slicesUint[C][low:high]. Element stride
-// 8 bytes.
+// handlerSliceSliceUint64 builds the tier-1 handler for isa.SubOpSliceSliceUint64
+// computes slicesUint[A] = slicesUint[C][low:high]. Element stride 8 bytes.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpSliceSliceUintDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return sliceSliceHandler("handlerSubOpSliceSliceUintDirect", contextOffsetSlicesUintBase, "slicesUint", elementSizeShiftStride8)
+func handlerSliceSliceUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return sliceSliceHandler("handlerSliceSliceUint64", contextOffsetSlicesUintBase, "slicesUint", elementSizeShiftStride8)
 }
 
 // sliceSliceHandler builds a tier-1 bounds-checked sub-slice handler for a typed-slice
@@ -399,15 +386,15 @@ func sliceSliceHandler(name, contextOffset, bankLabel string, elementSizeShift u
 	})
 }
 
-// handlerSubOpSliceGetFloatDirect builds the handler for the tier-1 sub-op
-// isa.SubOpSliceGetFloatDirect, which sets floats[B] = slicesFloat[C][ints[ext.A]] with
-// bounds checking.
+// handlerGetSliceFloat64Element builds the handler for the tier-1 sub-op
+// isa.SubOpGetSliceFloat64Element, which sets floats[B] = slicesFloat[C][ints[ext.A]]
+// with bounds checking.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpSliceGetFloatDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerGetSliceFloat64Element() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSubOpSliceGetFloatDirect",
-		Comment:   "handlerSubOpSliceGetFloatDirect sets floats[B] = slicesFloat[C][ints[ext.A]] with bounds check.",
+		Name:      "handlerGetSliceFloat64Element",
+		Comment:   "handlerGetSliceFloat64Element sets floats[B] = slicesFloat[C][ints[ext.A]] with bounds check.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
@@ -416,15 +403,15 @@ func handlerSubOpSliceGetFloatDirect() asmgen.HandlerDefinition[BytecodeArchitec
 	}
 }
 
-// handlerSubOpSliceSetFloatDirect builds the handler for the tier-1 sub-op
-// isa.SubOpSliceSetFloatDirect, which sets slicesFloat[B][ints[C]] = floats[ext.A] with
-// bounds checking.
+// handlerSetSliceFloat64Element builds the handler for the tier-1 sub-op
+// isa.SubOpSetSliceFloat64Element, which sets slicesFloat[B][ints[C]] = floats[ext.A]
+// with bounds checking.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpSliceSetFloatDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerSetSliceFloat64Element() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSubOpSliceSetFloatDirect",
-		Comment:   "handlerSubOpSliceSetFloatDirect sets slicesFloat[B][ints[C]] = floats[ext.A] with bounds check.",
+		Name:      "handlerSetSliceFloat64Element",
+		Comment:   "handlerSetSliceFloat64Element sets slicesFloat[B][ints[C]] = floats[ext.A] with bounds check.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
@@ -433,14 +420,14 @@ func handlerSubOpSliceSetFloatDirect() asmgen.HandlerDefinition[BytecodeArchitec
 	}
 }
 
-// handlerSubOpSliceGetUintDirect builds the SubOpSliceGetUintDirect handler, setting
+// handlerGetSliceUint64Element builds the SubOpGetSliceUint64Element handler, setting
 // uints[B] = slicesUint[C][ints[ext.A]] with bounds checking.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpSliceGetUintDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerGetSliceUint64Element() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSubOpSliceGetUintDirect",
-		Comment:   "handlerSubOpSliceGetUintDirect sets uints[B] = slicesUint[C][ints[ext.A]] with bounds check.",
+		Name:      "handlerGetSliceUint64Element",
+		Comment:   "handlerGetSliceUint64Element sets uints[B] = slicesUint[C][ints[ext.A]] with bounds check.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
@@ -449,15 +436,15 @@ func handlerSubOpSliceGetUintDirect() asmgen.HandlerDefinition[BytecodeArchitect
 	}
 }
 
-// handlerSubOpSliceSetUintDirect builds the handler for the tier-1 sub-op
-// isa.SubOpSliceSetUintDirect, which sets slicesUint[B][ints[C]] = uints[ext.A] with
+// handlerSetSliceUint64Element builds the handler for the tier-1 sub-op
+// isa.SubOpSetSliceUint64Element, which sets slicesUint[B][ints[C]] = uints[ext.A] with
 // bounds checking.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpSliceSetUintDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerSetSliceUint64Element() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSubOpSliceSetUintDirect",
-		Comment:   "handlerSubOpSliceSetUintDirect sets slicesUint[B][ints[C]] = uints[ext.A] with bounds check.",
+		Name:      "handlerSetSliceUint64Element",
+		Comment:   "handlerSetSliceUint64Element sets slicesUint[B][ints[C]] = uints[ext.A] with bounds check.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
@@ -466,14 +453,14 @@ func handlerSubOpSliceSetUintDirect() asmgen.HandlerDefinition[BytecodeArchitect
 	}
 }
 
-// handlerSubOpSliceGetBoolDirect builds the SubOpSliceGetBoolDirect handler, setting
+// handlerGetSliceBoolElement builds the SubOpGetSliceBoolElement handler, setting
 // bools[B] = slicesBool[C][ints[ext.A]] with bounds checking.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpSliceGetBoolDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerGetSliceBoolElement() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSubOpSliceGetBoolDirect",
-		Comment:   "handlerSubOpSliceGetBoolDirect sets bools[B] = slicesBool[C][ints[ext.A]] with bounds check.",
+		Name:      "handlerGetSliceBoolElement",
+		Comment:   "handlerGetSliceBoolElement sets bools[B] = slicesBool[C][ints[ext.A]] with bounds check.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
@@ -482,15 +469,15 @@ func handlerSubOpSliceGetBoolDirect() asmgen.HandlerDefinition[BytecodeArchitect
 	}
 }
 
-// handlerSubOpSliceSetBoolDirect builds the handler for the tier-1 sub-op
-// isa.SubOpSliceSetBoolDirect, which sets slicesBool[B][ints[C]] = bools[ext.A] with
+// handlerSetSliceBoolElement builds the handler for the tier-1 sub-op
+// isa.SubOpSetSliceBoolElement, which sets slicesBool[B][ints[C]] = bools[ext.A] with
 // bounds checking.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpSliceSetBoolDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerSetSliceBoolElement() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSubOpSliceSetBoolDirect",
-		Comment:   "handlerSubOpSliceSetBoolDirect sets slicesBool[B][ints[C]] = bools[ext.A] with bounds check.",
+		Name:      "handlerSetSliceBoolElement",
+		Comment:   "handlerSetSliceBoolElement sets slicesBool[B][ints[C]] = bools[ext.A] with bounds check.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
@@ -499,14 +486,14 @@ func handlerSubOpSliceSetBoolDirect() asmgen.HandlerDefinition[BytecodeArchitect
 	}
 }
 
-// handlerSubOpSliceGetStringDirect builds the SubOpSliceGetStringDirect handler, setting
+// handlerGetSliceStringElement builds the SubOpGetSliceStringElement handler, setting
 // strings[B] = slicesString[C][ints[ext.A]] with bounds checking.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpSliceGetStringDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerGetSliceStringElement() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return guardPointerBankWriter(asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSubOpSliceGetStringDirect",
-		Comment:   "handlerSubOpSliceGetStringDirect sets strings[B] = slicesString[C][ints[ext.A]] with bounds check.",
+		Name:      "handlerGetSliceStringElement",
+		Comment:   "handlerGetSliceStringElement sets strings[B] = slicesString[C][ints[ext.A]] with bounds check.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
@@ -515,67 +502,67 @@ func handlerSubOpSliceGetStringDirect() asmgen.HandlerDefinition[BytecodeArchite
 	})
 }
 
-// handlerSubOpLenSliceIntDirect builds the handler for the tier-1 sub-op
-// isa.SubOpLenSliceIntDirect, which sets ints[B] = int64(len(slicesInt[C])) without
+// handlerLengthSliceInt64 builds the handler for the tier-1 sub-op
+// isa.SubOpLengthSliceInt64, which sets ints[B] = int64(len(slicesInt[C])) without
 // crossing the ASM/Go boundary.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpLenSliceIntDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerLengthSliceInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return typedSliceLenHandler(
-		"handlerSubOpLenSliceIntDirect",
-		"handlerSubOpLenSliceIntDirect sets ints[B] = int64(len(slicesInt[C])).",
+		"handlerLengthSliceInt64",
+		"handlerLengthSliceInt64 sets ints[B] = int64(len(slicesInt[C])).",
 		contextOffsetSlicesIntBase,
 	)
 }
 
-// handlerSubOpLenSliceFloatDirect builds the handler for the tier-1 sub-op
-// isa.SubOpLenSliceFloatDirect, which sets ints[B] = int64(len(slicesFloat[C])) without
+// handlerLengthSliceFloat64 builds the handler for the tier-1 sub-op
+// isa.SubOpLengthSliceFloat64, which sets ints[B] = int64(len(slicesFloat[C])) without
 // crossing the ASM/Go boundary.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpLenSliceFloatDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerLengthSliceFloat64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return typedSliceLenHandler(
-		"handlerSubOpLenSliceFloatDirect",
-		"handlerSubOpLenSliceFloatDirect sets ints[B] = int64(len(slicesFloat[C])).",
+		"handlerLengthSliceFloat64",
+		"handlerLengthSliceFloat64 sets ints[B] = int64(len(slicesFloat[C])).",
 		contextOffsetSlicesFloatBase,
 	)
 }
 
-// handlerSubOpLenSliceStringDirect builds the handler for the tier-1 sub-op
-// isa.SubOpLenSliceStringDirect, which sets ints[B] = int64(len(slicesString[C])) without
+// handlerLengthSliceString builds the handler for the tier-1 sub-op
+// isa.SubOpLengthSliceString, which sets ints[B] = int64(len(slicesString[C])) without
 // crossing the ASM/Go boundary.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpLenSliceStringDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerLengthSliceString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return typedSliceLenHandler(
-		"handlerSubOpLenSliceStringDirect",
-		"handlerSubOpLenSliceStringDirect sets ints[B] = int64(len(slicesString[C])).",
+		"handlerLengthSliceString",
+		"handlerLengthSliceString sets ints[B] = int64(len(slicesString[C])).",
 		contextOffsetSlicesStringBase,
 	)
 }
 
-// handlerSubOpLenSliceBoolDirect builds the handler for the tier-1 sub-op
-// isa.SubOpLenSliceBoolDirect, which sets ints[B] = int64(len(slicesBool[C])) without
+// handlerLengthSliceBool builds the handler for the tier-1 sub-op
+// isa.SubOpLengthSliceBool, which sets ints[B] = int64(len(slicesBool[C])) without
 // crossing the ASM/Go boundary.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpLenSliceBoolDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerLengthSliceBool() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return typedSliceLenHandler(
-		"handlerSubOpLenSliceBoolDirect",
-		"handlerSubOpLenSliceBoolDirect sets ints[B] = int64(len(slicesBool[C])).",
+		"handlerLengthSliceBool",
+		"handlerLengthSliceBool sets ints[B] = int64(len(slicesBool[C])).",
 		contextOffsetSlicesBoolBase,
 	)
 }
 
-// handlerSubOpLenSliceUintDirect builds the handler for the tier-1 sub-op
-// isa.SubOpLenSliceUintDirect, which sets ints[B] = int64(len(slicesUint[C])) without
+// handlerLengthSliceUint64 builds the handler for the tier-1 sub-op
+// isa.SubOpLengthSliceUint64, which sets ints[B] = int64(len(slicesUint[C])) without
 // crossing the ASM/Go boundary.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpLenSliceUintDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerLengthSliceUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return typedSliceLenHandler(
-		"handlerSubOpLenSliceUintDirect",
-		"handlerSubOpLenSliceUintDirect sets ints[B] = int64(len(slicesUint[C])).",
+		"handlerLengthSliceUint64",
+		"handlerLengthSliceUint64 sets ints[B] = int64(len(slicesUint[C])).",
 		contextOffsetSlicesUintBase,
 	)
 }
@@ -608,27 +595,27 @@ func typedSliceLenHandler(name, comment, contextOffset string) asmgen.HandlerDef
 	}
 }
 
-// handlerSubOpLenSliceByteDirect builds the handler for the tier-1 sub-op
-// isa.SubOpLenSliceByteDirect, which sets ints[B] = int64(len(slicesByte[C])) without
+// handlerLengthSliceByte builds the handler for the tier-1 sub-op
+// isa.SubOpLengthSliceByte, which sets ints[B] = int64(len(slicesByte[C])) without
 // crossing the ASM/Go boundary.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpLenSliceByteDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerLengthSliceByte() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return typedSliceLenHandler(
-		"handlerSubOpLenSliceByteDirect",
-		"handlerSubOpLenSliceByteDirect sets ints[B] = int64(len(slicesByte[C])).",
+		"handlerLengthSliceByte",
+		"handlerLengthSliceByte sets ints[B] = int64(len(slicesByte[C])).",
 		contextOffsetSlicesByteBase,
 	)
 }
 
-// handlerSubOpSliceGetByteDirect builds the SubOpSliceGetByteDirect handler, setting
+// handlerGetSliceByteElement builds the SubOpGetSliceByteElement handler, setting
 // uints[B] = uint64(slicesByte[C][ints[ext.A]]) with bounds checking.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpSliceGetByteDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerGetSliceByteElement() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSubOpSliceGetByteDirect",
-		Comment:   "handlerSubOpSliceGetByteDirect sets uints[B] = uint64(slicesByte[C][ints[ext.A]]) with bounds check.",
+		Name:      "handlerGetSliceByteElement",
+		Comment:   "handlerGetSliceByteElement sets uints[B] = uint64(slicesByte[C][ints[ext.A]]) with bounds check.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
@@ -637,15 +624,15 @@ func handlerSubOpSliceGetByteDirect() asmgen.HandlerDefinition[BytecodeArchitect
 	}
 }
 
-// handlerSubOpSliceSetByteDirect builds the handler for the tier-1 sub-op
-// isa.SubOpSliceSetByteDirect, which sets slicesByte[B][ints[C]] = byte(uints[ext.A])
-// with bounds checking.
+// handlerSetSliceByteElement builds the handler for the tier-1 sub-op
+// isa.SubOpSetSliceByteElement, which sets slicesByte[B][ints[C]+ext.B] =
+// byte(uints[ext.A]) with bounds checking.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpSliceSetByteDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerSetSliceByteElement() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSubOpSliceSetByteDirect",
-		Comment:   "handlerSubOpSliceSetByteDirect sets slicesByte[B][ints[C]] = byte(uints[ext.A]) with bounds check.",
+		Name:      "handlerSetSliceByteElement",
+		Comment:   "handlerSetSliceByteElement sets slicesByte[B][ints[C]+ext.B] = byte(uints[ext.A]) with bounds check.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
@@ -654,18 +641,53 @@ func handlerSubOpSliceSetByteDirect() asmgen.HandlerDefinition[BytecodeArchitect
 	}
 }
 
-// handlerSubOpSliceByteSlice builds the tier-1 byte-slice handler. Two-index slices run
-// in assembly, while three-index slices use the Go handler.
+// handlerGetSliceByteElementInt64 builds the SubOpGetSliceByteElementInt64 handler,
+// setting ints[B] = int64(slicesByte[C][ints[ext.A]]) with bounds checking.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpSliceByteSlice() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return guardPointerBankWriter(asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSubOpSliceByteSlice",
-		Comment:   "handlerSubOpSliceByteSlice sets slicesByte[A] = slicesByte[C][ints[ext.b]:ints[ext.c]] (no max-bound) inline.",
+func handlerGetSliceByteElementInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+		Name:      "handlerGetSliceByteElementInt64",
+		Comment:   "handlerGetSliceByteElementInt64 sets ints[B] = int64(slicesByte[C][ints[ext.A]]) with bounds check.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitTypedSliceByteSlice(emitter, contextOffsetSlicesByteBase)
+			architecture.EmitTypedSliceByteGetInt(emitter, contextOffsetSlicesByteBase)
+		},
+	}
+}
+
+// handlerSetSliceByteElementRun builds the handler for the tier-1 sub-op
+// isa.SubOpSetSliceByteElementRun, which stores two to four bytes at consecutive
+// positions of a byte slice. A run that would leave the slice is left to the Go handler,
+// which makes the stores that fit before it panics.
+//
+// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
+func handlerSetSliceByteElementRun() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+		Name: "handlerSetSliceByteElementRun",
+		Comment: "handlerSetSliceByteElementRun stores ext1.C bytes at slicesByte[B][ints[C]+ext1.B] onwards, " +
+			"the byte of each store from the uint register its own extension word names in A.",
+		FrameSize: frameSizeZero,
+		Flags:     flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			architecture.EmitTypedSliceByteSetRun(emitter, contextOffsetSlicesByteBase)
+		},
+	}
+}
+
+// handlerSliceSliceByte builds the tier-1 byte-slice handler. Two-index slices run in
+// assembly, while three-index slices use the Go handler.
+//
+// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
+func handlerSliceSliceByte() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return guardPointerBankWriter(asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+		Name:      "handlerSliceSliceByte",
+		Comment:   "handlerSliceSliceByte sets slicesByte[A] = slicesByte[C][ints[ext.b]:ints[ext.c]] (no max-bound) inline.",
+		FrameSize: frameSizeZero,
+		Flags:     flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			architecture.EmitSliceSliceByte(emitter, contextOffsetSlicesByteBase)
 		},
 	})
 }

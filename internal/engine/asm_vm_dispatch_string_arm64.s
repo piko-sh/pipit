@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerStringIndex sets uints[A] = uint64(strings[B][ints[C]]).
-TEXT ·handlerStringIndex(SB), NOSPLIT|NOFRAME, $0
+// handlerGetStringByte sets uints[A] = uint64(strings[B][ints[C]]).
+TEXT ·handlerGetStringByte(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -55,8 +55,8 @@ si_fallback_arm:
 	MOVD R20, CTX_EXIT_PC(R19)
 	RET
 
-// handlerEqString sets ints[A] = (strings[B] == strings[C]) ? 1 : 0.
-TEXT ·handlerEqString(SB), NOSPLIT|NOFRAME, $0
+// handlerEqualString sets ints[A] = (strings[B] == strings[C]) ? 1 : 0.
+TEXT ·handlerEqualString(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -98,8 +98,8 @@ eqs_done_arm:
 	MOVD R11, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerNeString sets ints[A] = (strings[B] != strings[C]) ? 1 : 0.
-TEXT ·handlerNeString(SB), NOSPLIT|NOFRAME, $0
+// handlerNotEqualString sets ints[A] = (strings[B] != strings[C]) ? 1 : 0.
+TEXT ·handlerNotEqualString(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -141,7 +141,7 @@ nes_done_arm:
 	MOVD R11, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSliceString sets strings[A] = strings[B][low:high].
+// handlerSliceString sets strings[A] = strings[B][low:high]. An empty result keeps strings[B]'s data pointer.
 TEXT ·handlerSliceString(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R4
 	MOVBU (R4), R4
@@ -178,8 +178,10 @@ sl_got_high_arm:
 	BLT  sl_bounds_fail_arm
 	CMP  R9, R11
 	BGT  sl_bounds_fail_arm
-	ADD  R10, R8, R8
 	SUB  R10, R11, R11
+	ADD  R10, R8, R12
+	CMP  $0, R11
+	CSEL NE, R12, R8, R8
 	MOVD CTX_STRINGS_BASE(R19), R6
 	LSL  $4, R3, R3
 	ADD  R3, R6, R7
@@ -197,8 +199,8 @@ sl_bounds_fail_arm:
 wb_fallback:
 	B    ·pathBFallback(SB)
 
-// handlerStringIndexToInt sets ints[A] = int64(strings[B][ints[C]]).
-TEXT ·handlerStringIndexToInt(SB), NOSPLIT|NOFRAME, $0
+// handlerGetStringByteAsInt64 sets ints[A] = int64(strings[B][ints[C]]).
+TEXT ·handlerGetStringByteAsInt64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -226,8 +228,8 @@ sit_fallback_arm:
 	MOVD R20, CTX_EXIT_PC(R19)
 	RET
 
-// handlerLenStringLtJumpFalse jumps if ints[A] >= len(strings[B]).
-TEXT ·handlerLenStringLtJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerLessThanLengthStringThenJumpIfFalse jumps if ints[A] >= len(strings[B]).
+TEXT ·handlerLessThanLengthStringThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4

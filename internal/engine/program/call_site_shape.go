@@ -33,7 +33,7 @@ func IsInlineableShape(site *CallSite) bool {
 	if site.Arguments[0].Kind != isa.RegisterGeneral {
 		return false
 	}
-	if site.Returns[0].Kind != isa.RegisterUint {
+	if site.Returns[0].Kind != isa.RegisterUint64 {
 		return false
 	}
 	return true

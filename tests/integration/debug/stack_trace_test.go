@@ -21,7 +21,6 @@
 package debug_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -51,7 +50,7 @@ func run() int {
 	dbg.SetBreakpoint("main.go", 4)
 
 	execution := debugtest.Run(t, dbg, func() (any, error) {
-		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+		return svc.ExecuteEntrypoint(t.Context(), cfs, "run")
 	})
 
 	snap := debugtest.WaitPause(t, dbg)
@@ -91,7 +90,7 @@ func run() int {
 	dbg.SetBreakpoint("main.go", 4)
 
 	execution := debugtest.Run(t, dbg, func() (any, error) {
-		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+		return svc.ExecuteEntrypoint(t.Context(), cfs, "run")
 	})
 
 	snap := debugtest.WaitPause(t, dbg)

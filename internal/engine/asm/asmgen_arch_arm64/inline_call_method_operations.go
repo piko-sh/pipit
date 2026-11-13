@@ -37,7 +37,7 @@ const (
 	labelCIMethodHit = "ci_method_hit"
 )
 
-// EmitCallMethodInline emits the body of handlerCallMethodInline.
+// EmitCallMethodInline emits the body of handlerCallMethod.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 func (o *arm64InlineCallOps) EmitCallMethodInline(e *asmgen.Emitter) {

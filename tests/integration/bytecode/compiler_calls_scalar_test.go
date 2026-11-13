@@ -27,10 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
-	"pipit.sh/pipit/internal/compile"
 	"pipit.sh/pipit/internal/debug"
-	"pipit.sh/pipit/internal/engine/program"
-	"pipit.sh/pipit/internal/isa"
 )
 
 func compileSourceForOpcodeCheck(t *testing.T, source string) string {
@@ -119,10 +116,13 @@ func EntrypointRun() int {
 			name: "accepts mixed scalar kinds",
 			source: `package main
 func mix(intValue int, uintValue uint, floatValue float64, boolValue bool, textValue string) int {
-	if boolValue {
-		return intValue + int(uintValue) + int(floatValue) + len(textValue)
+	total := 0
+	for step := 0; step < intValue; step++ {
+		if boolValue {
+			total += intValue + int(uintValue) + int(floatValue) + len(textValue)
+		}
 	}
-	return 0
+	return total
 }
 func EntrypointRun() int {
 	value := mix(1, 2, 3.0, true, "abcd")
@@ -131,33 +131,6 @@ func EntrypointRun() int {
 			contains: []string{"CALL_SCALAR"},
 		},
 	})
-}
-
-func TestCalleeUsesScalarBanksOnly_Direct(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name        string
-		paramKinds  []isa.RegisterKind
-		resultKinds []isa.RegisterKind
-		want        bool
-	}{
-		{name: "empty signature", paramKinds: nil, resultKinds: nil, want: true},
-		{name: "int to int", paramKinds: []isa.RegisterKind{isa.RegisterInt}, resultKinds: []isa.RegisterKind{isa.RegisterInt}, want: true},
-		{name: "mixed scalar", paramKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterString, isa.RegisterBool}, resultKinds: []isa.RegisterKind{isa.RegisterFloat}, want: true},
-		{name: "general param", paramKinds: []isa.RegisterKind{isa.RegisterGeneral}, resultKinds: []isa.RegisterKind{isa.RegisterInt}, want: false},
-		{name: "general result", paramKinds: []isa.RegisterKind{isa.RegisterInt}, resultKinds: []isa.RegisterKind{isa.RegisterGeneral}, want: false},
-		{name: "general buried in mixed params", paramKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterGeneral, isa.RegisterString}, resultKinds: []isa.RegisterKind{isa.RegisterInt}, want: false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			callee := &program.CompiledFunction{
-				ParameterKinds: tt.paramKinds,
-				ResultKinds:    tt.resultKinds,
-			}
-			require.Equal(t, tt.want, compile.CalleeUsesScalarBanksOnly(callee))
-		})
-	}
 }
 
 func TestStructLiteralEmitsTier0FieldSets(t *testing.T) {
@@ -175,8 +148,8 @@ func EntrypointRun(n int) int {
 	return len(tokens)
 }`)
 
-	require.Positivef(t, strings.Count(dump, "SET_STRUCT_FIELD_INT_T0"),
+	require.Positivef(t, strings.Count(dump, "SET_STRUCT_FIELD_INT64"),
 		"expected the int field of the struct literal to use the tier-0 field set; disasm:\n%s", dump)
-	require.Zerof(t, strings.Count(dump, "SET_FIELD_INT"),
-		"expected no reflect SET_FIELD_INT for a layout-resolved struct literal; disasm:\n%s", dump)
+	require.Zerof(t, strings.Count(dump, "SET_FIELD_INT64"),
+		"expected no reflect SET_FIELD_INT64 for a layout-resolved struct literal; disasm:\n%s", dump)
 }

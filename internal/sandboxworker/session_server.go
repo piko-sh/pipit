@@ -53,7 +53,7 @@ const (
 // Takes config (Configuration) which holds the immutable reviewed grants.
 //
 // Returns error for transport, schema or phase violations.
-func (session *connection) serveSession(stream transport, config Configuration) error {
+func (session *connection) serveSession(ctx context.Context, stream transport, config Configuration) error {
 	if err := validateSessionSubmission(config, Request{Kind: "submission", Source: "", Entrypoint: ""}); err != nil {
 		return err
 	}
@@ -64,7 +64,7 @@ func (session *connection) serveSession(stream transport, config Configuration) 
 	policy.MaxCumulativeSourceBytes = sessionSourceBytes
 	policy.MaxCumulativeOutputBytes = sessionOutputBytes
 	policy.MaxSubmissions = sessionSubmissions
-	interpreter, err := session.newRestrictedSession(policy)
+	interpreter, err := session.newRestrictedSession(ctx, policy)
 	if err != nil {
 		return err
 	}
@@ -84,7 +84,7 @@ func (session *connection) serveSession(stream transport, config Configuration) 
 		if message.Kind == sandboxwire.Close {
 			return message.DecodePayload(&struct{}{})
 		}
-		response, err := session.serveSessionSubmission(stream, interpreter, config, message, identity)
+		response, err := session.serveSessionSubmission(ctx, stream, interpreter, config, message, identity)
 		if err != nil {
 			return err
 		}
@@ -107,7 +107,7 @@ func (session *connection) serveSession(stream transport, config Configuration) 
 // Returns Response for the transmitted result.
 // Returns error for a terminal protocol failure.
 func (session *connection) serveSessionSubmission(
-	stream transport, interpreter *app.RestrictedSession, config Configuration,
+	ctx context.Context, stream transport, interpreter *app.RestrictedSession, config Configuration,
 	message sandboxwire.Message, identity uint64,
 ) (Response, error) {
 	if message.Kind != sandboxwire.Run || message.ID != identity {
@@ -121,7 +121,7 @@ func (session *connection) serveSessionSubmission(
 		return Response{}, err
 	}
 	var phaseErr error
-	result, evaluationErr := app.SubmitRestrictedSessionPhased(context.Background(), interpreter, request.Source, func() error {
+	result, evaluationErr := app.SubmitRestrictedSessionPhased(ctx, interpreter, request.Source, func() error {
 		phaseErr = session.awaitExecution(stream, identity)
 		if phaseErr == nil {
 			identity++
@@ -147,11 +147,11 @@ func (session *connection) serveSessionSubmission(
 // Takes policy (app.RestrictedSessionConfig) which selects limits and imports.
 //
 // Returns the session, or a configuration error.
-func (session *connection) newRestrictedSession(policy app.RestrictedSessionConfig) (*app.RestrictedSession, error) {
+func (session *connection) newRestrictedSession(ctx context.Context, policy app.RestrictedSessionConfig) (*app.RestrictedSession, error) {
 	if session.provider != nil {
-		return app.NewRestrictedSessionWithProvider(context.Background(), policy, session.provider)
+		return app.NewRestrictedSessionWithProvider(ctx, policy, session.provider)
 	}
-	return app.NewRestrictedSession(context.Background(), policy)
+	return app.NewRestrictedSession(ctx, policy)
 }
 
 // validateSessionSubmission rejects policy changes, alternate loaders and excessive

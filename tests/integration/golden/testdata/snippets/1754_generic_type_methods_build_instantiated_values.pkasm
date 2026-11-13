@@ -1,0 +1,892 @@
+; pkasm - pipit bytecode assembly
+; dispatch: A assembly, S in-loop shim call to Go, X dedicated exit to Go, G generic exit to Go
+
+
+; ═════════════════════════════════════════════════════════════
+; function orderedMap.find
+;   registers: int64=4 general=10
+;   dispatch:  asm=12 shim=11 exit=2 go=1
+;   params:    (general, general)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+
+0000 S 0:ALLOCATE_INDIRECT                                    1   0   3
+0001   0:EXTENSION                                            0   0   0
+0002 S 0:DEREFERENCE                                          3   1   0
+0003 S 1:ADDRESS_FIELD                                      214   3   3
+0004   0:EXTENSION                                            0   0   0
+0005 S 0:DEREFERENCE                                          4   3   0
+0006 A 0:JUMP_IF_NIL                                          4  23   0
+0007 S 0:DEREFERENCE                                          6   1   0
+0008 X 0:GET_FIELD                                            7   6   1
+0009 S 0:DEREFERENCE                                          8   3   0
+0010 X 0:GET_FIELD                                            9   8   0
+0011 G 1:CALL_NATIVE                                        130   0   0    ; call native general[7] (site 0)
+0012 A 1:LESS_THAN_INT64_CONSTANT_THEN_JUMP_IF_FALSE        123   1   0
+0013   0:EXTENSION                                            5   0   0
+0014 S 0:DEREFERENCE                                          6   3   0
+0015 S 1:ADDRESS_FIELD                                      214   6   6
+0016   0:EXTENSION                                            2   0   0
+0017 A 0:MOVE_GENERAL                                         3   6   1
+0018 A 1:JUMP                                                74   9   0    ; goto 9
+0019 A 1:GREATER_THAN_INT64_CONSTANT_THEN_JUMP_IF_FALSE     127   1   0
+0020   0:EXTENSION                                            5   0   0
+0021 S 0:DEREFERENCE                                          6   3   0
+0022 S 1:ADDRESS_FIELD                                      214   6   6
+0023   0:EXTENSION                                            3   0   0
+0024 A 0:MOVE_GENERAL                                         3   6   1
+0025 A 1:JUMP                                                74   2   0    ; goto 2
+0026 A 0:MOVE_GENERAL                                         0   3   0
+0027 A 2:RETURN                                               0  10   1    ; 1 values
+0028 S 0:DEREFERENCE                                          6   3   0
+0029 A 0:JUMP_IF_NOT_NIL                                      6 233 255
+0030 A 0:MOVE_GENERAL                                         0   3   0
+0031 A 2:RETURN                                               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function orderedMap.insert
+;   registers: int64=1 general=6 bool=1
+;   dispatch:  asm=8 shim=4 exit=2 go=0
+;   params:    (general, general, general)
+;   returns:   (bool)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   bools:   [0]=false  [1]=true
+
+0000 A 1:CALL                                               128   0   0    ; call (site 0)
+0001 S 0:DEREFERENCE                                          4   3   0
+0002 A 0:JUMP_IF_NIL                                          4   4   0
+0003 S 0:DEREFERENCE                                          4   3   0
+0004 X 0:SET_FIELD                                            4   1   2
+0005 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = false
+0006 A 2:RETURN                                               0  10   1    ; 1 values
+0007 S 2:MAKE_MAP                                             0  12   4
+0008   0:EXTENSION                                            0   0   0
+0009 A 0:SET_STRUCT_FIELD_GENERAL                             4   1   0
+0010 A 0:SET_STRUCT_FIELD_GENERAL                             4   2   1
+0011 S 0:ADDRESS                                              5   4   0
+0012 X 0:SET_FIELD                                            3 255   5
+0013 A 1:LOAD_BOOL_CONSTANT                                 138   0   1    ; bools[0] = true
+0014 A 2:RETURN                                               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function orderedMap.lookup
+;   registers: int64=1 general=5 bool=2
+;   dispatch:  asm=11 shim=2 exit=1 go=0
+;   params:    (general, general)
+;   returns:   (general, bool)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   bools:   [0]=false  [1]=true
+
+0000 A 1:CALL                                               128   0   0    ; call (site 0)
+0001 S 0:DEREFERENCE                                          3   2   0
+0002 A 0:JUMP_IF_NOT_NIL                                      3   5   0
+0003 A 1:LOAD_ZERO                                           79   3   3
+0004 A 0:MOVE_GENERAL                                         4   3   0
+0005 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = false
+0006 A 0:MOVE_GENERAL                                         0   4   0
+0007 A 2:RETURN                                               0  10   2    ; 2 values
+0008 S 0:DEREFERENCE                                          3   2   0
+0009 X 0:GET_FIELD                                            4   3   1
+0010 A 0:MOVE_GENERAL                                         3   4   0
+0011 A 1:LOAD_BOOL_CONSTANT                                 138   0   1    ; bools[0] = true
+0012 A 0:MOVE_GENERAL                                         0   3   0
+0013 A 2:RETURN                                               0  10   2    ; 2 values
+
+; ═════════════════════════════════════════════════════════════
+; function orderedMap.walk
+;   registers: general=6
+;   dispatch:  asm=2 shim=5 exit=2 go=0
+;   params:    (general, general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000 S 0:LOAD_GENERAL_CONSTANT                                2   0   0
+0001 S 0:ALLOCATE_INDIRECT                                    3   2   3
+0002   0:EXTENSION                                            0   0   0
+0003 S 0:MAKE_CLOSURE                                         4  10   0    ; closure (func 10)
+0004 X 0:SET_FIELD                                            3 255   4
+0005 S 0:DEREFERENCE                                          4   3   0
+0006 X 0:GET_FIELD                                            5   0   0
+0007 A 1:CALL                                               128   0   0    ; call closure general[4] (site 0)
+0008 S 2:SYNCHRONISE_CLOSURE_CAPTURED_VARIABLES               0  15   4
+0009 A 3:RETURN_VOID                                          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function stack.push
+;   registers: int64=1 general=4
+;   dispatch:  asm=4 shim=2 exit=2 go=2
+;   params:    (general, general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000 S 2:MAKE_MAP                                             0  12   2
+0001   0:EXTENSION                                            0   0   0
+0002 A 0:SET_STRUCT_FIELD_GENERAL                             2   1   0
+0003 X 0:GET_FIELD                                            3   0   0
+0004 A 0:SET_STRUCT_FIELD_GENERAL                             2   3   1
+0005 S 0:ADDRESS                                              3   2   0
+0006 X 0:SET_FIELD                                            0   0   3
+0007 G 0:GET_FIELD_INT64                                      0   0   1
+0008 A 2:INCREMENT_INT64                                      0   1   0
+0009 G 0:SET_FIELD_INT64                                      0   1   0
+0010 A 3:RETURN_VOID                                          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function stack.pop
+;   registers: int64=1 general=4 bool=2
+;   dispatch:  asm=12 shim=0 exit=6 go=2
+;   params:    (general)
+;   returns:   (general, bool)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   bools:   [0]=false  [1]=true
+
+0000 X 0:GET_FIELD                                            1   0   0
+0001 A 0:JUMP_IF_NOT_NIL                                      1   5   0
+0002 A 1:LOAD_ZERO                                           79   1   3
+0003 A 0:MOVE_GENERAL                                         2   1   0
+0004 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = false
+0005 A 0:MOVE_GENERAL                                         0   2   0
+0006 A 2:RETURN                                               0  10   2    ; 2 values
+0007 X 0:GET_FIELD                                            1   0   0
+0008 X 0:GET_FIELD                                            2   1   0
+0009 A 0:MOVE_GENERAL                                         1   2   0
+0010 X 0:GET_FIELD                                            2   0   0
+0011 X 0:GET_FIELD                                            3   2   1
+0012 X 0:SET_FIELD                                            0   0   3
+0013 G 0:GET_FIELD_INT64                                      0   0   1
+0014 A 2:DECREMENT_INT64                                      0   2   0
+0015 G 0:SET_FIELD_INT64                                      0   1   0
+0016 A 0:MOVE_GENERAL                                         2   1   0
+0017 A 1:LOAD_BOOL_CONSTANT                                 138   0   1    ; bools[0] = true
+0018 A 0:MOVE_GENERAL                                         0   2   0
+0019 A 2:RETURN                                               0  10   2    ; 2 values
+
+; ═════════════════════════════════════════════════════════════
+; function rooted.rootAddress
+;   registers: general=3
+;   dispatch:  asm=2 shim=3 exit=0 go=0
+;   params:    (general)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+0000 S 0:ALLOCATE_INDIRECT                                    1   0   3
+0001   0:EXTENSION                                            0   0   0
+0002 S 0:DEREFERENCE                                          2   1   0
+0003 S 1:ADDRESS_FIELD                                      214   2   2
+0004   0:EXTENSION                                            0   0   0
+0005 A 0:MOVE_GENERAL                                         0   2   0
+0006 A 2:RETURN                                               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function iteratorFunc.iterate
+;   registers: general=2
+;   dispatch:  asm=2 shim=0 exit=0 go=0
+;   params:    (general, general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000 A 1:CALL                                               128   0   0    ; call closure general[0] (site 0)
+0001 A 3:RETURN_VOID                                          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function iterateOver
+;   registers: general=3
+;   dispatch:  asm=2 shim=2 exit=0 go=0
+;   params:    (general)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+0000 S 0:MAKE_CLOSURE                                         1  11   0    ; closure (func 11)
+0001 S 0:CONVERT_GENERAL                                      2   1   0
+0002   0:EXTENSION                                            0   0   0
+0003 A 0:MOVE_GENERAL                                         0   2   0
+0004 A 2:RETURN                                               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int64=8 float64=1 string=2 general=16 bool=3 uint64=1
+;   dispatch:  asm=101 shim=76 exit=7 go=19
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=5  [1]=0  [2]=1  [3]=2  [4]=3  [5]=4
+;   floats:  [0]=1.5
+;   strings: [0]="a"  [1]="empty"  [2]="m"  [3]="c"  [4]="x"  [5]="insert"  [6]="lookup"  [7]="b"  [8]=" "  [9]="float"  [10]="n"  [11]="p"  [12]="embedded"  [13]="iterate"  [14]="named func"  [15]="direct"  [16]="interface"  [17]="rootAddress"  [18]="stored"  [19]="String"
+
+0000 S 0:LOAD_GENERAL_CONSTANT                                0   0   0
+0001 S 0:ALLOCATE_INDIRECT                                    1   0   3
+0002   0:EXTENSION                                            0   0   0
+0003 S 2:MAKE_MAP                                             0  12   2
+0004   0:EXTENSION                                            1   0   0
+0005 S 0:LOAD_GENERAL_CONSTANT                                3   1   0
+0006 A 0:SET_STRUCT_FIELD_GENERAL                             2   3   0
+0007 S 0:ADDRESS                                              3   2   0
+0008 A 0:MOVE_GENERAL                                         2   3   1
+0009 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "a"
+0010 G 1:CONVERT_STRING_TO_BYTES                             71   3   0
+0011 A 1:CALL                                               128   0   0    ; call (site 0)
+0012 S 0:LOAD_GENERAL_CONSTANT                                3   2   0
+0013 A 0:LOAD_STRING_CONSTANT                                 0   1   0    ; strings[0] = "empty"
+0014 G 1:CALL_NATIVE                                        130   1   0    ; call native general[3] (site 1)
+0015 A 1:LOAD_INT64_IMMEDIATE                                75   0   5    ; ints[0] = 5
+0016 S 0:MAKE_SLICE                                           3   0   0
+0017   0:EXTENSION                                            3   0   0
+0018 A 0:LOAD_STRING_CONSTANT                                 0   2   0    ; strings[0] = "m"
+0019 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0020 S 1:BOX_STRING                                          44   4   0
+0021 S 0:SET_ELEMENT                                          3   0   4
+0022 A 0:LOAD_STRING_CONSTANT                                 0   3   0    ; strings[0] = "c"
+0023 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0024 S 1:BOX_STRING                                          44   4   0
+0025 S 0:SET_ELEMENT                                          3   0   4
+0026 A 0:LOAD_STRING_CONSTANT                                 0   4   0    ; strings[0] = "x"
+0027 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0028 S 1:BOX_STRING                                          44   4   0
+0029 S 0:SET_ELEMENT                                          3   0   4
+0030 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "a"
+0031 A 1:LOAD_INT64_IMMEDIATE                                75   0   3    ; ints[0] = 3
+0032 S 1:BOX_STRING                                          44   4   0
+0033 S 0:SET_ELEMENT                                          3   0   4
+0034 A 0:LOAD_STRING_CONSTANT                                 0   3   0    ; strings[0] = "c"
+0035 A 1:LOAD_INT64_IMMEDIATE                                75   0   4    ; ints[0] = 4
+0036 S 1:BOX_STRING                                          44   4   0
+0037 S 0:SET_ELEMENT                                          3   0   4
+0038 A 1:LENGTH_GENERAL                                      70   0   3
+0039 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0040 A 1:LESS_THAN_INT64_THEN_JUMP_IF_FALSE                 116   1   0
+0041   0:EXTENSION                                           13   0   0
+0042 A 0:LOAD_STRING_CONSTANT                                 1   5   0    ; LICM hoist of PC 45
+0043 A 1:LOAD_INT64_IMMEDIATE                                75   4   0    ; LICM hoist of PC 47
+0044 S 0:GET_ELEMENT_STRING                                   0   3   1
+0045 S 0:LOAD_GENERAL_CONSTANT                                4   3   0
+0046 G 1:CONVERT_STRING_TO_BYTES                             71   5   0
+0047 A 1:LENGTH_STRING                                       65   3   0
+0048 A 0:GET_STRING_BYTE                                      0   0   4
+0049 A 1:CONVERT_UINT64_TO_INT64                             56   5   0
+0050 A 0:ADD_INT64                                            6   3   5
+0051 A 1:CALL                                               128   2   0    ; call (site 2)
+0052 G 1:CALL_NATIVE                                        130   3   0    ; call native general[4] (site 3)
+0053 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN              77   1   0
+0054   0:EXTENSION                                          245 255   0
+0055 A 0:LOAD_STRING_CONSTANT                                 0   3   0    ; strings[0] = "c"
+0056 G 1:CONVERT_STRING_TO_BYTES                             71   3   0
+0057 A 1:CALL                                               128   4   0    ; call (site 4)
+0058 S 0:LOAD_GENERAL_CONSTANT                                3   4   0
+0059 A 0:LOAD_STRING_CONSTANT                                 0   6   0    ; strings[0] = "lookup"
+0060 G 1:CALL_NATIVE                                        130   5   0    ; call native general[3] (site 5)
+0061 S 0:MAKE_CLOSURE                                         3  17   0    ; closure (func 17)
+0062 A 1:CALL                                               128   6   0    ; call (site 6)
+0063 S 0:LOAD_GENERAL_CONSTANT                                3   5   0
+0064 G 1:CALL_NATIVE                                        130   7   0    ; call native general[3] (site 7)
+0065 S 2:MAKE_MAP                                             0  12   3
+0066   0:EXTENSION                                            4   0   0
+0067 S 0:ADDRESS                                              4   3   0
+0068 A 0:MOVE_GENERAL                                         2   4   1
+0069 S 0:BIND_METHOD                                          3   2   0
+0070   0:EXTENSION                                           18   0   0
+0071 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "a"
+0072 A 1:CALL                                               128   8   0    ; call closure general[3] (site 8)
+0073 S 2:SYNCHRONISE_CLOSURE_CAPTURED_VARIABLES               0  15   3
+0074 A 0:LOAD_STRING_CONSTANT                                 0   7   0    ; strings[0] = "b"
+0075 A 1:CALL                                               128   9   0    ; call (site 9)
+0076 A 0:LOAD_STRING_CONSTANT                                 0   3   0    ; strings[0] = "c"
+0077 A 1:CALL                                               128  10   0    ; call (site 10)
+0078 A 0:LOAD_STRING_CONSTANT                                 1   8   0    ; LICM hoist of PC 82
+0079 A 1:CALL                                               128  11   0    ; call (site 11)
+0080 A 2:JUMP_IF_FALSE_BOOL                                   0  20   1
+0081   0:EXTENSION                                            3   0   0
+0082 S 0:LOAD_GENERAL_CONSTANT                                4   6   0
+0083 G 1:CALL_NATIVE                                        130  12   0    ; call native general[4] (site 12)
+0084 A 1:JUMP                                                74 250 255    ; goto -6
+0085 S 0:LOAD_GENERAL_CONSTANT                                4   7   0
+0086 A 0:GET_STRUCT_FIELD_INT64                               1   2   1
+0087 G 1:CALL_NATIVE                                        130  13   0    ; call native general[4] (site 13)
+0088 S 2:MAKE_MAP                                             0  12   4
+0089   0:EXTENSION                                            5   0   0
+0090 S 0:ADDRESS                                              5   4   0
+0091 A 0:MOVE_GENERAL                                         2   5   1
+0092 A 0:LOAD_FLOAT64_CONSTANT                                0   0   0    ; floats[0] = 1.5
+0093 A 1:CALL                                               128  14   0    ; call (site 14)
+0094 A 1:CALL                                               128  15   0    ; call (site 15)
+0095 S 0:LOAD_GENERAL_CONSTANT                                4   8   0
+0096 A 0:LOAD_STRING_CONSTANT                                 0   9   0    ; strings[0] = "float"
+0097 G 1:CALL_NATIVE                                        130  16   0    ; call native general[4] (site 16)
+0098 S 2:MAKE_MAP                                             0  12   4
+0099   0:EXTENSION                                            6   0   0
+0100 A 0:LOAD_STRING_CONSTANT                                 0  10   0    ; strings[0] = "n"
+0101 S 1:SET_STRUCT_FIELD_STRING_WIDE                        95   4   0
+0102   0:EXTENSION                                            2   0   0
+0103 S 0:ADDRESS                                              5   4   0
+0104 A 0:MOVE_GENERAL                                         2   5   1
+0105 S 0:ALLOCATE_INDIRECT                                    4   2   3
+0106   0:EXTENSION                                            7   0   0
+0107 S 0:DEREFERENCE                                          5   4   0
+0108 X 0:GET_FIELD                                            5   5   0
+0109 S 0:ADDRESS                                              6   5   1
+0110 A 1:LOAD_INT64_IMMEDIATE                                75   1   1    ; ints[1] = 1
+0111 A 1:CALL                                               128  17   0    ; call (site 17)
+0112 S 0:DEREFERENCE                                          5   4   0
+0113 X 0:GET_FIELD                                            5   5   0
+0114 S 0:ADDRESS                                              6   5   1
+0115 A 1:LOAD_INT64_IMMEDIATE                                75   1   2    ; ints[1] = 2
+0116 A 1:CALL                                               128  18   0    ; call (site 18)
+0117 S 0:DEREFERENCE                                          5   4   0
+0118 X 0:GET_FIELD                                            5   5   0
+0119 S 0:ADDRESS                                              6   5   1
+0120 S 0:BIND_METHOD                                          7   6   0
+0121   0:EXTENSION                                           22   0   0
+0122 A 0:MOVE_GENERAL                                         5   7   1
+0123 A 1:LOAD_INT64_IMMEDIATE                                75   1   3    ; ints[1] = 3
+0124 A 1:CALL                                               128  19   0    ; call closure general[5] (site 19)
+0125 S 2:SYNCHRONISE_CLOSURE_CAPTURED_VARIABLES               0  15   5
+0126 S 2:MAKE_MAP                                             0  12   6
+0127   0:EXTENSION                                            8   0   0
+0128 S 2:MAKE_MAP                                             0  12   7
+0129   0:EXTENSION                                            4   0   0
+0130 S 0:ADDRESS                                              8   7   0
+0131 A 0:SET_STRUCT_FIELD_GENERAL                             6   8   3
+0132 A 0:MOVE_GENERAL                                         5   6   2
+0133 X 0:GET_FIELD                                            6   5   0
+0134 A 0:LOAD_STRING_CONSTANT                                 0  11   0    ; strings[0] = "p"
+0135 A 1:CALL                                               128  20   0    ; call (site 20)
+0136 S 0:LOAD_GENERAL_CONSTANT                                6   9   0
+0137 A 0:LOAD_STRING_CONSTANT                                 0  12   0    ; strings[0] = "embedded"
+0138 S 0:DEREFERENCE                                          7   4   0
+0139 A 0:GET_STRUCT_FIELD_GENERAL                             8   7   4
+0140 A 0:GET_STRUCT_FIELD_INT64                               1   8   5
+0141 S 0:DEREFERENCE                                          9   4   0
+0142 A 0:GET_STRUCT_FIELD_GENERAL                            10   9   4
+0143 A 0:GET_STRUCT_FIELD_RAW_POINTER                        11  10   6
+0144 A 0:GET_STRUCT_FIELD_INT64                               2  11   5
+0145 S 0:DEREFERENCE                                         12   4   0
+0146 A 0:GET_STRUCT_FIELD_INT64                               3  12   7
+0147 X 0:GET_FIELD                                           13   5   0
+0148 X 0:GET_FIELD                                           14  13   0
+0149 S 1:GET_STRUCT_FIELD_STRING_WIDE                        90   1  14
+0150   0:EXTENSION                                            8   0   0
+0151 G 1:CALL_NATIVE                                        130  21   0    ; call native general[6] (site 21)
+0152 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0153 S 0:ALLOCATE_INDIRECT                                    6   1   0
+0154   0:EXTENSION                                           14   0   0
+0155 A 1:LOAD_INT64_IMMEDIATE                                75   1   3    ; ints[1] = 3
+0156 S 0:MAKE_SLICE                                           7   1   1
+0157   0:EXTENSION                                           15   0   0
+0158 A 1:LOAD_INT64_IMMEDIATE                                75   1   1    ; ints[1] = 1
+0159 A 1:LOAD_INT64_IMMEDIATE                                75   2   0    ; ints[2] = 0
+0160 S 1:BOX_INT64                                           40   8   1
+0161 S 0:SET_ELEMENT                                          7   2   8
+0162 A 1:LOAD_INT64_IMMEDIATE                                75   1   2    ; ints[1] = 2
+0163 A 1:LOAD_INT64_IMMEDIATE                                75   2   1    ; ints[2] = 1
+0164 S 1:BOX_INT64                                           40   8   1
+0165 S 0:SET_ELEMENT                                          7   2   8
+0166 A 1:LOAD_INT64_IMMEDIATE                                75   1   3    ; ints[1] = 3
+0167 A 1:LOAD_INT64_IMMEDIATE                                75   2   2    ; ints[2] = 2
+0168 S 1:BOX_INT64                                           40   8   1
+0169 S 0:SET_ELEMENT                                          7   2   8
+0170 A 1:CALL                                               128  22   0    ; call (site 22)
+0171 S 0:MAKE_CLOSURE                                         9  25   0    ; closure (func 25)
+0172 A 1:CALL_METHOD                                        132  23   0    ; call method (site 23)
+0173   0:EXTENSION                                           13   0   0
+0174 S 0:LOAD_GENERAL_CONSTANT                                7  10   0
+0175 A 0:LOAD_STRING_CONSTANT                                 0  14   0    ; strings[0] = "named func"
+0176 S 0:DEREFERENCE                                          8   6   0
+0177 S 0:UNBOX_FROM_INTERFACE                                 1   8   0
+0178 G 1:CALL_NATIVE                                        130  24   0    ; call native general[7] (site 24)
+0179 S 2:MAKE_MAP                                             0  12   7
+0180   0:EXTENSION                                           16   0   0
+0181 A 1:LOAD_INT64_IMMEDIATE                                75   1   1    ; ints[1] = 1
+0182 A 0:SET_STRUCT_FIELD_INT64                               7   1   9
+0183 S 0:ADDRESS                                              8   7   0
+0184 A 0:MOVE_GENERAL                                         5   8   1
+0185 S 0:LOAD_GENERAL_CONSTANT                                7  11   0
+0186 A 0:LOAD_STRING_CONSTANT                                 0  15   0    ; strings[0] = "direct"
+0187 A 1:CALL                                               128  25   0    ; call (site 25)
+0188 S 0:DEREFERENCE                                          9   8   0
+0189 G 2:LOAD_NIL                                             0   9  10
+0190 A 0:EQUAL_GENERAL                                        1   9  10
+0191 A 1:CONVERT_INT64_TO_BOOL                               54   1   1
+0192 G 1:CALL_NATIVE                                        130  26   0    ; call native general[7] (site 26)
+0193 S 2:MAKE_MAP                                             0  12   7
+0194   0:EXTENSION                                           16   0   0
+0195 A 1:LOAD_INT64_IMMEDIATE                                75   1   2    ; ints[1] = 2
+0196 A 0:SET_STRUCT_FIELD_INT64                               7   1   9
+0197 S 0:ADDRESS                                              8   7   0
+0198 A 0:MOVE_GENERAL                                         5   8   1
+0199 S 0:LOAD_GENERAL_CONSTANT                                7  12   0
+0200 A 0:LOAD_STRING_CONSTANT                                 0  16   0    ; strings[0] = "interface"
+0201 A 1:CALL_METHOD                                        132  27   0    ; call method (site 27)
+0202   0:EXTENSION                                           17   0   0
+0203 S 0:DEREFERENCE                                          9   8   0
+0204 G 2:LOAD_NIL                                             0   9  10
+0205 A 0:EQUAL_GENERAL                                        1   9  10
+0206 A 1:CONVERT_INT64_TO_BOOL                               54   1   1
+0207 G 1:CALL_NATIVE                                        130  28   0    ; call native general[7] (site 28)
+0208 A 1:CALL_METHOD                                        132  29   0    ; call method (site 29)
+0209   0:EXTENSION                                           17   0   0
+0210 A 0:MOVE_GENERAL                                         8   7   0
+0211 S 2:MAKE_MAP                                             0  12   9
+0212   0:EXTENSION                                           17   0   0
+0213 A 1:LOAD_INT64_IMMEDIATE                                75   1   4    ; ints[1] = 4
+0214 A 0:SET_STRUCT_FIELD_INT64                               9   1  10
+0215 S 0:ADDRESS                                             10   9   0
+0216 X 0:SET_FIELD                                            8 255  10
+0217 S 0:LOAD_GENERAL_CONSTANT                                7  13   0
+0218 A 0:LOAD_STRING_CONSTANT                                 0  18   0    ; strings[0] = "stored"
+0219 S 0:TYPE_ASSERT                                          8   5   1
+0220   0:EXTENSION                                           18   0   1
+0221 A 0:GET_STRUCT_FIELD_GENERAL                             9   8  11
+0222 A 0:GET_STRUCT_FIELD_INT64                               2   9  10
+0223 G 1:CALL_NATIVE                                        130  30   0    ; call native general[7] (site 30)
+0224 S 0:DEREFERENCE                                          7   1   0
+0225 G 1:BIND_METHOD_BY_NAME                                 83   8   7
+0226   0:EXTENSION                                           19   0   0
+0227 G 1:CALL_NATIVE                                        130  31   0    ; call native method general[8] (site 31)
+0228 A 2:RETURN                                               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int64=1 general=4
+;   dispatch:  asm=9 shim=0 exit=4 go=0
+;   params:    (general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000 A 0:JUMP_IF_NOT_NIL                                      0   1   0
+0001 A 3:RETURN_VOID                                          0   0   1
+0002 A 0:GET_CAPTURED_VARIABLE                                1   0   3
+0003 X 0:GET_FIELD                                            2   0   2
+0004 A 1:CALL                                               128   0   0    ; call closure general[1] (site 0)
+0005 A 0:GET_CAPTURED_VARIABLE                                1   1   3
+0006 X 0:GET_FIELD                                            2   0   0
+0007 X 0:GET_FIELD                                            3   0   1
+0008 A 1:CALL                                               128   1   0    ; call closure general[1] (site 1)
+0009 A 0:GET_CAPTURED_VARIABLE                                1   0   3
+0010 X 0:GET_FIELD                                            2   0   3
+0011 A 1:CALL                                               128   2   0    ; call closure general[1] (site 2)
+0012 A 3:RETURN_VOID                                          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int64=4 general=3 bool=2
+;   dispatch:  asm=10 shim=1 exit=0 go=0
+;   params:    (general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+
+0000 A 0:GET_CAPTURED_VARIABLE                                1   0   3
+0001 A 1:LENGTH_GENERAL                                      70   0   1
+0002 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0003 A 1:LESS_THAN_INT64_THEN_JUMP_IF_FALSE                 116   1   0
+0004   0:EXTENSION                                            8   0   0
+0005 S 0:GET_ELEMENT                                          2   1   1
+0006 A 0:MOVE_GENERAL                                         2   2   0
+0007 A 1:CALL                                               128   0   0    ; call closure general[0] (site 0)
+0008 A 2:JUMP_IF_TRUE_BOOL                                    0  21   0
+0009   0:EXTENSION                                            1   0   0
+0010 A 3:RETURN_VOID                                          0   0   1
+0011 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN              77   1   0
+0012   0:EXTENSION                                          248 255   0
+0013 A 3:RETURN_VOID                                          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function orderedMap.lookup[spec:[]uint8,int]
+;   registers: int64=2 general=5 bool=2
+;   dispatch:  asm=8 shim=3 exit=1 go=0
+;   params:    (general, general)
+;   returns:   (int64, bool)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   bools:   [0]=false  [1]=true
+
+0000 A 1:CALL                                               128   0   0    ; call (site 0)
+0001 S 0:DEREFERENCE                                          3   2   0
+0002 A 0:JUMP_IF_NOT_NIL                                      3   4   0
+0003 A 1:LOAD_ZERO                                           79   0   0
+0004 A 1:MOVE_INT64                                          35   0   0
+0005 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = false
+0006 A 2:RETURN                                               0  10   2    ; 2 values
+0007 S 0:DEREFERENCE                                          3   2   0
+0008 X 0:GET_FIELD                                            4   3   1
+0009 S 1:UNBOX_INT64                                         41   0   4
+0010 A 1:LOAD_BOOL_CONSTANT                                 138   0   1    ; bools[0] = true
+0011 A 2:RETURN                                               0  10   2    ; 2 values
+
+; ═════════════════════════════════════════════════════════════
+; function orderedMap.find[spec:[]uint8,int]
+;   registers: int64=4 general=10
+;   dispatch:  asm=12 shim=11 exit=2 go=1
+;   params:    (general, general)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+
+0000 S 0:ALLOCATE_INDIRECT                                    1   0   3
+0001   0:EXTENSION                                            0   0   0
+0002 S 0:DEREFERENCE                                          3   1   0
+0003 S 1:ADDRESS_FIELD                                      214   3   3
+0004   0:EXTENSION                                            0   0   0
+0005 S 0:DEREFERENCE                                          4   3   0
+0006 A 0:JUMP_IF_NIL                                          4  23   0
+0007 S 0:DEREFERENCE                                          6   1   0
+0008 X 0:GET_FIELD                                            7   6   1
+0009 S 0:DEREFERENCE                                          8   3   0
+0010 X 0:GET_FIELD                                            9   8   0
+0011 G 1:CALL_NATIVE                                        130   0   0    ; call native general[7] (site 0)
+0012 A 1:LESS_THAN_INT64_CONSTANT_THEN_JUMP_IF_FALSE        123   1   0
+0013   0:EXTENSION                                            5   0   0
+0014 S 0:DEREFERENCE                                          6   3   0
+0015 S 1:ADDRESS_FIELD                                      214   6   6
+0016   0:EXTENSION                                            2   0   0
+0017 A 0:MOVE_GENERAL                                         3   6   1
+0018 A 1:JUMP                                                74   9   0    ; goto 9
+0019 A 1:GREATER_THAN_INT64_CONSTANT_THEN_JUMP_IF_FALSE     127   1   0
+0020   0:EXTENSION                                            5   0   0
+0021 S 0:DEREFERENCE                                          6   3   0
+0022 S 1:ADDRESS_FIELD                                      214   6   6
+0023   0:EXTENSION                                            3   0   0
+0024 A 0:MOVE_GENERAL                                         3   6   1
+0025 A 1:JUMP                                                74   2   0    ; goto 2
+0026 A 0:MOVE_GENERAL                                         0   3   0
+0027 A 2:RETURN                                               0  10   1    ; 1 values
+0028 S 0:DEREFERENCE                                          6   3   0
+0029 A 0:JUMP_IF_NOT_NIL                                      6 233 255
+0030 A 0:MOVE_GENERAL                                         0   3   0
+0031 A 2:RETURN                                               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function orderedMap.insert[spec:[]uint8,int]
+;   registers: int64=2 general=5 bool=1
+;   dispatch:  asm=8 shim=5 exit=2 go=0
+;   params:    (general, general, int64)
+;   returns:   (bool)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   bools:   [0]=false  [1]=true
+
+0000 A 1:CALL                                               128   0   0    ; call (site 0)
+0001 S 0:DEREFERENCE                                          3   2   0
+0002 A 0:JUMP_IF_NIL                                          3   5   0
+0003 S 0:DEREFERENCE                                          3   2   0
+0004 S 1:BOX_INT64                                           40   4   0
+0005 X 0:SET_FIELD                                            3   1   4
+0006 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = false
+0007 A 2:RETURN                                               0  10   1    ; 1 values
+0008 S 2:MAKE_MAP                                             0  12   3
+0009   0:EXTENSION                                            0   0   0
+0010 A 0:SET_STRUCT_FIELD_GENERAL                             3   1   0
+0011 A 0:SET_STRUCT_FIELD_INT64                               3   0   1
+0012 S 0:ADDRESS                                              4   3   0
+0013 X 0:SET_FIELD                                            2 255   4
+0014 A 1:LOAD_BOOL_CONSTANT                                 138   0   1    ; bools[0] = true
+0015 A 2:RETURN                                               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function orderedMap.walk[spec:[]uint8,int]
+;   registers: general=6
+;   dispatch:  asm=2 shim=5 exit=2 go=0
+;   params:    (general, general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000 S 0:LOAD_GENERAL_CONSTANT                                2   0   0
+0001 S 0:ALLOCATE_INDIRECT                                    3   2   3
+0002   0:EXTENSION                                            0   0   0
+0003 S 0:MAKE_CLOSURE                                         4  16   0    ; closure (func 16)
+0004 X 0:SET_FIELD                                            3 255   4
+0005 S 0:DEREFERENCE                                          4   3   0
+0006 X 0:GET_FIELD                                            5   0   0
+0007 A 1:CALL                                               128   0   0    ; call closure general[4] (site 0)
+0008 S 2:SYNCHRONISE_CLOSURE_CAPTURED_VARIABLES               0  15   4
+0009 A 3:RETURN_VOID                                          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int64=1 general=4
+;   dispatch:  asm=9 shim=1 exit=4 go=0
+;   params:    (general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000 A 0:JUMP_IF_NOT_NIL                                      0   1   0
+0001 A 3:RETURN_VOID                                          0   0   1
+0002 A 0:GET_CAPTURED_VARIABLE                                1   0   3
+0003 X 0:GET_FIELD                                            2   0   2
+0004 A 1:CALL                                               128   0   0    ; call closure general[1] (site 0)
+0005 A 0:GET_CAPTURED_VARIABLE                                1   1   3
+0006 X 0:GET_FIELD                                            2   0   0
+0007 X 0:GET_FIELD                                            3   0   1
+0008 S 1:UNBOX_INT64                                         41   0   3
+0009 A 1:CALL                                               128   1   0    ; call closure general[1] (site 1)
+0010 A 0:GET_CAPTURED_VARIABLE                                1   0   3
+0011 X 0:GET_FIELD                                            2   0   3
+0012 A 1:CALL                                               128   2   0    ; call closure general[1] (site 2)
+0013 A 3:RETURN_VOID                                          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int64=2 string=1 general=4
+;   dispatch:  asm=3 shim=1 exit=0 go=1
+;   params:    (general, int64)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]="%s=%d "
+
+0000 S 0:LOAD_GENERAL_CONSTANT                                1   0   0
+0001 A 0:GET_CAPTURED_VARIABLE                                2   0 255
+0002 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "%s=%d "
+0003 G 1:CALL_NATIVE                                        130   0   0    ; call native general[1] (site 0)
+0004 A 3:RETURN_VOID                                          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function stack.push[spec:string]
+;   registers: int64=1 string=1 general=3
+;   dispatch:  asm=3 shim=3 exit=2 go=2
+;   params:    (general, string)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000 S 2:MAKE_MAP                                             0  12   1
+0001   0:EXTENSION                                            0   0   0
+0002 S 1:SET_STRUCT_FIELD_STRING_WIDE                        95   1   0
+0003   0:EXTENSION                                            0   0   0
+0004 X 0:GET_FIELD                                            2   0   0
+0005 A 0:SET_STRUCT_FIELD_GENERAL                             1   2   1
+0006 S 0:ADDRESS                                              2   1   0
+0007 X 0:SET_FIELD                                            0   0   2
+0008 G 0:GET_FIELD_INT64                                      0   0   1
+0009 A 2:INCREMENT_INT64                                      0   1   0
+0010 G 0:SET_FIELD_INT64                                      0   1   0
+0011 A 3:RETURN_VOID                                          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function stack.pop[spec:string]
+;   registers: int64=1 string=2 general=3 bool=2
+;   dispatch:  asm=10 shim=0 exit=5 go=3
+;   params:    (general)
+;   returns:   (string, bool)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   bools:   [0]=false  [1]=true
+
+0000 X 0:GET_FIELD                                            1   0   0
+0001 A 0:JUMP_IF_NOT_NIL                                      1   4   0
+0002 A 1:LOAD_ZERO                                           79   0   2
+0003 A 1:MOVE_STRING                                         37   0   0
+0004 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = false
+0005 A 2:RETURN                                               0  10   2    ; 2 values
+0006 X 0:GET_FIELD                                            1   0   0
+0007 X 0:GET_FIELD                                            2   1   0
+0008 G 1:UNBOX_STRING                                        45   0   2
+0009 A 0:MOVE_GENERAL                                         1   1   1    ; CSE'd from PC 6
+0010 X 0:GET_FIELD                                            2   1   1
+0011 X 0:SET_FIELD                                            0   0   2
+0012 G 0:GET_FIELD_INT64                                      0   0   1
+0013 A 2:DECREMENT_INT64                                      0   2   0
+0014 G 0:SET_FIELD_INT64                                      0   1   0
+0015 A 1:MOVE_STRING                                         37   0   0
+0016 A 1:LOAD_BOOL_CONSTANT                                 138   0   1    ; bools[0] = true
+0017 A 2:RETURN                                               0  10   2    ; 2 values
+
+; ═════════════════════════════════════════════════════════════
+; function stack.push[spec:float64]
+;   registers: int64=1 float64=1 general=3
+;   dispatch:  asm=4 shim=2 exit=2 go=2
+;   params:    (general, float64)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000 S 2:MAKE_MAP                                             0  12   1
+0001   0:EXTENSION                                            0   0   0
+0002 A 0:SET_STRUCT_FIELD_FLOAT64                             1   0   0
+0003 X 0:GET_FIELD                                            2   0   0
+0004 A 0:SET_STRUCT_FIELD_GENERAL                             1   2   1
+0005 S 0:ADDRESS                                              2   1   0
+0006 X 0:SET_FIELD                                            0   0   2
+0007 G 0:GET_FIELD_INT64                                      0   0   1
+0008 A 2:INCREMENT_INT64                                      0   1   0
+0009 G 0:SET_FIELD_INT64                                      0   1   0
+0010 A 3:RETURN_VOID                                          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function stack.pop[spec:float64]
+;   registers: int64=1 float64=2 general=3 bool=2
+;   dispatch:  asm=10 shim=0 exit=5 go=3
+;   params:    (general)
+;   returns:   (float64, bool)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   bools:   [0]=false  [1]=true
+
+0000 X 0:GET_FIELD                                            1   0   0
+0001 A 0:JUMP_IF_NOT_NIL                                      1   4   0
+0002 A 1:LOAD_ZERO                                           79   0   1
+0003 A 1:MOVE_FLOAT64                                        36   0   0
+0004 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = false
+0005 A 2:RETURN                                               0  10   2    ; 2 values
+0006 X 0:GET_FIELD                                            1   0   0
+0007 X 0:GET_FIELD                                            2   1   0
+0008 G 1:UNBOX_FLOAT64                                       43   0   2
+0009 A 0:MOVE_GENERAL                                         1   1   1    ; CSE'd from PC 6
+0010 X 0:GET_FIELD                                            2   1   1
+0011 X 0:SET_FIELD                                            0   0   2
+0012 G 0:GET_FIELD_INT64                                      0   0   1
+0013 A 2:DECREMENT_INT64                                      0   2   0
+0014 G 0:SET_FIELD_INT64                                      0   1   0
+0015 A 1:MOVE_FLOAT64                                        36   0   0
+0016 A 1:LOAD_BOOL_CONSTANT                                 138   0   1    ; bools[0] = true
+0017 A 2:RETURN                                               0  10   2    ; 2 values
+
+; ═════════════════════════════════════════════════════════════
+; function stack.push[spec:int]
+;   registers: int64=2 general=3
+;   dispatch:  asm=4 shim=2 exit=2 go=2
+;   params:    (general, int64)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000 S 2:MAKE_MAP                                             0  12   1
+0001   0:EXTENSION                                            0   0   0
+0002 A 0:SET_STRUCT_FIELD_INT64                               1   0   0
+0003 X 0:GET_FIELD                                            2   0   0
+0004 A 0:SET_STRUCT_FIELD_GENERAL                             1   2   1
+0005 S 0:ADDRESS                                              2   1   0
+0006 X 0:SET_FIELD                                            0   0   2
+0007 G 0:GET_FIELD_INT64                                      1   0   1
+0008 A 2:INCREMENT_INT64                                      0   1   1
+0009 G 0:SET_FIELD_INT64                                      0   1   1
+0010 A 3:RETURN_VOID                                          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function iterateOver[spec:int]
+;   registers: general=2 sliceInt64=1
+;   dispatch:  asm=2 shim=2 exit=0 go=0
+;   params:    (sliceInt64)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+0000 S 0:MAKE_CLOSURE                                         0  24   0    ; closure (func 24)
+0001 S 0:CONVERT_GENERAL                                      1   0   0
+0002   0:EXTENSION                                            0   0   0
+0003 A 0:MOVE_GENERAL                                         0   1   0
+0004 A 2:RETURN                                               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int64=5 general=1 bool=2 sliceInt64=1
+;   dispatch:  asm=10 shim=0 exit=0 go=0
+;   params:    (general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+
+0000 A 0:GET_CAPTURED_VARIABLE                                0   0   7
+0001 A 1:LENGTH_SLICE_INT64                                  17   0   0
+0002 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0003 A 1:LESS_THAN_INT64_THEN_JUMP_IF_FALSE                 116   1   0
+0004   0:EXTENSION                                            7   0   0
+0005 A 0:GET_SLICE_INT64_ELEMENT_UNCHECKED                    3   0   1
+0006 A 1:CALL                                               128   0   0    ; call closure general[0] (site 0)
+0007 A 2:JUMP_IF_TRUE_BOOL                                    0  21   0
+0008   0:EXTENSION                                            1   0   0
+0009 A 3:RETURN_VOID                                          0   0   1
+0010 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN              77   1   0
+0011   0:EXTENSION                                          249 255   0
+0012 A 3:RETURN_VOID                                          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int64=3 bool=1
+;   dispatch:  asm=4 shim=1 exit=0 go=0
+;   params:    (int64)
+;   returns:   (bool)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   bools:   [0]=true
+
+0000 A 0:GET_CAPTURED_VARIABLE                                1   0   0
+0001 A 0:ADD_INT64                                            2   1   0
+0002 S 0:SET_CAPTURED_VARIABLE                                2   0   0
+0003 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = true
+0004 A 2:RETURN                                               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function rooted.rootAddress[spec:int]
+;   registers: general=3
+;   dispatch:  asm=2 shim=3 exit=0 go=0
+;   params:    (general)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+0000 S 0:ALLOCATE_INDIRECT                                    1   0   3
+0001   0:EXTENSION                                            0   0   0
+0002 S 0:DEREFERENCE                                          2   1   0
+0003 S 1:ADDRESS_FIELD                                      214   2   2
+0004   0:EXTENSION                                            0   0   0
+0005 A 0:MOVE_GENERAL                                         0   2   0
+0006 A 2:RETURN                                               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function stack.pop[spec:int]
+;   registers: int64=2 general=3 bool=2
+;   dispatch:  asm=10 shim=1 exit=5 go=2
+;   params:    (general)
+;   returns:   (int64, bool)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   bools:   [0]=false  [1]=true
+
+0000 X 0:GET_FIELD                                            1   0   0
+0001 A 0:JUMP_IF_NOT_NIL                                      1   4   0
+0002 A 1:LOAD_ZERO                                           79   0   0
+0003 A 1:MOVE_INT64                                          35   0   0
+0004 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = false
+0005 A 2:RETURN                                               0  10   2    ; 2 values
+0006 X 0:GET_FIELD                                            1   0   0
+0007 X 0:GET_FIELD                                            2   1   0
+0008 S 1:UNBOX_INT64                                         41   0   2
+0009 A 0:MOVE_GENERAL                                         1   1   1    ; CSE'd from PC 6
+0010 X 0:GET_FIELD                                            2   1   1
+0011 X 0:SET_FIELD                                            0   0   2
+0012 G 0:GET_FIELD_INT64                                      1   0   1
+0013 A 2:DECREMENT_INT64                                      0   2   1
+0014 G 0:SET_FIELD_INT64                                      0   1   1
+0015 A 1:MOVE_INT64                                          35   0   0
+0016 A 1:LOAD_BOOL_CONSTANT                                 138   0   1    ; bools[0] = true
+0017 A 2:RETURN                                               0  10   2    ; 2 values
+
+; ═════════════════════════════════════════════════════════════
+; function iteratorFunc.iterate[spec:int]
+;   registers: general=2
+;   dispatch:  asm=2 shim=0 exit=0 go=0
+;   params:    (general, general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000 A 1:CALL                                               128   0   0    ; call closure general[0] (site 0)
+0001 A 3:RETURN_VOID                                          0   0   1

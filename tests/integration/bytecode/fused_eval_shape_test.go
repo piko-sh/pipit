@@ -21,16 +21,20 @@
 package bytecode_test
 
 import (
+	"context"
 	"maps"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/fault"
+	"pipit.sh/pipit/sdk/stdlib"
 )
 
 const (
@@ -145,6 +149,87 @@ func EntrypointRun() uint32 {
 }`
 )
 
+const inlineEvalStopSource = `package main
+
+import "sync"
+
+var mu sync.Mutex
+
+type Node interface {
+	Eval(env []ENV) uint64
+}
+
+type addNode struct{ left, right Node }
+
+func (node *addNode) Eval(env []ENV) uint64 {
+	return node.left.Eval(env) + node.right.Eval(env)
+}
+
+type constNode struct{ value uint64 }
+
+func (node *constNode) Eval(env []ENV) uint64 { return node.value }
+
+type slowNode struct {
+	limit  int
+	panics bool
+	spins  bool
+}
+
+func (node *slowNode) Eval(env []ENV) uint64 {
+	total := uint64(0)
+	for i := 0; i < node.limit; i++ {
+		total += uint64(env[0])
+	}
+	if node.panics {
+		panic("slow node panicked")
+	}
+	for node.spins {
+		total++
+	}
+	return total
+}
+
+func eval(root Node, env []ENV) uint64 {
+	return root.Eval(env) + 1000
+}
+
+func Warm() uint64 {
+	root := &addNode{left: &slowNode{limit: 3}, right: &constNode{value: 2}}
+	total := uint64(0)
+	for i := 0; i < 4; i++ {
+		total += eval(root, []ENV{1})
+	}
+	return total
+}
+
+func Panics() uint64 {
+	Warm()
+	return eval(&addNode{left: &slowNode{limit: 3, panics: true}, right: &constNode{value: 2}}, []ENV{1})
+}
+
+func Recovers() (result uint64) {
+	defer func() {
+		if recover() != nil {
+			result = 99
+		}
+	}()
+	return Panics()
+}
+
+func SpinsHoldingLock() uint64 {
+	mu.Lock()
+	defer mu.Unlock()
+	Warm()
+	return eval(&addNode{left: &slowNode{limit: 3, spins: true}, right: &constNode{value: 2}}, []ENV{1})
+}
+
+func LockFree() int {
+	mu.Lock()
+	defer mu.Unlock()
+	return 7
+}
+`
+
 func TestFusedEvalShapeClassification(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
@@ -163,7 +248,7 @@ func TestFusedEvalShapeClassification(t *testing.T) {
 		"addNode.Eval":   program.FusedEvalAddMasked,
 		"subNode.Eval":   program.FusedEvalSubMasked,
 		"mulNode.Eval":   program.FusedEvalMulMasked,
-		"modNode.Eval":   program.FusedEvalModGuarded,
+		"modNode.Eval":   program.FusedEvalModGuardedWhole,
 		"minNode.Eval":   program.FusedEvalMin,
 		"maxNode.Eval":   program.FusedEvalMax,
 		"ifPosNode.Eval": program.FusedEvalIfPos,
@@ -184,4 +269,45 @@ func findShapeByName(shapes map[string]program.FusedEvalShape, suffix string) (p
 		}
 	}
 	return program.FusedEvalNone, false
+}
+
+func TestInlineEvalNestedRunKeepsItsPanicOrStop(t *testing.T) {
+	for _, env := range []string{"uint32", "int"} {
+		for _, lane := range abortUnwindLanes {
+			t.Run(env+"/"+lane.name, func(t *testing.T) {
+				source := strings.ReplaceAll(inlineEvalStopSource, "ENV", env)
+				for _, stop := range []struct {
+					name   string
+					option app.Option
+					want   error
+				}{
+					{name: "cost", option: app.WithCostBudget(5_000_000), want: fault.ErrCostBudgetExceeded},
+					{name: "deadline", option: app.WithMaxExecutionTime(300 * time.Millisecond), want: context.DeadlineExceeded},
+				} {
+					service := newTestService(t, append(append([]app.Option{}, lane.options...), stop.option)...)
+					service.UseSymbolProviders(stdlib.Providers()...)
+					compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
+					require.NoError(t, err)
+					require.NoError(t, service.ExecuteInits(t.Context(), compiled))
+
+					result, err := service.CallFunction(t.Context(), compiled, "Warm")
+					require.NoError(t, err)
+					require.EqualValues(t, 4020, result, "the inline path computes the tree")
+
+					result, err = service.CallFunction(t.Context(), compiled, "Panics")
+					require.ErrorIs(t, err, fault.ErrUncaughtPanic, "%s: the inner panic is the execution's", stop.name)
+					require.Contains(t, err.Error(), "slow node panicked")
+					require.Nil(t, result)
+
+					result, err = service.CallFunction(t.Context(), compiled, "Recovers")
+					require.NoError(t, err)
+					require.EqualValues(t, 99, result, "a deferred recover() in the caller catches the inner panic")
+
+					err = stopCall(t, t.Context(), service, compiled, "SpinsHoldingLock")
+					require.ErrorIs(t, err, stop.want, "the stop inside the inner Eval ends the execution")
+					requireMutexFreePromptly(t, service, compiled)
+				}
+			})
+		}
+	}
 }

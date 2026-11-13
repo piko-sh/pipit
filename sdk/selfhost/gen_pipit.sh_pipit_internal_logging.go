@@ -9,5 +9,5 @@ import (
 )
 
 func init() {
-	Symbols["pipit.sh/pipit/internal/logging"] = map[string]reflect.Value{"ContextWithLogger": reflect.ValueOf(logging.ContextWithLogger), "ErrAttr": reflect.ValueOf(logging.ErrAttr), "LoggerFrom": reflect.ValueOf(logging.LoggerFrom)}
+	Symbols["pipit.sh/pipit/internal/logging"] = map[string]reflect.Value{"Deferred": reflect.ValueOf((*logging.Deferred)(nil)), "ErrAttr": reflect.ValueOf(logging.ErrAttr), "From": reflect.ValueOf(logging.From), "NewDeferred": reflect.ValueOf(logging.NewDeferred), "WithFallbackLogger": reflect.ValueOf(logging.WithFallbackLogger), "WithLogger": reflect.ValueOf(logging.WithLogger)}
 }

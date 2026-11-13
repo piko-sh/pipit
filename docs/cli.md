@@ -115,7 +115,8 @@ example.com/lib => ../lib`). Those packages are compiled from their
 directories, with files chosen as the interpreter chooses them (the
 `interp` tag set and cgo off), and only the packages the program reaches
 are loaded. A file with a malformed `//go:build` line is kept, so the
-compiler reports it. `pipit run` accepts the script file or its
+compiler reports it. Local imports must stay within their module's directory.
+Pipit rejects import paths that escape it. `pipit run` accepts the script file or its
 directory. A gated run (`--gate`) reads local packages from the approved
 source snapshot, so a `replace` outside the script's directory is refused
 there.
@@ -167,9 +168,12 @@ require approval again. Gated execution uses the captured local source bytes.
 Remote dependencies are outside that source snapshot. Keep approval files under
 host control; a script with ambient host access can still attack same-user storage.
 
-Gates cover selected native entry points. Filesystem gates reject `os.DirFS`,
-`os.OpenRoot`, and `os.OpenInRoot`; process gates reject `os.Exit`. Unlisted
-functions and returned native objects can bypass this model. See
+Gates cover selected native entry points. The disk gate checks reads, writes,
+directory listings and metadata operations. Calls such as `os.Rename` and
+`os.Symlink` require approval for both paths. Each gate covers its own group, so
+`--gate=network` leaves file access unrestricted. Filesystem gates reject `os.DirFS`,
+`os.OpenRoot`, `os.OpenInRoot` and `os.Chdir`; process gates reject `os.Exit`.
+Unlisted functions and returned native objects can bypass this model. See
 [execution security](security.md).
 
 ## `pipit test [flags] <file|directory>`

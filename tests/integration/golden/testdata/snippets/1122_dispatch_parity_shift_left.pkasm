@@ -1,0 +1,20 @@
+; pkasm - pipit bytecode assembly
+; dispatch: A assembly, S in-loop shim call to Go, X dedicated exit to Go, G generic exit to Go
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int64=3
+;   dispatch:  asm=4 shim=0 exit=0 go=1
+;   params:    (none)
+;   returns:   (int64)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1  [1]=4
+
+0000 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0001 A 1:LOAD_INT64_IMMEDIATE                                75   1   4    ; ints[1] = 4
+0002 G 2:CHECK_SHIFT_COUNT                                    0  19   1
+0003 A 0:SHIFT_LEFT_INT64                                     0   0   1
+0004 A 2:RETURN                                               0  10   1    ; 1 values

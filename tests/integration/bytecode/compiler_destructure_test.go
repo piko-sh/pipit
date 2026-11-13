@@ -67,7 +67,7 @@ func EntrypointRun() int64 {
 func TestDestructuredSliceElem_FiresOnStructFieldSlice(t *testing.T) {
 	t.Parallel()
 	disasm := compileForDestructure(t, destructureParserSource)
-	require.Positivef(t, strings.Count(disasm, "GET_STRUCT_FIELD_SLICE_INDEX_SCALAR"),
+	require.Positivef(t, strings.Count(disasm, "GET_STRUCT_FIELD_ELEMENT_FIELD"),
 		"expected per-field fused loads for `current := p.tokens[p.position]`; got:\n%s", disasm)
 }
 
@@ -93,7 +93,7 @@ func EntrypointRun() int64 {
 	current := p.tokens[0]
 	return consume(current)
 }`)
-	require.Zerof(t, strings.Count(disasm, "GET_STRUCT_FIELD_SLICE_INDEX_SCALAR"),
+	require.Zerof(t, strings.Count(disasm, "GET_STRUCT_FIELD_ELEMENT_FIELD"),
 		"a local passed whole to a call must refuse per-field destructuring; got:\n%s", disasm)
 }
 
@@ -117,6 +117,6 @@ func EntrypointRun() int64 {
 	ptr.kind = 5
 	return current.kind + current.value
 }`)
-	require.Zerof(t, strings.Count(disasm, "GET_STRUCT_FIELD_SLICE_INDEX_SCALAR"),
+	require.Zerof(t, strings.Count(disasm, "GET_STRUCT_FIELD_ELEMENT_FIELD"),
 		"an address-taken local must refuse per-field destructuring; got:\n%s", disasm)
 }

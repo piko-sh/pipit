@@ -58,7 +58,7 @@ func NewIsolatedRecovery(ctx context.Context, config IsolatedConfig) (*IsolatedR
 		return nil, err
 	}
 	if err != nil {
-		return nil, cleanupOrFail(err, recovery.Close)
+		return nil, cleanupOrFail(ctx, err, func(context.Context) error { return recovery.Close() })
 	}
 	return &IsolatedRecovery{recovery: recovery, logger: config.Logger, mutex: sync.Mutex{}}, nil
 }

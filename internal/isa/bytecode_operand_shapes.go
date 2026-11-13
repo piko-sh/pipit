@@ -51,9 +51,7 @@ const (
 	RoleRegGeneral
 
 	// RoleRegSliceInt designates the operand as an app.SlicesInt-bank register index,
-	// holding a typed []int64 slice header. Used by the typed slice opcodes
-	// (isa.SubOpMakeSliceInt, OpSliceGetIntDirect, OpSliceSetIntDirect,
-	// isa.SubOpLenSliceIntDirect, OpRangeNextSliceInt) that bypass reflect.Value entirely.
+	// holding a typed []int64 slice header.
 	RoleRegSliceInt
 
 	// roleRegSliceFloat designates the operand as a slicesFloat-bank register index, holding
@@ -77,9 +75,7 @@ const (
 	roleRegSliceByte
 
 	// RoleRegDynamic marks a register operand whose bank is selected at runtime by another
-	// operand or a following extension word. Used by ops such as OpGetUpvalue,
-	// isa.SubOpLoadZero and OpAddr; the funnel treats these as opaque and the verifier
-	// widens them to "any bank".
+	// operand or a following extension word.
 	RoleRegDynamic
 
 	// roleConstIndex marks an operand that indexes into a constant pool.
@@ -95,7 +91,7 @@ const (
 	roleTypeIndex
 
 	// RoleKindMarker marks an operand that names a RegisterKind value (used by ops like
-	// OpPackInterface and OpUnpackInterface where C names the bank for B or A).
+	// OpBoxAsInterface and OpUnboxFromInterface where C names the bank for B or A).
 	RoleKindMarker
 
 	// roleSubOpcode marks an operand that names a SubOpcode value dispatched by
@@ -116,8 +112,8 @@ const (
 	// roleCallSiteHigh marks the high byte of a call-site index paired with roleCallSiteLow.
 	roleCallSiteHigh
 
-	// roleFollowsExtension marks an operand whose meaning is supplied by the following OpExt
-	// word; the verifier treats both bytes as opaque.
+	// roleFollowsExtension marks an operand whose meaning is supplied by the following
+	// OpExtension word. The verifier treats both bytes as opaque.
 	roleFollowsExtension
 
 	// roleUnknown marks an opcode the table does not describe; treated as opaque (no
@@ -131,11 +127,11 @@ const (
 	// treats the opcode as opaque (matching roleUnknown per-operand entries).
 	ShapeFlagDescribed shapeFlag = 1 << iota
 
-	// ShapeFlagFollowsExtension marks an opcode that may consume OpExt words after it.
+	// ShapeFlagFollowsExtension marks an opcode that may consume OpExtension words after it.
 	//
 	// The number of words varies, and a defer or go with no arguments carries none, so a
-	// consumer such as the verifier skips every consecutive OpExt word rather than a fixed
-	// count, and never reads those words as standalone instructions.
+	// consumer such as the verifier skips every consecutive OpExtension word rather than a
+	// fixed count, and never reads those words as standalone instructions.
 	ShapeFlagFollowsExtension
 
 	// ShapeFlagControlFlow marks ops that change the program counter in non-fallthrough ways
@@ -229,6 +225,57 @@ func ShapeForInstruction(instr Instruction) OperandShape {
 	return OperandShapeAt(TierSub3, instr.C)
 }
 
+// ReadsExtensionWord reports whether an instruction requires at least one extension word.
+//
+// A defer or a go statement carries one word per argument, and none when it has none.
+// Every other instruction marked as followed by extension words reads the first one
+// unconditionally, for its jump offset, an operand or a count.
+//
+// Takes instruction (Instruction) which is the instruction word.
+//
+// Returns bool which is true when the instruction needs an extension word after it.
+func ReadsExtensionWord(instruction Instruction) bool {
+	if ShapeForInstruction(instruction).Flags&ShapeFlagFollowsExtension == 0 {
+		return false
+	}
+	return instruction.Op != OpDefer && instruction.Op != OpGo
+}
+
+// ScalarConstantOperand returns the constant-pool index a described instruction carries
+// and the register kind whose pool it indexes.
+//
+// The index is wide, B|(C<<8), when both operands are constant indices, and the pool is
+// that of the register A is loaded into. Otherwise it is C alone, and the pool is that of
+// the register in B. Only the pools of scalar kinds are named. A constant index whose
+// register is general may index a table other than the general constants, as a closure's
+// does.
+//
+// Takes instruction (Instruction) which is the instruction word.
+//
+// Returns int which is the index.
+// Returns RegisterKind which names the pool.
+// Returns bool which is false when the instruction carries no scalar constant index.
+func ScalarConstantOperand(instruction Instruction) (int, RegisterKind, bool) {
+	shape := ShapeForInstruction(instruction)
+	if shape.Flags&ShapeFlagDescribed == 0 || shape.C != roleConstIndex {
+		return 0, 0, false
+	}
+	index, register := int(instruction.C), shape.B
+	if shape.B == roleConstIndex {
+		index, register = int(instruction.WideIndex()), shape.A
+	}
+	kind, ok := KindForRole(register)
+	if !ok {
+		return 0, 0, false
+	}
+	switch kind {
+	case RegisterInt64, RegisterUint64, RegisterFloat64, RegisterString, RegisterBool, RegisterComplex128:
+		return index, kind, true
+	default:
+		return 0, 0, false
+	}
+}
+
 // CallSiteIndex returns the call-site index a call instruction carries in B|(C<<8), as
 // the shape table marks it.
 //
@@ -241,99 +288,6 @@ func CallSiteIndex(instr Instruction) (uint16, bool) {
 		return 0, false
 	}
 	return instr.WideIndex(), true
-}
-
-// KindForRole returns the RegisterKind expected by a register-shaped operand role. The
-// boolean is false for non-register roles.
-//
-// Takes role (OperandRole) which is the operand's classification.
-//
-// Returns the corresponding register bank kind and true when the role is register-shaped,
-// otherwise zero and false.
-func KindForRole(role OperandRole) (RegisterKind, bool) {
-	switch role {
-	case RoleRegInt:
-		return RegisterInt, true
-	case RoleRegFloat:
-		return RegisterFloat, true
-	case RoleRegString:
-		return RegisterString, true
-	case RoleRegBool:
-		return RegisterBool, true
-	case RoleRegUint:
-		return RegisterUint, true
-	case RoleRegComplex:
-		return RegisterComplex, true
-	case RoleRegGeneral:
-		return RegisterGeneral, true
-	case RoleRegSliceInt:
-		return RegisterSliceInt, true
-	case roleRegSliceFloat:
-		return RegisterSliceFloat, true
-	case roleRegSliceString:
-		return RegisterSliceString, true
-	case roleRegSliceBool:
-		return RegisterSliceBool, true
-	case roleRegSliceUint:
-		return RegisterSliceUint, true
-	case roleRegSliceByte:
-		return RegisterSliceByte, true
-	default:
-	}
-	return 0, false
-}
-
-// RoleIndexesPerFunctionTable reports whether an operand role names an index into a
-// per-function table that must be renumbered when splicing bytecode across function
-// boundaries.
-//
-// Takes role (OperandRole) which is the operand's classification.
-//
-// Returns true for the constant-pool and type-table index roles.
-func RoleIndexesPerFunctionTable(role OperandRole) bool {
-	switch role {
-	case roleConstIndex, roleTypeIndex:
-		return true
-	default:
-		return false
-	}
-}
-
-// RoleForKind returns the OperandRole that names a register operand of the given bank.
-//
-// Takes kind (RegisterKind) which is the bank to convert.
-//
-// Returns the matching OperandRole.
-func RoleForKind(kind RegisterKind) OperandRole {
-	switch kind {
-	case RegisterInt:
-		return RoleRegInt
-	case RegisterFloat:
-		return RoleRegFloat
-	case RegisterString:
-		return RoleRegString
-	case RegisterBool:
-		return RoleRegBool
-	case RegisterUint:
-		return RoleRegUint
-	case RegisterComplex:
-		return RoleRegComplex
-	case RegisterSliceInt:
-		return RoleRegSliceInt
-	case RegisterSliceFloat:
-		return roleRegSliceFloat
-	case RegisterSliceString:
-		return roleRegSliceString
-	case RegisterSliceBool:
-		return roleRegSliceBool
-	case RegisterSliceUint:
-		return roleRegSliceUint
-	case RegisterSliceByte:
-		return roleRegSliceByte
-	default:
-
-		return RoleRegGeneral
-	}
 }
 
 // described3 records a three-operand opcode with separate roles per position.
@@ -479,7 +433,7 @@ func describeSub1DstSrc(op SubOpcode, destination, source OperandRole) {
 }
 
 // describeSub1DstSrcExtension records a tier-1 "B = f(C)" operation whose layout or index
-// travels in the following OpExt word.
+// travels in the following OpExtension word.
 //
 // Takes op (SubOpcode) which is the sub-opcode being described.
 // Takes destination (OperandRole) which is the role of the B operand written.
@@ -491,8 +445,8 @@ func describeSub1DstSrcExtension(op SubOpcode, destination, source OperandRole) 
 		ShapeFlagFollowsExtension)
 }
 
-// describeSub1ConstJump records a tier-1 fused compare-against-constant-and-branch:
-// "reads B, C is the constant index, OpExt follows for the jump offset".
+// describeSub1ConstJump records a tier-1 fused compare-against-constant-and-branch with
+// "reads B, C is the constant index, OpExtension follows for the jump offset".
 //
 // Takes op (SubOpcode) which is the sub-opcode being described.
 // Takes source (OperandRole) which is the role for the test register.
@@ -503,9 +457,9 @@ func describeSub1ConstJump(op SubOpcode, source OperandRole) {
 		ShapeFlagControlFlow|ShapeFlagFollowsExtension)
 }
 
-// describeSub1RegRegJump records a tier-1 fused compare-and-branch: "reads B and C as
-// registers of role source, OpExt follows for the jump offset". Used by the fused
-// reg-reg-compare-and-jump sub-ops such as SubOpLtIntJumpFalse.
+// describeSub1RegRegJump records a tier-1 fused compare-and-branch with "reads B and C as
+// registers of role source, OpExtension follows for the jump offset". Used by the fused
+// reg-reg-compare-and-jump sub-ops such as SubOpLessThanInt64ThenJumpIfFalse.
 //
 // Takes op (SubOpcode) which is the sub-opcode being described.
 // Takes source (OperandRole) which is the role for both operand registers.
@@ -567,95 +521,97 @@ func init() {
 // populateScalarArithShapes describes integer, float, uint, and complex arithmetic and
 // bitwise opcodes that operate on a single register bank.
 func populateScalarArithShapes() {
-	describeDstSrcSrc(OpAddInt, RoleRegInt)
+	describeDstSrcSrc(OpAddInt64, RoleRegInt)
 	describeDstSrcSrc(OpAddInt32, RoleRegInt)
-	describeDstSrcSrc(OpSubInt32, RoleRegInt)
-	describeDstSrcSrc(OpMulInt32, RoleRegInt)
-	describeArithConst(OpAddInt32Const, RoleRegInt)
-	describeArithConst(OpSubInt32Const, RoleRegInt)
+	describeDstSrcSrc(OpSubtractInt32, RoleRegInt)
+	describeDstSrcSrc(OpMultiplyInt32, RoleRegInt)
+	describeArithConst(OpAddInt32Constant, RoleRegInt)
+	describeArithConst(OpSubtractInt32Constant, RoleRegInt)
 	describeDstSrcSrc(OpAddUint32, RoleRegUint)
-	describeDstSrcSrc(OpSubInt, RoleRegInt)
-	describeDstSrcSrc(OpMulInt, RoleRegInt)
-	describeDstSrcSrc(OpDivInt, RoleRegInt)
-	describeDstSrcSrc(OpRemInt, RoleRegInt)
-	describeDstSrcSrc(OpBitAnd, RoleRegInt)
-	describeDstSrcSrc(OpBitOr, RoleRegInt)
-	describeDstSrcSrc(OpBitXor, RoleRegInt)
-	describeDstSrcSrc(OpBitAndNot, RoleRegInt)
-	describeDstSrcSrc(OpShiftLeft, RoleRegInt)
-	describeDstSrcSrc(OpShiftRight, RoleRegInt)
-	describeDstSrcSrc(OpAddFloat, RoleRegFloat)
-	describeDstSrcSrc(OpSubFloat, RoleRegFloat)
-	describeDstSrcSrc(OpMulFloat, RoleRegFloat)
-	describeDstSrcSrc(OpDivFloat, RoleRegFloat)
-	describeDstSrcSrc(OpAddUint, RoleRegUint)
-	describeDstSrcSrc(OpSubUint, RoleRegUint)
-	describeDstSrcSrc(OpMulUint, RoleRegUint)
-	describeDstSrcSrc(OpDivUint, RoleRegUint)
-	describeDstSrcSrc(OpRemUint, RoleRegUint)
-	describeDstSrcSrc(OpBitAndUint, RoleRegUint)
-	describeDstSrcSrc(OpBitOrUint, RoleRegUint)
-	describeDstSrcSrc(OpBitXorUint, RoleRegUint)
-	describeDstSrcSrc(OpBitAndNotUint, RoleRegUint)
-	describeDstSrcSrc(OpShiftLeftUint, RoleRegUint)
-	describeDstSrcSrc(OpShiftRightUint, RoleRegUint)
-	describeDstSrcSrc(OpAddComplex, RoleRegComplex)
-	describeDstSrcSrc(OpSubComplex, RoleRegComplex)
-	describeDstSrcSrc(OpMulComplex, RoleRegComplex)
-	describeDstSrcSrc(OpDivComplex, RoleRegComplex)
+	describeDstSrcSrc(OpSubtractUint32, RoleRegUint)
+	describeDstSrcSrc(OpMultiplyUint32, RoleRegUint)
+	describeDstSrcSrc(OpSubtractInt64, RoleRegInt)
+	describeDstSrcSrc(OpMultiplyInt64, RoleRegInt)
+	describeDstSrcSrc(OpDivideInt64, RoleRegInt)
+	describeDstSrcSrc(OpRemainderInt64, RoleRegInt)
+	describeDstSrcSrc(OpBitAndInt64, RoleRegInt)
+	describeDstSrcSrc(OpBitOrInt64, RoleRegInt)
+	describeDstSrcSrc(OpBitXorInt64, RoleRegInt)
+	describeDstSrcSrc(OpBitAndNotInt64, RoleRegInt)
+	describeDstSrcSrc(OpShiftLeftInt64, RoleRegInt)
+	describeDstSrcSrc(OpShiftRightInt64, RoleRegInt)
+	describeDstSrcSrc(OpAddFloat64, RoleRegFloat)
+	describeDstSrcSrc(OpSubtractFloat64, RoleRegFloat)
+	describeDstSrcSrc(OpMultiplyFloat64, RoleRegFloat)
+	describeDstSrcSrc(OpDivideFloat64, RoleRegFloat)
+	describeDstSrcSrc(OpAddUint64, RoleRegUint)
+	describeDstSrcSrc(OpSubtractUint64, RoleRegUint)
+	describeDstSrcSrc(OpMultiplyUint64, RoleRegUint)
+	describeDstSrcSrc(OpDivideUint64, RoleRegUint)
+	describeDstSrcSrc(OpRemainderUint64, RoleRegUint)
+	describeDstSrcSrc(OpBitAndUint64, RoleRegUint)
+	describeDstSrcSrc(OpBitOrUint64, RoleRegUint)
+	describeDstSrcSrc(OpBitXorUint64, RoleRegUint)
+	describeDstSrcSrc(OpBitAndNotUint64, RoleRegUint)
+	describeDstSrcSrc(OpShiftLeftUint64, RoleRegUint)
+	describeDstSrcSrc(OpShiftRightUint64, RoleRegUint)
+	describeDstSrcSrc(OpAddComplex128, RoleRegComplex)
+	describeDstSrcSrc(OpSubtractComplex128, RoleRegComplex)
+	describeDstSrcSrc(OpMultiplyComplex128, RoleRegComplex)
+	describeDstSrcSrc(OpDivideComplex128, RoleRegComplex)
 }
 
 // populateGenericArithShapes describes the reflect-based arithmetic opcodes that operate
 // on the general register bank.
 func populateGenericArithShapes() {
-	describeDstSrcSrc(OpAdd, RoleRegGeneral)
-	describeDstSrcSrc(OpSub, RoleRegGeneral)
-	describeDstSrcSrc(OpMul, RoleRegGeneral)
-	describeDstSrcSrc(OpDiv, RoleRegGeneral)
-	describeDstSrcSrc(OpRem, RoleRegGeneral)
+	describeDstSrcSrc(OpAddGeneral, RoleRegGeneral)
+	describeDstSrcSrc(OpSubtractGeneral, RoleRegGeneral)
+	describeDstSrcSrc(OpMultiplyGeneral, RoleRegGeneral)
+	describeDstSrcSrc(OpDivideGeneral, RoleRegGeneral)
+	describeDstSrcSrc(OpRemainderGeneral, RoleRegGeneral)
 }
 
 // populateComparisonShapes describes the comparison opcodes that produce an int
 // (boolean-as-int) result from typed-bank reads.
 func populateComparisonShapes() {
-	describeDstSrcSrcMixed(OpEqInt, RoleRegInt, RoleRegInt)
-	describeDstSrcSrcMixed(OpNeInt, RoleRegInt, RoleRegInt)
-	describeDstSrcSrcMixed(OpLtInt, RoleRegInt, RoleRegInt)
-	describeDstSrcSrcMixed(OpLeInt, RoleRegInt, RoleRegInt)
-	describeDstSrcSrcMixed(OpGtInt, RoleRegInt, RoleRegInt)
-	describeDstSrcSrcMixed(OpGeInt, RoleRegInt, RoleRegInt)
-	describeDstSrcSrcMixed(OpEqFloat, RoleRegInt, RoleRegFloat)
-	describeDstSrcSrcMixed(OpNeFloat, RoleRegInt, RoleRegFloat)
-	describeDstSrcSrcMixed(OpLtFloat, RoleRegInt, RoleRegFloat)
-	describeDstSrcSrcMixed(OpLeFloat, RoleRegInt, RoleRegFloat)
-	describeDstSrcSrcMixed(OpGtFloat, RoleRegInt, RoleRegFloat)
-	describeDstSrcSrcMixed(OpGeFloat, RoleRegInt, RoleRegFloat)
-	describeDstSrcSrcMixed(OpEqString, RoleRegInt, RoleRegString)
-	describeDstSrcSrcMixed(OpNeString, RoleRegInt, RoleRegString)
-	describeDstSrcSrcMixed(OpLtString, RoleRegInt, RoleRegString)
-	describeDstSrcSrcMixed(OpLeString, RoleRegInt, RoleRegString)
-	describeDstSrcSrcMixed(OpGtString, RoleRegInt, RoleRegString)
-	describeDstSrcSrcMixed(OpGeString, RoleRegInt, RoleRegString)
-	describeDstSrcSrcMixed(OpEqUint, RoleRegInt, RoleRegUint)
-	describeDstSrcSrcMixed(OpNeUint, RoleRegInt, RoleRegUint)
-	describeDstSrcSrcMixed(OpLtUint, RoleRegInt, RoleRegUint)
-	describeDstSrcSrcMixed(OpLeUint, RoleRegInt, RoleRegUint)
-	describeDstSrcSrcMixed(OpGtUint, RoleRegInt, RoleRegUint)
-	describeDstSrcSrcMixed(OpGeUint, RoleRegInt, RoleRegUint)
-	describeDstSrcSrcMixed(OpEqComplex, RoleRegInt, RoleRegComplex)
-	describeDstSrcSrcMixed(OpNeComplex, RoleRegInt, RoleRegComplex)
-	describeDstSrcSrcMixed(OpEqGeneral, RoleRegInt, RoleRegGeneral)
-	describeDstSrcSrcMixed(OpNeGeneral, RoleRegInt, RoleRegGeneral)
-	describeDstSrcSrcMixed(OpLtGeneral, RoleRegInt, RoleRegGeneral)
-	describeDstSrcSrcMixed(OpLeGeneral, RoleRegInt, RoleRegGeneral)
-	describeDstSrcSrcMixed(OpGtGeneral, RoleRegInt, RoleRegGeneral)
-	describeDstSrcSrcMixed(OpGeGeneral, RoleRegInt, RoleRegGeneral)
+	describeDstSrcSrcMixed(OpEqualInt64, RoleRegInt, RoleRegInt)
+	describeDstSrcSrcMixed(OpNotEqualInt64, RoleRegInt, RoleRegInt)
+	describeDstSrcSrcMixed(OpLessThanInt64, RoleRegInt, RoleRegInt)
+	describeDstSrcSrcMixed(OpLessOrEqualInt64, RoleRegInt, RoleRegInt)
+	describeDstSrcSrcMixed(OpGreaterThanInt64, RoleRegInt, RoleRegInt)
+	describeDstSrcSrcMixed(OpGreaterOrEqualInt64, RoleRegInt, RoleRegInt)
+	describeDstSrcSrcMixed(OpEqualFloat64, RoleRegInt, RoleRegFloat)
+	describeDstSrcSrcMixed(OpNotEqualFloat64, RoleRegInt, RoleRegFloat)
+	describeDstSrcSrcMixed(OpLessThanFloat64, RoleRegInt, RoleRegFloat)
+	describeDstSrcSrcMixed(OpLessOrEqualFloat64, RoleRegInt, RoleRegFloat)
+	describeDstSrcSrcMixed(OpGreaterThanFloat64, RoleRegInt, RoleRegFloat)
+	describeDstSrcSrcMixed(OpGreaterOrEqualFloat64, RoleRegInt, RoleRegFloat)
+	describeDstSrcSrcMixed(OpEqualString, RoleRegInt, RoleRegString)
+	describeDstSrcSrcMixed(OpNotEqualString, RoleRegInt, RoleRegString)
+	describeDstSrcSrcMixed(OpLessThanString, RoleRegInt, RoleRegString)
+	describeDstSrcSrcMixed(OpLessOrEqualString, RoleRegInt, RoleRegString)
+	describeDstSrcSrcMixed(OpGreaterThanString, RoleRegInt, RoleRegString)
+	describeDstSrcSrcMixed(OpGreaterOrEqualString, RoleRegInt, RoleRegString)
+	describeDstSrcSrcMixed(OpEqualUint64, RoleRegInt, RoleRegUint)
+	describeDstSrcSrcMixed(OpNotEqualUint64, RoleRegInt, RoleRegUint)
+	describeDstSrcSrcMixed(OpLessThanUint64, RoleRegInt, RoleRegUint)
+	describeDstSrcSrcMixed(OpLessOrEqualUint64, RoleRegInt, RoleRegUint)
+	describeDstSrcSrcMixed(OpGreaterThanUint64, RoleRegInt, RoleRegUint)
+	describeDstSrcSrcMixed(OpGreaterOrEqualUint64, RoleRegInt, RoleRegUint)
+	describeDstSrcSrcMixed(OpEqualComplex128, RoleRegInt, RoleRegComplex)
+	describeDstSrcSrcMixed(OpNotEqualComplex128, RoleRegInt, RoleRegComplex)
+	describeDstSrcSrcMixed(OpEqualGeneral, RoleRegInt, RoleRegGeneral)
+	describeDstSrcSrcMixed(OpNotEqualGeneral, RoleRegInt, RoleRegGeneral)
+	describeDstSrcSrcMixed(OpLessThanGeneral, RoleRegInt, RoleRegGeneral)
+	describeDstSrcSrcMixed(OpLessOrEqualGeneral, RoleRegInt, RoleRegGeneral)
+	describeDstSrcSrcMixed(OpGreaterThanGeneral, RoleRegInt, RoleRegGeneral)
+	describeDstSrcSrcMixed(OpGreaterOrEqualGeneral, RoleRegInt, RoleRegGeneral)
 }
 
 // populateConversionMoveShapes describes type-converting moves between scalar register
 // banks plus same-bank moves and the cross-bank pack/unpack opcodes.
 func populateConversionMoveShapes() {
-	described3(OpTruncateNarrow, RoleRegDynamic, RoleImmediate, RoleKindMarker,
+	described3(OpTruncateToWidth, RoleRegDynamic, RoleImmediate, RoleKindMarker,
 		[NumInstructionOperands]bool{true, false, false},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
@@ -664,15 +620,15 @@ func populateConversionMoveShapes() {
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpPackInterface, RoleRegGeneral, RoleRegDynamic, RoleKindMarker,
+	described3(OpBoxAsInterface, RoleRegGeneral, RoleRegDynamic, RoleKindMarker,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpPackTyped, RoleRegGeneral, RoleRegDynamic, RoleKindMarker,
+	described3(OpBoxAsType, RoleRegGeneral, RoleRegDynamic, RoleKindMarker,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension)
-	described3(OpUnpackInterface, RoleRegDynamic, RoleRegGeneral, RoleKindMarker,
+	described3(OpUnboxFromInterface, RoleRegDynamic, RoleRegGeneral, RoleKindMarker,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
@@ -681,29 +637,33 @@ func populateConversionMoveShapes() {
 // populateConstantLoadShapes describes the opcodes that materialise constants into typed
 // register banks.
 func populateConstantLoadShapes() {
-	describeLoadConst(OpLoadIntConst, RoleRegInt)
-	describeLoadConst(OpLoadFloatConst, RoleRegFloat)
-	describeLoadConst(OpLoadStringConst, RoleRegString)
-	describeLoadConst(OpLoadGeneralConst, RoleRegGeneral)
-	describeLoadConst(OpLoadCompositeZeroReuse, RoleRegGeneral)
-	describeLoadConst(OpLoadUintConst, RoleRegUint)
-	describeLoadConst(OpLoadComplexConst, RoleRegComplex)
+	describeLoadConst(OpLoadInt64Constant, RoleRegInt)
+	describeLoadConst(OpLoadFloat64Constant, RoleRegFloat)
+	describeLoadConst(OpLoadStringConstant, RoleRegString)
+	describeLoadConst(OpLoadGeneralConstant, RoleRegGeneral)
+	describeLoadConst(OpLoadCompositeZeroInPlace, RoleRegGeneral)
+	describeLoadConst(OpLoadUint64Constant, RoleRegUint)
+	describeLoadConst(OpLoadComplex128Constant, RoleRegComplex)
 }
 
 // populateJumpAndFusedShapes describes unconditional jumps, conditional branches, and
 // fused arithmetic-and-jump opcodes.
 func populateJumpAndFusedShapes() {
-	describeArithConst(OpSubIntConst, RoleRegInt)
-	describeArithConst(OpAddIntConst, RoleRegInt)
-	describeArithConst(OpMulIntConst, RoleRegInt)
-	described3(OpAddIntJump, RoleRegInt, RoleRegInt, roleConstIndex,
+	describeArithConst(OpSubtractInt64Constant, RoleRegInt)
+	describeArithConst(OpAddInt64Constant, RoleRegInt)
+	describeArithConst(OpMultiplyInt64Constant, RoleRegInt)
+	described3(OpAddInt64ConstantThenJump, RoleRegInt, RoleRegInt, roleConstIndex,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension|ShapeFlagControlFlow)
+	described3(OpMultiplyInt64ConstantThenAdd, RoleRegInt, RoleRegInt, roleConstIndex,
+		[NumInstructionOperands]bool{false, true, false},
+		[NumInstructionOperands]bool{true, false, false},
+		ShapeFlagFollowsExtension)
 	describeJumpCondition(OpJumpIfTrue, RoleRegInt)
 	describeJumpCondition(OpJumpIfFalse, RoleRegInt)
-	describeJumpCondition(OpTestNilJumpTrue, RoleRegGeneral)
-	describeJumpCondition(OpTestNilJumpFalse, RoleRegGeneral)
+	describeJumpCondition(OpJumpIfNil, RoleRegGeneral)
+	describeJumpCondition(OpJumpIfNotNil, RoleRegGeneral)
 }
 
 // populateMathShapes describes the math intrinsic opcodes that operate on float
@@ -721,16 +681,16 @@ func populateMathShapes() {
 // populateStringShapes describes basic string operations and strconv formatters that
 // produce string-bank values from typed-bank inputs.
 func populateStringShapes() {
-	described3(OpStringIndex, RoleRegUint, RoleRegString, RoleRegInt,
+	described3(OpGetStringByte, RoleRegUint, RoleRegString, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpStringIndexToInt, RoleRegInt, RoleRegString, RoleRegInt,
+	described3(OpGetStringByteAsInt64, RoleRegInt, RoleRegString, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	describeDstSrcSrc(OpConcatString, RoleRegString)
-	described3(OpConcatRuneString, RoleRegString, RoleRegString, RoleRegInt,
+	describeDstSrcSrc(OpConcatenateString, RoleRegString)
+	described3(OpConcatenateStringRune, RoleRegString, RoleRegString, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
@@ -739,37 +699,37 @@ func populateStringShapes() {
 // populateStringIntrinsicShapes describes the strings package intrinsic opcodes
 // (Contains, ToUpper, etc.).
 func populateStringIntrinsicShapes() {
-	described3(OpStrContainsRune, RoleRegBool, RoleRegString, RoleRegInt,
+	described3(OpStringsContainsRune, RoleRegBool, RoleRegString, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	describeDstSrcSrcMixed(OpStrContains, RoleRegBool, RoleRegString)
-	describeDstSrcSrcMixed(OpStrHasPrefix, RoleRegBool, RoleRegString)
-	describeDstSrcSrcMixed(OpStrHasSuffix, RoleRegBool, RoleRegString)
-	describeDstSrcSrcMixed(OpStrEqualFold, RoleRegBool, RoleRegString)
-	describeDstSrcSrcMixed(OpStrIndex, RoleRegInt, RoleRegString)
-	describeDstSrcSrcMixed(OpStrCount, RoleRegInt, RoleRegString)
-	describeDstSrcSrc(OpStrTrimPrefix, RoleRegString)
-	describeDstSrcSrc(OpStrTrimSuffix, RoleRegString)
-	describeDstSrcSrc(OpStrTrim, RoleRegString)
-	described3(OpStrIndexRune, RoleRegInt, RoleRegString, RoleRegInt,
+	describeDstSrcSrcMixed(OpStringsContains, RoleRegBool, RoleRegString)
+	describeDstSrcSrcMixed(OpStringsHasPrefix, RoleRegBool, RoleRegString)
+	describeDstSrcSrcMixed(OpStringsHasSuffix, RoleRegBool, RoleRegString)
+	describeDstSrcSrcMixed(OpStringsEqualFold, RoleRegBool, RoleRegString)
+	describeDstSrcSrcMixed(OpStringsIndex, RoleRegInt, RoleRegString)
+	describeDstSrcSrcMixed(OpStringsCount, RoleRegInt, RoleRegString)
+	describeDstSrcSrc(OpStringsTrimPrefix, RoleRegString)
+	describeDstSrcSrc(OpStringsTrimSuffix, RoleRegString)
+	describeDstSrcSrc(OpStringsTrim, RoleRegString)
+	described3(OpStringsIndexRune, RoleRegInt, RoleRegString, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpStrRepeat, RoleRegString, RoleRegString, RoleRegInt,
+	described3(OpStringsRepeat, RoleRegString, RoleRegString, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	describeDstSrcSrcMixed(OpStrLastIndex, RoleRegInt, RoleRegString)
-	described3(OpStrJoin, RoleRegString, RoleRegGeneral, RoleRegString,
+	describeDstSrcSrcMixed(OpStringsLastIndex, RoleRegInt, RoleRegString)
+	described3(OpStringsJoin, RoleRegString, RoleRegGeneral, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpStrSplit, RoleRegGeneral, RoleRegString, RoleRegString,
+	described3(OpStringsSplit, RoleRegGeneral, RoleRegString, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpStrReplaceAll, RoleRegString, RoleRegString, RoleRegString,
+	described3(OpStringsReplaceAll, RoleRegString, RoleRegString, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension)
@@ -778,7 +738,7 @@ func populateStringIntrinsicShapes() {
 // populateComplexAndFusedStringShapes describes complex constructors, accessors, and
 // fused string-and-jump opcodes.
 func populateComplexAndFusedStringShapes() {
-	describeDstSrcSrcMixed(OpBuildComplex, RoleRegComplex, RoleRegFloat)
+	describeDstSrcSrcMixed(OpMakeComplex128, RoleRegComplex, RoleRegFloat)
 	described3(OpSliceString, RoleRegString, RoleRegString, RoleImmediate,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
@@ -787,32 +747,32 @@ func populateComplexAndFusedStringShapes() {
 
 // populateSliceAndAppendShapes describes typed slice get/set and typed append opcodes.
 func populateSliceAndAppendShapes() {
-	describeTypedSliceGet(OpSliceGetInt, RoleRegInt)
-	describeTypedSliceGet(OpSliceGetFloat, RoleRegFloat)
-	describeTypedSliceGet(OpSliceGetString, RoleRegString)
-	describeTypedSliceGet(OpSliceGetBool, RoleRegBool)
-	describeTypedSliceGet(OpSliceGetUint, RoleRegUint)
-	describeTypedSliceGet(OpSliceGetIntUnchecked, RoleRegInt)
-	describeTypedSliceSet(OpSliceSetInt, RoleRegInt)
-	describeTypedSliceSet(OpSliceSetFloat, RoleRegFloat)
-	describeTypedSliceSet(OpSliceSetString, RoleRegString)
-	describeTypedSliceSet(OpSliceSetBool, RoleRegBool)
-	describeTypedSliceSet(OpSliceSetUint, RoleRegUint)
-	describeTypedSliceSet(OpSliceSetIntUnchecked, RoleRegInt)
+	describeTypedSliceGet(OpGetElementInt64, RoleRegInt)
+	describeTypedSliceGet(OpGetElementFloat64, RoleRegFloat)
+	describeTypedSliceGet(OpGetElementString, RoleRegString)
+	describeTypedSliceGet(OpGetElementBool, RoleRegBool)
+	describeTypedSliceGet(OpGetElementUint64, RoleRegUint)
+	describeTypedSliceGet(OpGetElementInt64Unchecked, RoleRegInt)
+	describeTypedSliceSet(OpSetElementInt64, RoleRegInt)
+	describeTypedSliceSet(OpSetElementFloat64, RoleRegFloat)
+	describeTypedSliceSet(OpSetElementString, RoleRegString)
+	describeTypedSliceSet(OpSetElementBool, RoleRegBool)
+	describeTypedSliceSet(OpSetElementUint64, RoleRegUint)
+	describeTypedSliceSet(OpSetElementInt64Unchecked, RoleRegInt)
 }
 
 // populateTypedSliceDirectShapes describes typed direct-storage slice opcodes that
 // operate against the app.SlicesInt bank without reflect.
 func populateTypedSliceDirectShapes() {
-	described3(OpSliceGetIntDirect, RoleRegInt, RoleRegSliceInt, RoleRegInt,
+	described3(OpGetSliceInt64Element, RoleRegInt, RoleRegSliceInt, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpSliceSetIntDirect, RoleRegSliceInt, RoleRegInt, RoleRegInt,
+	described3(OpSetSliceInt64Element, RoleRegSliceInt, RoleRegInt, RoleRegInt,
 		[NumInstructionOperands]bool{true, true, true},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
-	described3(OpRangeNextSliceInt, RoleRegInt, RoleRegSliceInt, RoleRegInt,
+	described3(OpRangeNextSliceInt64, RoleRegInt, RoleRegSliceInt, RoleRegInt,
 		[NumInstructionOperands]bool{true, true, false},
 		[NumInstructionOperands]bool{true, false, true},
 		ShapeFlagFollowsExtension|ShapeFlagControlFlow)
@@ -820,11 +780,11 @@ func populateTypedSliceDirectShapes() {
 		[NumInstructionOperands]bool{true, true, false},
 		[NumInstructionOperands]bool{true, false, true},
 		ShapeFlagFollowsExtension|ShapeFlagControlFlow)
-	described3(OpSliceGetIntDirectUnchecked, RoleRegInt, RoleRegSliceInt, RoleRegInt,
+	described3(OpGetSliceInt64ElementUnchecked, RoleRegInt, RoleRegSliceInt, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpSliceSetIntDirectUnchecked, RoleRegSliceInt, RoleRegInt, RoleRegInt,
+	described3(OpSetSliceInt64ElementUnchecked, RoleRegSliceInt, RoleRegInt, RoleRegInt,
 		[NumInstructionOperands]bool{true, true, true},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
@@ -841,52 +801,56 @@ func populateMapAndFieldShapes() {
 // populateTypedMapShapes describes opcodes that access maps keyed and valued by typed
 // registers (int, string).
 func populateTypedMapShapes() {
-	described3(OpMapGetIntInt, RoleRegInt, RoleRegGeneral, RoleRegInt,
+	described3(OpGetMapInt64Int64, RoleRegInt, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpMapSetIntInt, RoleRegGeneral, RoleRegInt, RoleRegInt,
+	described3(OpSetMapInt64Int64, RoleRegGeneral, RoleRegInt, RoleRegInt,
 		[NumInstructionOperands]bool{true, true, true},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
-	described3(OpMapGetStringInt, RoleRegInt, RoleRegGeneral, RoleRegString,
+	described3(OpGetMapStringInt64, RoleRegInt, RoleRegGeneral, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpMapSetStringInt, RoleRegGeneral, RoleRegString, RoleRegInt,
+	described3(OpSetMapStringInt64, RoleRegGeneral, RoleRegString, RoleRegInt,
 		[NumInstructionOperands]bool{true, true, true},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
 
-	described3(OpMapSetIntGeneral, RoleRegGeneral, RoleRegInt, RoleRegGeneral,
+	described3(OpSetMapInt64General, RoleRegGeneral, RoleRegInt, RoleRegGeneral,
 		[NumInstructionOperands]bool{true, true, true},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
-	described3(OpMapSetStringGeneral, RoleRegGeneral, RoleRegString, RoleRegGeneral,
+	described3(OpSetMapStringGeneral, RoleRegGeneral, RoleRegString, RoleRegGeneral,
 		[NumInstructionOperands]bool{true, true, true},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
-	described3(OpMapAddIntInt, RoleRegGeneral, RoleRegInt, RoleRegInt,
+	described3(OpAddToMapInt64Int64, RoleRegGeneral, RoleRegInt, RoleRegInt,
 		[NumInstructionOperands]bool{true, true, true},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
-	described3(OpMapAddStringInt, RoleRegGeneral, RoleRegString, RoleRegInt,
+	described3(OpAddToMapStringInt64, RoleRegGeneral, RoleRegString, RoleRegInt,
 		[NumInstructionOperands]bool{true, true, true},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
-	described3(OpMapGetStringString, RoleRegString, RoleRegGeneral, RoleRegString,
+	described3(OpAppendStringToMapString, RoleRegGeneral, RoleRegString, RoleRegString,
+		[NumInstructionOperands]bool{true, true, true},
+		[NumInstructionOperands]bool{false, false, false},
+		0)
+	described3(OpGetMapStringString, RoleRegString, RoleRegGeneral, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpMapSetStringString, RoleRegGeneral, RoleRegString, RoleRegString,
+	described3(OpSetMapStringString, RoleRegGeneral, RoleRegString, RoleRegString,
 		[NumInstructionOperands]bool{true, true, true},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
-	described3(OpMapGetIntString, RoleRegString, RoleRegGeneral, RoleRegInt,
+	described3(OpGetMapInt64String, RoleRegString, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpMapSetIntString, RoleRegGeneral, RoleRegInt, RoleRegString,
+	described3(OpSetMapInt64String, RoleRegGeneral, RoleRegInt, RoleRegString,
 		[NumInstructionOperands]bool{true, true, true},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
@@ -895,11 +859,11 @@ func populateTypedMapShapes() {
 // populateGenericFieldShapes describes the generic typed-int field accessors and the
 // dynamic get/set field opcodes.
 func populateGenericFieldShapes() {
-	described3(OpGetFieldInt, RoleRegInt, RoleRegGeneral, roleFieldIndex,
+	described3(OpGetFieldInt64, RoleRegInt, RoleRegGeneral, roleFieldIndex,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpSetFieldInt, RoleRegGeneral, roleFieldIndex, RoleRegInt,
+	described3(OpSetFieldInt64, RoleRegGeneral, roleFieldIndex, RoleRegInt,
 		[NumInstructionOperands]bool{true, false, true},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
@@ -917,27 +881,27 @@ func populateGenericFieldShapes() {
 // populateStructFieldShapes describes the typed tier-0 struct-field get and set opcodes
 // plus the in-place swap.
 func populateStructFieldShapes() {
-	described3(OpGetStructFieldIntT0, RoleRegInt, RoleRegGeneral, roleFieldIndex,
+	described3(OpGetStructFieldInt64, RoleRegInt, RoleRegGeneral, roleFieldIndex,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpSetStructFieldIntT0, RoleRegGeneral, RoleRegInt, roleFieldIndex,
+	described3(OpSetStructFieldInt64, RoleRegGeneral, RoleRegInt, roleFieldIndex,
 		[NumInstructionOperands]bool{true, true, false},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
-	described3(OpGetStructFieldUint, RoleRegUint, RoleRegGeneral, roleFieldIndex,
+	described3(OpGetStructFieldUint64, RoleRegUint, RoleRegGeneral, roleFieldIndex,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpSetStructFieldUint, RoleRegGeneral, RoleRegUint, roleFieldIndex,
+	described3(OpSetStructFieldUint64, RoleRegGeneral, RoleRegUint, roleFieldIndex,
 		[NumInstructionOperands]bool{true, true, false},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
-	described3(OpGetStructFieldFloat, RoleRegFloat, RoleRegGeneral, roleFieldIndex,
+	described3(OpGetStructFieldFloat64, RoleRegFloat, RoleRegGeneral, roleFieldIndex,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpSetStructFieldFloat, RoleRegGeneral, RoleRegFloat, roleFieldIndex,
+	described3(OpSetStructFieldFloat64, RoleRegGeneral, RoleRegFloat, roleFieldIndex,
 		[NumInstructionOperands]bool{true, true, false},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
@@ -953,7 +917,7 @@ func populateStructFieldShapes() {
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpGetStructFieldRawPointerT0, RoleRegGeneral, RoleRegGeneral, roleFieldIndex,
+	described3(OpGetStructFieldRawPointer, RoleRegGeneral, RoleRegGeneral, roleFieldIndex,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
@@ -962,7 +926,7 @@ func populateStructFieldShapes() {
 		[NumInstructionOperands]bool{false, false, false},
 		0)
 	populateFusedStructFieldCopyShape()
-	described3(OpSwapStructFieldsGeneralT0, RoleRegGeneral, roleFieldIndex, roleFieldIndex,
+	described3(OpSwapStructFieldsGeneral, RoleRegGeneral, roleFieldIndex, roleFieldIndex,
 		[NumInstructionOperands]bool{true, false, false},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
@@ -971,36 +935,44 @@ func populateStructFieldShapes() {
 // populateSliceIndexStructFieldShapes describes the typed fused
 // slice-index-of-struct-field super-instructions for every register family.
 func populateSliceIndexStructFieldShapes() {
-	described3(OpSliceIndexStructFieldInt, RoleRegInt, RoleRegGeneral, RoleRegInt,
+	described3(OpGetElementFieldInt64, RoleRegInt, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension)
-	described3(OpSliceIndexStructFieldUint, RoleRegUint, RoleRegGeneral, RoleRegInt,
+	described3(OpGetElementFieldUint64, RoleRegUint, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension)
-	described3(OpSliceIndexStructFieldFloat, RoleRegFloat, RoleRegGeneral, RoleRegInt,
+	described3(OpGetElementFieldFloat64, RoleRegFloat, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension)
-	described3(OpSliceIndexStructFieldBool, RoleRegBool, RoleRegGeneral, RoleRegInt,
+	described3(OpGetElementFieldBool, RoleRegBool, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension)
-	described3(OpSliceIndexStructFieldString, RoleRegString, RoleRegGeneral, RoleRegInt,
+	described3(OpGetElementFieldString, RoleRegString, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
+		ShapeFlagFollowsExtension)
+	described3(OpSetElementFieldInt64, RoleRegInt, RoleRegGeneral, RoleRegInt,
+		[NumInstructionOperands]bool{true, true, true},
+		[NumInstructionOperands]bool{false, false, false},
+		ShapeFlagFollowsExtension)
+	described3(OpSetElementFieldFloat64, RoleRegFloat, RoleRegGeneral, RoleRegInt,
+		[NumInstructionOperands]bool{true, true, true},
+		[NumInstructionOperands]bool{false, false, false},
 		ShapeFlagFollowsExtension)
 }
 
 // populateUpvalueAndConvertShapes describes upvalue access and the remaining conversion
 // opcodes that touch the general bank.
 func populateUpvalueAndConvertShapes() {
-	described3(OpGetUpvalue, RoleRegDynamic, RoleImmediate, RoleKindMarker,
+	described3(OpGetCapturedVariable, RoleRegDynamic, RoleImmediate, RoleKindMarker,
 		[NumInstructionOperands]bool{false, false, false},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpSetUpvalue, RoleRegDynamic, RoleImmediate, RoleKindMarker,
+	described3(OpSetCapturedVariable, RoleRegDynamic, RoleImmediate, RoleKindMarker,
 		[NumInstructionOperands]bool{true, false, false},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
@@ -1009,7 +981,7 @@ func populateUpvalueAndConvertShapes() {
 // populateTerminatorShapes describes returns, panics, and the trivial nop and ext
 // opcodes.
 func populateTerminatorShapes() {
-	described3(OpExt, RoleImmediate, RoleImmediate, RoleImmediate,
+	described3(OpExtension, RoleImmediate, RoleImmediate, RoleImmediate,
 		[NumInstructionOperands]bool{false, false, false},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
@@ -1023,47 +995,47 @@ func populateCollectionShapes() {
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension)
 
-	described3(OpIndex, RoleRegGeneral, RoleRegGeneral, RoleRegInt,
+	described3(OpGetElement, RoleRegGeneral, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpDerefSliceGetInt, RoleRegInt, RoleRegGeneral, RoleRegInt,
+	described3(OpGetElementInt64ViaPointer, RoleRegInt, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpDerefSliceSetInt, RoleRegGeneral, RoleRegInt, RoleRegInt,
+	described3(OpSetElementInt64ViaPointer, RoleRegGeneral, RoleRegInt, RoleRegInt,
 		[NumInstructionOperands]bool{true, true, true},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
 
-	described3(OpGetStructFieldIndexGeneral, RoleRegGeneral, RoleRegGeneral, roleFieldIndex,
+	described3(OpGetStructFieldElementGeneral, RoleRegGeneral, RoleRegGeneral, roleFieldIndex,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension)
-	described3(OpSetStructFieldIndexGeneral, RoleRegGeneral, RoleRegGeneral, roleFieldIndex,
+	described3(OpSetStructFieldElementGeneral, RoleRegGeneral, RoleRegGeneral, roleFieldIndex,
 		[NumInstructionOperands]bool{true, true, false},
 		[NumInstructionOperands]bool{false, false, false},
 		ShapeFlagFollowsExtension)
-	described3(OpIndexSet, RoleRegGeneral, RoleRegInt, RoleRegGeneral,
+	described3(OpSetElement, RoleRegGeneral, RoleRegInt, RoleRegGeneral,
 		[NumInstructionOperands]bool{true, true, true},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
-	described3(OpMapIndex, RoleRegGeneral, RoleRegGeneral, RoleRegGeneral,
+	described3(OpGetMap, RoleRegGeneral, RoleRegGeneral, RoleRegGeneral,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpMapSet, RoleRegGeneral, RoleRegGeneral, RoleRegGeneral,
+	described3(OpSetMap, RoleRegGeneral, RoleRegGeneral, RoleRegGeneral,
 		[NumInstructionOperands]bool{true, true, true},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
-	described3(OpMapIndexOk, RoleRegGeneral, RoleRegGeneral, RoleRegGeneral,
+	described3(OpGetMapOk, RoleRegGeneral, RoleRegGeneral, RoleRegGeneral,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
-	populateTypedMapIndexOkShapes()
+	populateTypedGetMapOkShapes()
 	populateAppendShapes()
-	describeDstSrcSrcMixed(OpCopy, RoleRegInt, RoleRegGeneral)
-	described3(OpChannelSend, RoleRegGeneral, RoleRegDynamic, RoleKindMarker,
+	describeDstSrcSrcMixed(OpCopyGeneral, RoleRegInt, RoleRegGeneral)
+	described3(OpSendToChannel, RoleRegGeneral, RoleRegDynamic, RoleKindMarker,
 		[NumInstructionOperands]bool{true, true, false},
 		[NumInstructionOperands]bool{false, false, false},
 		0)
@@ -1076,12 +1048,12 @@ func populateAppendShapes() {
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpAppendByteFast, RoleRegGeneral, RoleRegGeneral, RoleRegUint,
+	described3(OpAppendByte, RoleRegGeneral, RoleRegGeneral, RoleRegUint,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
 	populateFastAppendShapes()
-	described3(OpAppendByteFastInPlace, RoleRegGeneral, RoleRegGeneral, RoleRegUint,
+	described3(OpAppendByteInPlace, RoleRegGeneral, RoleRegGeneral, RoleRegUint,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
@@ -1100,64 +1072,64 @@ func populateAppendShapes() {
 }
 
 // populateFusedStructFieldCopyShape describes the fused get/set pair produced by
-// FuseCopyStructFieldGeneralT0.
+// FuseCopyStructFieldGeneral.
 func populateFusedStructFieldCopyShape() {
-	described3(OpCopyStructFieldGeneralT0, RoleRegGeneral, RoleRegGeneral, roleFieldIndex,
+	described3(OpCopyStructFieldGeneral, RoleRegGeneral, RoleRegGeneral, roleFieldIndex,
 		[NumInstructionOperands]bool{true, true, false},
 		[NumInstructionOperands]bool{false, false, false},
 		ShapeFlagFollowsExtension)
 }
 
-// populateTypedMapIndexOkShapes describes the typed map-comma-ok opcodes used by the
+// populateTypedGetMapOkShapes describes the typed map-comma-ok opcodes used by the
 // compiler when both the key kind and value kind match a primitive register bank,
-// eliminating the boxing that the general-bank OpMapIndexOk path otherwise pays.
-func populateTypedMapIndexOkShapes() {
-	described3(OpMapIndexOkIntInt, RoleRegInt, RoleRegGeneral, RoleRegInt,
+// eliminating the boxing that the general-bank OpGetMapOk path otherwise pays.
+func populateTypedGetMapOkShapes() {
+	described3(OpGetMapInt64Int64Ok, RoleRegInt, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
-	described3(OpMapIndexOkStringInt, RoleRegInt, RoleRegGeneral, RoleRegString,
+	described3(OpGetMapStringInt64Ok, RoleRegInt, RoleRegGeneral, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
-	described3(OpMapIndexOkStringString, RoleRegString, RoleRegGeneral, RoleRegString,
+	described3(OpGetMapStringStringOk, RoleRegString, RoleRegGeneral, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
-	described3(OpMapIndexOkIntString, RoleRegString, RoleRegGeneral, RoleRegInt,
+	described3(OpGetMapInt64StringOk, RoleRegString, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
-	described3(OpMapGetIntGeneral, RoleRegGeneral, RoleRegGeneral, RoleRegInt,
+	described3(OpGetMapInt64General, RoleRegGeneral, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpMapIndexOkIntGeneral, RoleRegGeneral, RoleRegGeneral, RoleRegInt,
+	described3(OpGetMapInt64GeneralOk, RoleRegGeneral, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
 	populateStringKeyedGeneralMapShapes()
-	described3(OpMapIndexOkJumpIfFalseIntInt, RoleRegInt, RoleRegGeneral, RoleRegInt,
+	described3(OpGetMapInt64Int64OkThenJumpIfFalse, RoleRegInt, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites|ShapeFlagControlFlow)
-	described3(OpMapIndexOkJumpIfFalseStringInt, RoleRegInt, RoleRegGeneral, RoleRegString,
+	described3(OpGetMapStringInt64OkThenJumpIfFalse, RoleRegInt, RoleRegGeneral, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites|ShapeFlagControlFlow)
-	described3(OpMapIndexOkJumpIfFalseStringString, RoleRegString, RoleRegGeneral, RoleRegString,
+	described3(OpGetMapStringStringOkThenJumpIfFalse, RoleRegString, RoleRegGeneral, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites|ShapeFlagControlFlow)
-	described3(OpMapIndexOkJumpIfFalseIntString, RoleRegString, RoleRegGeneral, RoleRegInt,
+	described3(OpGetMapInt64StringOkThenJumpIfFalse, RoleRegString, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites|ShapeFlagControlFlow)
-	described3(OpMapIndexOkJumpIfFalseIntGeneral, RoleRegGeneral, RoleRegGeneral, RoleRegInt,
+	described3(OpGetMapInt64GeneralOkThenJumpIfFalse, RoleRegGeneral, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites|ShapeFlagControlFlow)
-	described3(OpMapIndexOkJumpIfFalseStringGeneral, RoleRegGeneral, RoleRegGeneral, RoleRegString,
+	described3(OpGetMapStringGeneralOkThenJumpIfFalse, RoleRegGeneral, RoleRegGeneral, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites|ShapeFlagControlFlow)
@@ -1166,16 +1138,16 @@ func populateTypedMapIndexOkShapes() {
 // populateAddressTypeShapes describes address-of, dereference, type-assertion, and
 // reflect-driven indirection opcodes.
 func populateAddressTypeShapes() {
-	described3(OpAddr, RoleRegGeneral, RoleRegGeneral, RoleImmediate,
+	described3(OpAddress, RoleRegGeneral, RoleRegGeneral, RoleImmediate,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, true, false},
 		0)
 
-	described3(OpDeref, RoleRegGeneral, RoleRegGeneral, RoleImmediate,
+	described3(OpDereference, RoleRegGeneral, RoleRegGeneral, RoleImmediate,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpAllocIndirect, RoleRegGeneral, RoleRegDynamic, RoleKindMarker,
+	described3(OpAllocateIndirect, RoleRegGeneral, RoleRegDynamic, RoleKindMarker,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension)
@@ -1183,7 +1155,7 @@ func populateAddressTypeShapes() {
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, true},
 		ShapeFlagFollowsExtension)
-	described3(OpConvert, RoleRegGeneral, RoleRegGeneral, RoleImmediate,
+	described3(OpConvertGeneral, RoleRegGeneral, RoleRegGeneral, RoleImmediate,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension)
@@ -1226,19 +1198,19 @@ func populateGlobalUnsafeShapes() {
 // carries its element type in an extension word, the scalar forms read their element from
 // the matching typed bank.
 func populateFastAppendShapes() {
-	described3(OpAppendStructFast, RoleRegGeneral, RoleRegGeneral, RoleRegGeneral,
+	described3(OpAppendStruct, RoleRegGeneral, RoleRegGeneral, RoleRegGeneral,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension)
-	described3(OpAppendIntFast, RoleRegGeneral, RoleRegGeneral, RoleRegInt,
+	described3(OpAppendInt64, RoleRegGeneral, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpAppendFloatFast, RoleRegGeneral, RoleRegGeneral, RoleRegFloat,
+	described3(OpAppendFloat64, RoleRegGeneral, RoleRegGeneral, RoleRegFloat,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpAppendStringFast, RoleRegGeneral, RoleRegGeneral, RoleRegString,
+	described3(OpAppendString, RoleRegGeneral, RoleRegGeneral, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
@@ -1247,11 +1219,11 @@ func populateFastAppendShapes() {
 // populateStringKeyedGeneralMapShapes describes the string-keyed general-valued map reads
 // and comma-ok variants.
 func populateStringKeyedGeneralMapShapes() {
-	described3(OpMapGetStringGeneral, RoleRegGeneral, RoleRegGeneral, RoleRegString,
+	described3(OpGetMapStringGeneral, RoleRegGeneral, RoleRegGeneral, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpMapIndexOkStringGeneral, RoleRegGeneral, RoleRegGeneral, RoleRegString,
+	described3(OpGetMapStringGeneralOk, RoleRegGeneral, RoleRegGeneral, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
@@ -1269,11 +1241,11 @@ func populateCallAndFrameShapes() {
 		[NumInstructionOperands]bool{false, false, false},
 		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
 
-	described3(OpGetStructFieldSliceLen, RoleRegInt, RoleRegGeneral, roleFieldIndex,
+	described3(OpLengthStructField, RoleRegInt, RoleRegGeneral, roleFieldIndex,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		0)
-	described3(OpGetStructFieldSliceIndexScalar, RoleRegDynamic, RoleRegGeneral, roleFieldIndex,
+	described3(OpGetStructFieldElementField, RoleRegDynamic, RoleRegGeneral, roleFieldIndex,
 		[NumInstructionOperands]bool{false, true, false},
 		[NumInstructionOperands]bool{true, false, false},
 		ShapeFlagFollowsExtension)

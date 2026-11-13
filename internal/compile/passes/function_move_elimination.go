@@ -61,7 +61,7 @@ const (
 	moveScanBail
 
 	// moveScanEliminate concludes that destination is killed and the MOVE can be replaced
-	// with isa.OpNop.
+	// with isa.OpNoOperation.
 	moveScanEliminate
 )
 
@@ -82,10 +82,6 @@ func ScanAndEliminateMove(body []isa.Instruction, i, n int, jumpTargets map[int]
 // fuseMoveElimination implements a conservative single-use forward-propagation pass for
 // redundant same-bank MOVE instructions.
 //
-// When destination is read exactly once before either side is overwritten, the reader is
-// rewritten to use source directly and the MOVE becomes isa.OpNop. When destination is
-// written before being read, the MOVE is dead and is replaced unconditionally.
-//
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
 // Takes body ([]instruction) which specifies the instruction sequence being optimised.
@@ -104,7 +100,7 @@ func fuseMoveElimination(compiledFunction *program.CompiledFunction,
 		return false
 	}
 	if candidate.Destination == candidate.Source {
-		body[i] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+		body[i] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 		return true
 	}
 	if int(candidate.Destination) < returnSlotCount(compiledFunction, candidate.Kind) || int(candidate.Source) < returnSlotCount(compiledFunction, candidate.Kind) {
@@ -146,9 +142,10 @@ func classifyMoveEliminationCandidate(compiledFunction *program.CompiledFunction
 
 // returnSlotCount counts bank-counted result slots for the given kind.
 //
-// These slots are read by handleReturn / handleTailCall via resultKinds metadata rather
-// than via instruction operand bytes, so the MOVE-elimination pass treats them as live
-// for the entire function body and refuses to eliminate MOVEs that read or write them.
+// These slots are read by handleReturnBody / handleTailCall via resultKinds metadata
+// rather than via instruction operand bytes, so the MOVE-elimination pass treats them as
+// live for the entire function body and refuses to eliminate MOVEs that read or write
+// them.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
@@ -191,7 +188,7 @@ func scanAndEliminateMoveAcrossJumps(body []isa.Instruction, i, n int, jumpTarge
 			if scan.readJ != -1 {
 				rewriteOperand(body, scan.readJ, scan.readPos, candidate.Source)
 			}
-			body[i] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+			body[i] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 			return true
 		case moveScanContinue:
 		}
@@ -348,18 +345,18 @@ func moveOpcodeKind(instr isa.Instruction) (isa.RegisterKind, bool) {
 		return 0, false
 	}
 	switch isa.SubOpcode(instr.A) {
-	case isa.SubOpMoveInt:
-		return isa.RegisterInt, true
-	case isa.SubOpMoveFloat:
-		return isa.RegisterFloat, true
+	case isa.SubOpMoveInt64:
+		return isa.RegisterInt64, true
+	case isa.SubOpMoveFloat64:
+		return isa.RegisterFloat64, true
 	case isa.SubOpMoveString:
 		return isa.RegisterString, true
 	case isa.SubOpMoveBool:
 		return isa.RegisterBool, true
-	case isa.SubOpMoveUint:
-		return isa.RegisterUint, true
-	case isa.SubOpMoveComplex:
-		return isa.RegisterComplex, true
+	case isa.SubOpMoveUint64:
+		return isa.RegisterUint64, true
+	case isa.SubOpMoveComplex128:
+		return isa.RegisterComplex128, true
 	default:
 	}
 	return 0, false

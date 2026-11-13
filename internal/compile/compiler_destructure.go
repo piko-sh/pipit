@@ -152,7 +152,7 @@ func (c *Compiler) resolveDestructuredElementType(ctx context.Context, indexExpr
 		return nil, false
 	}
 	indexType, ok := c.Info.Types[indexExpr.Index]
-	if !ok || indexType.Type == nil || c.kindFor(indexType.Type) != isa.RegisterInt {
+	if !ok || indexType.Type == nil || c.kindFor(indexType.Type) != isa.RegisterInt64 {
 		return nil, false
 	}
 	reflectSliceType := c.TypeToReflect(ctx, collectionType.Type)
@@ -239,12 +239,11 @@ func (c *Compiler) emitDestructuredSliceElem(ctx context.Context, elem destructu
 
 // classifyReceiverSliceField reports whether the indexed collection is itself a
 // slice-typed struct field on a general-bank receiver with a tier-0 layout, which enables
-// the header-in-place isa.OpGetStructFieldSliceIndexScalar strategy.
+// the header-in-place isa.OpGetStructFieldElementField strategy.
 //
 // Takes collection (ast.Expr) which is the indexed expression.
 //
-// Returns the selector and selection when the receiver strategy applies; (nil, nil)
-// otherwise.
+// Returns the selector and selection when the receiver strategy applies.
 func (c *Compiler) classifyReceiverSliceField(ctx context.Context, collection ast.Expr) (*ast.SelectorExpr, *types.Selection) {
 	selector, ok := ast.Unparen(collection).(*ast.SelectorExpr)
 	if !ok {
@@ -269,8 +268,8 @@ func (c *Compiler) classifyReceiverSliceField(ctx context.Context, collection as
 	return selector, selection
 }
 
-// emitDestructuredViaReceiver emits isa.OpGetStructFieldSliceIndexScalar loads, reading
-// the slice header in place through the receiver.
+// emitDestructuredViaReceiver emits isa.OpGetStructFieldElementField loads, reading the
+// slice header in place through the receiver.
 //
 // Takes elem (destructuredElem) which carries the resolved destructuring plan.
 //
@@ -297,7 +296,7 @@ func (c *Compiler) emitDestructuredViaReceiver(ctx context.Context, elem destruc
 	if err != nil {
 		return false, err
 	}
-	if indexLocation.Kind != isa.RegisterInt {
+	if indexLocation.Kind != isa.RegisterInt64 {
 		return false, fmt.Errorf("%w: destructured slice-field index compiled to %s, expected int at %s", fault.ErrCompilation, indexLocation.Kind, c.positionString(elem.indexExpr.Index.Pos()))
 	}
 
@@ -307,7 +306,7 @@ func (c *Compiler) emitDestructuredViaReceiver(ctx context.Context, elem destruc
 		plan := elem.consumedFields[name]
 		dest := c.Scopes.Alloc.Alloc(plan.kind)
 		subOffset := safeconv.MustIntToUint16(int(elem.elementType.Field(plan.fieldIndex).Offset))
-		program.Emit(c.Function, isa.OpGetStructFieldSliceIndexScalar, dest, receiverLocation.Register, safeconv.Uint16ToUint8(layoutIdx))
+		program.Emit(c.Function, isa.OpGetStructFieldElementField, dest, receiverLocation.Register, safeconv.Uint16ToUint8(layoutIdx))
 		program.EmitExtension(c.Function, elementSize, indexLocation.Register)
 		program.EmitExtension(c.Function, subOffset, uint8(plan.kind))
 		bindings[name] = program.VarLocation{Register: dest, Kind: plan.kind}
@@ -350,7 +349,7 @@ func (c *Compiler) emitDestructuredViaSliceRegister(ctx context.Context, elem de
 	if err != nil {
 		return false, err
 	}
-	if indexLocation.Kind != isa.RegisterInt {
+	if indexLocation.Kind != isa.RegisterInt64 {
 		return false, fmt.Errorf("%w: destructured slice index compiled to %s, expected int at %s", fault.ErrCompilation, indexLocation.Kind, c.positionString(elem.indexExpr.Index.Pos()))
 	}
 
@@ -504,11 +503,11 @@ func destructuredFieldPlanFor(elementType reflect.Type, fieldName string) (destr
 	var kind isa.RegisterKind
 	switch field.Type.Kind() {
 	case reflect.Int, reflect.Int64:
-		kind = isa.RegisterInt
+		kind = isa.RegisterInt64
 	case reflect.Uint, reflect.Uint64:
-		kind = isa.RegisterUint
+		kind = isa.RegisterUint64
 	case reflect.Float64:
-		kind = isa.RegisterFloat
+		kind = isa.RegisterFloat64
 	case reflect.Bool:
 		kind = isa.RegisterBool
 	default:

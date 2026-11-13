@@ -36,11 +36,11 @@ import (
 func isolatedSessionFixture(t *testing.T) (*IsolatedSession, *isolatedFixture) {
 	t.Helper()
 	_, process := isolatedWorkerFixture(t)
-	client, err := sandboxworker.OpenSession(process,
+	client, err := sandboxworker.OpenSession(t.Context(), process,
 		sandboxworker.Configuration{Profile: sandboxworker.SessionProfile, Imports: []string{"math"}})
 	require.NoError(t, err)
 	session := &IsolatedSession{process: process, client: client, active: atomic.Bool{}}
-	t.Cleanup(func() { _ = session.Close() })
+	t.Cleanup(func() { _ = session.Close(t.Context()) })
 	return session, process
 }
 
@@ -54,7 +54,7 @@ func TestIsolatedSessionRetainedStateAndClose(t *testing.T) {
 	result, err := session.Submit(t.Context(), "value + 30")
 	require.NoError(t, err, "result=%+v", result)
 	require.Equal(t, "42", string(result.Value))
-	require.NoError(t, session.Close())
+	require.NoError(t, session.Close(t.Context()))
 	select {
 	case <-session.Done():
 	default:
@@ -143,7 +143,7 @@ func TestIsolatedSessionCleanupFailureRetainsOwner(t *testing.T) {
 	require.ErrorIs(t, err, failure)
 	require.Nil(t, result.Value)
 	process.closeErr = nil
-	require.NoError(t, session.Close())
+	require.NoError(t, session.Close(t.Context()))
 	require.GreaterOrEqual(t, process.closes.Load(), int32(2), "native cleanup is retried")
 	_, err = session.Submit(t.Context(), "42")
 	require.ErrorIs(t, err, ErrIsolatedSessionClosed)
@@ -169,7 +169,7 @@ func TestIsolatedSessionInvalidConfiguration(t *testing.T) {
 	default:
 		require.FailNow(t, "a nil session's lifecycle notification does not block")
 	}
-	require.NoError(t, absent.Close(), "nil session cleanup failed")
+	require.NoError(t, absent.Close(t.Context()), "nil session cleanup failed")
 	require.Empty(t, absent.Diagnostics())
 	_, err = absent.Submit(t.Context(), "42")
 	require.ErrorIs(t, err, ErrIsolatedSessionClosed)

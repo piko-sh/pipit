@@ -31,13 +31,6 @@ import (
 	"pipit.sh/pipit/internal/policy"
 )
 
-const (
-	// defaultFileCreateMode is the permission bitset os.Create passes to the underlying
-	// OpenFile, surfaced to the capability gate so a host sees the same mode the stdlib
-	// would apply.
-	defaultFileCreateMode os.FileMode = 0o666
-)
-
 // consultSpecialisedCapabilityGate routes a resolved native symbol to its typed gate.
 //
 // Dispatches to the matching typed capability gate (CheckFileOpen, CheckExec,
@@ -70,71 +63,67 @@ func consultSpecialisedCapabilityGate(ctx context.Context, hook policy.Capabilit
 // consultCapabilityHookForNativeCall gates a native call through the hook. No-op when no
 // hook is installed.
 //
+// The symbol path is resolved for every call rather than cached on the call site, because
+// one call site can call a different function each time (a function value held in a
+// variable), and a cached name would let a later call pass under an earlier, harmless
+// one.
+//
 // Takes vm (*VM) which carries the live hook and execution context.
-// Takes site (*CallSite) which holds the cached symbol path.
 // Takes reflectedFunction (reflect.Value) which is the function about to be dispatched.
 // Takes arguments ([]reflect.Value) which is the prepared argument slice.
 //
 // Returns error from the hook's denial, or nil to allow the call to proceed.
-func consultCapabilityHookForNativeCall(vm *VM, site *program.CallSite, reflectedFunction reflect.Value, arguments []reflect.Value) error {
+func consultCapabilityHookForNativeCall(vm *VM, _ *program.CallSite, reflectedFunction reflect.Value, arguments []reflect.Value) error {
 	hook := vm.Limits.CapabilityHook
 	if hook == nil {
 		return nil
 	}
-	if site.NativeFunctionPath == "" {
-		site.NativeFunctionPath = resolveNativeFunctionPath(reflectedFunction)
-	}
-	ctx := capabilityHookContext(vm)
-	if denial := consultSpecialisedCapabilityGate(ctx, hook, vm.modulePath, site.NativeFunctionPath, arguments); denial != nil {
+	ctx := vm.ctx
+	functionPath := capabilityFunctionPath(reflectedFunction)
+	if denial := consultSpecialisedCapabilityGate(ctx, hook, vm.modulePath, functionPath, arguments); denial != nil {
 		return denial
 	}
-	return hook.CheckFunctionCall(ctx, vm.modulePath, site.NativeFunctionPath, arguments)
+	return hook.CheckFunctionCall(ctx, vm.modulePath, functionPath, arguments)
 }
 
-// gateFilesystemCapability routes the filesystem stdlib symbols to CheckFileOpen or
-// CheckFileWrite. It reports matched=true when functionPath names a filesystem primitive
-// (even if the arguments cannot be classified, in which case the specialised gate is
-// skipped and err is nil), so the caller stops probing further categories.
+// consultCapabilityHookForGoStatement gates a go statement whose callee is native.
 //
-// Takes hook (policy.CapabilityHook) which exposes the typed capability gates.
-// Takes modulePath (string) which identifies the calling pipit module.
-// Takes functionPath (string) which is the resolved dotted native symbol.
-// Takes arguments ([]reflect.Value) which are the prepared call arguments.
+// The typed gates run on the callee exactly as they would for a direct call, so `go
+// os.WriteFile(path, data, mode)` cannot write where a direct call would be refused.
+// CheckFunctionCall then sees the symbol prefixed with "go ". No-op when no hook is
+// installed.
 //
-// Returns (matched, err): matched reports whether functionPath is a filesystem symbol;
-// err is the gate's denial or nil.
-func gateFilesystemCapability(ctx context.Context, hook policy.CapabilityHook, modulePath, functionPath string, arguments []reflect.Value) (bool, error) {
-	switch functionPath {
-	case "os.Open", "os.ReadFile", "os.DirFS", "os.OpenRoot":
-		if path, ok := capabilityStringArg(arguments, 0); ok {
-			return true, hook.CheckFileOpen(ctx, modulePath, path, os.O_RDONLY, 0)
-		}
-		return true, nil
-	case "os.Create":
-		if path, ok := capabilityStringArg(arguments, 0); ok {
-			return true, hook.CheckFileOpen(ctx, modulePath, path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, defaultFileCreateMode)
-		}
-		return true, nil
-	case "os.OpenFile":
-		path, pathOK := capabilityStringArg(arguments, 0)
-		flag, flagOK := capabilityIntArg(arguments, 1)
-		mode, modeOK := capabilityFileModeArg(arguments, 2)
-		if pathOK && flagOK && modeOK {
-			return true, hook.CheckFileOpen(ctx, modulePath, path, flag, mode)
-		}
-		return true, nil
-	case "os.WriteFile", "os.Remove", "os.RemoveAll", "os.Mkdir", "os.MkdirAll", "os.Rename", "os.Truncate", "os.Symlink", "os.Link", "os.Chmod":
-		if path, ok := capabilityStringArg(arguments, 0); ok {
-			return true, hook.CheckFileWrite(ctx, modulePath, path)
-		}
-		return true, nil
-	case "os.OpenInRoot":
-		if path, ok := capabilityStringArg(arguments, 1); ok {
-			return true, hook.CheckFileOpen(ctx, modulePath, path, os.O_RDONLY, 0)
-		}
-		return true, nil
+// Takes vm (*VM) which carries the live hook and execution context.
+// Takes callee (reflect.Value) which is the function the goroutine will run.
+// Takes arguments ([]reflect.Value) which are the goroutine's arguments.
+//
+// Returns error from the hook's denial, or nil to allow the goroutine to start.
+func consultCapabilityHookForGoStatement(vm *VM, callee reflect.Value, arguments []reflect.Value) error {
+	hook := vm.Limits.CapabilityHook
+	if hook == nil {
+		return nil
 	}
-	return false, nil
+	ctx := vm.ctx
+	functionPath := capabilityFunctionPath(callee)
+	if denial := consultSpecialisedCapabilityGate(ctx, hook, vm.modulePath, functionPath, arguments); denial != nil {
+		return denial
+	}
+	return hook.CheckFunctionCall(ctx, vm.modulePath, "go "+functionPath, arguments)
+}
+
+// capabilityFunctionPath names a native function for the capability gates.
+//
+// The identity the function was registered under wins, so a wrapper, an overlay or a
+// closure registered as a package symbol is gated as that symbol.
+//
+// Takes function (reflect.Value) which is the function about to be called.
+//
+// Returns string which is the dotted symbol path, or "" when the value is not a function.
+func capabilityFunctionPath(function reflect.Value) string {
+	if identity, ok := policy.NativeSymbolIdentity(function); ok {
+		return identity
+	}
+	return resolveNativeFunctionPath(function)
 }
 
 // gateEnvironmentCapability routes the environment stdlib symbols to CheckGetenv or
@@ -352,9 +341,9 @@ func capabilityFileModeArg(arguments []reflect.Value, index int) (os.FileMode, b
 	}
 }
 
-// capabilityCommandArgv builds the argv for an exec gate: name in argv[0] followed by the
-// trailing variadic string arguments (individually, or expanded from a single []string
-// when the caller spread a slice).
+// capabilityCommandArgv builds the argv for an exec gate, with name in argv[0] followed
+// by the trailing variadic string arguments (individually, or expanded from a single
+// []string when the caller spread a slice).
 //
 // Takes name (string) which becomes argv[0].
 // Takes arguments ([]reflect.Value) which hold the trailing variadic strings.
@@ -385,9 +374,6 @@ func capabilityCommandArgv(name string, arguments []reflect.Value, start int) []
 
 // resolveNativeFunctionPath returns the dotted symbol identifier.
 //
-// Uses runtime.FuncForPC, which is suitable for cold-path use only. The result is cached
-// on the call site so subsequent dispatches skip the lookup.
-//
 // Takes reflectedFunction (reflect.Value) which holds the function.
 //
 // Returns string which is the resolved symbol path, or "" when resolution fails.
@@ -400,18 +386,4 @@ func resolveNativeFunctionPath(reflectedFunction reflect.Value) string {
 		return ""
 	}
 	return fn.Name()
-}
-
-// capabilityHookContext returns the context associated with the VM for hook consultation.
-// Falls back to context.Background() so hook implementations can assume a non-nil
-// context.
-//
-// Takes vm (*VM) which may carry a per-execution context.
-//
-// Returns context.Context that's safe to pass to hook methods.
-func capabilityHookContext(vm *VM) context.Context {
-	if vm == nil || vm.ctx == nil {
-		return context.Background()
-	}
-	return vm.ctx
 }

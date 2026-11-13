@@ -24,290 +24,290 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-func handleFlatSubOpMoveInt(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveInt(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMoveInt64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMoveInt64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveFloat(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveFloat(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMoveFloat64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMoveFloat64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveString(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveString(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMoveString(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMoveStringBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveBool(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveBool(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMoveBool(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMoveBoolBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveUint(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveUint(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMoveUint64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMoveUint64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveSliceInt(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveSliceInt(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMoveSliceInt64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMoveSliceInt64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveSliceFloat(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveSliceFloat(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMoveSliceFloat64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMoveSliceFloat64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveSliceString(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveSliceString(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMoveSliceString(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMoveSliceStringBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveSliceBool(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveSliceBool(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMoveSliceBool(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMoveSliceBoolBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveSliceUint(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveSliceUint(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMoveSliceUint64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMoveSliceUint64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveSliceByte(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveSliceByte(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMoveSliceByte(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMoveSliceByteBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveIntToGeneral(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveIntToGeneral(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleBoxInt64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleBoxInt64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveGeneralToInt(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveGeneralToInt(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleUnboxInt64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleUnboxInt64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveFloatToGeneral(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveFloatToGeneral(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleBoxFloat64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleBoxFloat64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveGeneralToFloat(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveGeneralToFloat(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleUnboxFloat64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleUnboxFloat64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveStringToGeneral(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveStringToGeneral(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleBoxString(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleBoxStringBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMoveGeneralToString(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMoveGeneralToString(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleUnboxString(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleUnboxStringBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpNegInt(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleNegInt(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleNegateInt64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleNegateInt64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpNegFloat(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleNegFloat(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleNegateFloat64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleNegateFloat64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpBitNot(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleBitNot(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleBitNotInt64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleBitNotInt64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpBitNotUint(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleBitNotUint(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleBitNotUint64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleBitNotUint64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpIntToFloat(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleIntToFloat(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleConvertInt64ToFloat64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleConvertInt64ToFloat64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpFloatToInt(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleFloatToInt(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleConvertFloat64ToInt64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleConvertFloat64ToInt64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpNot(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleNot(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleNotInt64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleNotInt64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpBoolToInt(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleBoolToInt(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleConvertBoolToInt64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleConvertBoolToInt64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpIntToBool(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleIntToBool(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleConvertInt64ToBool(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleConvertInt64ToBoolBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpIntToUint(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleIntToUint(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleConvertInt64ToUint64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleConvertInt64ToUint64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpUintToInt(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleUintToInt(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleConvertUint64ToInt64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleConvertUint64ToInt64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpUintToFloat(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleUintToFloat(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleConvertUint64ToFloat64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleConvertUint64ToFloat64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpFloatToUint(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleFloatToUint(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleConvertFloat64ToUint64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleConvertFloat64ToUint64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMathSqrt(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMathSqrt(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMathSqrt(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMathSqrtBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMathAbs(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMathAbs(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMathAbs(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMathAbsBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMathFloor(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMathFloor(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMathFloor(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMathFloorBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMathCeil(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMathCeil(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMathCeil(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMathCeilBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMathTrunc(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMathTrunc(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMathTrunc(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMathTruncBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMathRound(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMathRound(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMathRound(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMathRoundBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpLenString(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleLenString(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleLengthString(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleLengthStringBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpRuneToString(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleRuneToString(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleConvertRuneToString(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleConvertRuneToStringBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpStrToUpper(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleStrToUpper(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleStringsToUpper(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleStringsToUpperBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpStrToLower(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleStrToLower(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleStringsToLower(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleStringsToLowerBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpStrTrimSpace(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleStrTrimSpace(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleStringsTrimSpace(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleStringsTrimSpaceBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpLen(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleLen(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleLengthGeneral(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleLengthGeneralBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpStringToBytes(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleStringToBytes(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleConvertStringToBytes(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleConvertStringToBytesBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpUnsafeStringData(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleUnsafeStringData(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleUnsafeStringData(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleUnsafeStringDataBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpUnsafeSliceData(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleUnsafeSliceData(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleUnsafeSliceData(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleUnsafeSliceDataBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpRoundFloat32(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleRoundFloat32(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleRoundToFloat32(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleRoundToFloat32Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpRoundComplex64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleRoundComplex64(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleRoundToComplex64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleRoundToComplex64Body(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpAddUintConst(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleAddUintConst(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleAddUint64Constant(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleAddUint64ConstantBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpSubUintConst(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleSubUintConst(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleSubtractUint64Constant(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleSubtractUint64ConstantBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpBitAndUintConst(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleBitAndUintConst(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleBitAndUint64Constant(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleBitAndUint64ConstantBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpIncIntJumpLt(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleIncIntJumpLt(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleIncrementInt64ThenJumpIfLessThan(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleIncrementInt64ThenJumpIfLessThanBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpLenStringLtJumpFalse(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleLenStringLtJumpFalse(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleLessThanLengthStringThenJumpIfFalse(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleLessThanLengthStringThenJumpIfFalseBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpLoadZero(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleLoadZero(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleLoadZero(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleLoadZeroBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpTier2MakeMap(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMakeMap(vm, frame, registers, isa.Instruction{A: instr.C})
+func handleMakeMap(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMakeMapBody(vm, frame, registers, isa.Instruction{A: instr.C})
 }
 
-func handleFlatSubOpMakeChannel(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMakeChannel(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleMakeChannel(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleMakeChannelBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpMapDelete(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleMapDelete(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleDeleteFromMap(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleDeleteFromMapBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpChannelReceive(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleChannelReceive(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleReceiveFromChannel(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleReceiveFromChannelBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpGetMethod(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleGetMethod(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleBindMethodByName(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleBindMethodByNameBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpSpill(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleSpill(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleSpill(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleSpillBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpReload(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleReload(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
+func handleReload(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleReloadBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C})
 }
 
-func handleFlatSubOpTier2IncInt(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleIncInt(vm, frame, registers, isa.Instruction{A: instr.C})
+func handleIncrementInt64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleIncrementInt64Body(vm, frame, registers, isa.Instruction{A: instr.C})
 }
 
-func handleFlatSubOpTier2DecInt(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleDecInt(vm, frame, registers, isa.Instruction{A: instr.C})
+func handleDecrementInt64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleDecrementInt64Body(vm, frame, registers, isa.Instruction{A: instr.C})
 }
 
-func handleFlatSubOpTier2IncUint(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleIncUint(vm, frame, registers, isa.Instruction{A: instr.C})
+func handleIncrementUint64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleIncrementUint64Body(vm, frame, registers, isa.Instruction{A: instr.C})
 }
 
-func handleFlatSubOpTier2DecUint(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleDecUint(vm, frame, registers, isa.Instruction{A: instr.C})
+func handleDecrementUint64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleDecrementUint64Body(vm, frame, registers, isa.Instruction{A: instr.C})
 }
 
-func handleFlatSubOpTier2IncInt32(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleIncInt32(vm, frame, registers, isa.Instruction{A: instr.C})
+func handleIncrementInt32(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleIncrementInt32Body(vm, frame, registers, isa.Instruction{A: instr.C})
 }
 
-func handleFlatSubOpTier2DecInt32(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleDecInt32(vm, frame, registers, isa.Instruction{A: instr.C})
+func handleDecrementInt32(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleDecrementInt32Body(vm, frame, registers, isa.Instruction{A: instr.C})
 }
 
-func handleFlatSubOpTier2Panic(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handlePanic(vm, frame, registers, isa.Instruction{A: instr.C})
+func handlePanic(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handlePanicBody(vm, frame, registers, isa.Instruction{A: instr.C})
 }
 
-func handleFlatSubOpTier2Recover(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleRecover(vm, frame, registers, isa.Instruction{A: instr.C})
+func handleRecover(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleRecoverBody(vm, frame, registers, isa.Instruction{A: instr.C})
 }
 
-func handleFlatSubOpTier2SetZero(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleSetZero(vm, frame, registers, isa.Instruction{A: instr.C})
+func handleSetZeroGeneral(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleSetZeroGeneralBody(vm, frame, registers, isa.Instruction{A: instr.C})
 }
 
-func handleFlatSubOpTier2ChannelClose(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleChannelClose(vm, frame, registers, isa.Instruction{A: instr.C})
+func handleCloseChannel(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleCloseChannelBody(vm, frame, registers, isa.Instruction{A: instr.C})
 }
 
-func handleFlatSubOpTier2LoadNil(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleLoadNil(vm, frame, registers, isa.Instruction{A: instr.C})
+func handleLoadNil(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleLoadNilBody(vm, frame, registers, isa.Instruction{A: instr.C})
 }
 
-func handleFlatSubOpTier2Return(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
-	return handleReturn(vm, frame, registers, isa.Instruction{A: instr.C})
+func handleReturn(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleReturnBody(vm, frame, registers, isa.Instruction{A: instr.C})
 }

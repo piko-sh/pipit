@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerTruncateNarrow implements opTruncateNarrow (tier-0 ASM lift). Narrows register A to B bits. registerKind C selects sign-extending int path or zero-masking uint path; never leaves the dispatch loop.
-TEXT ·handlerTruncateNarrow(SB), NOSPLIT|NOFRAME, $0
+// handlerTruncateToWidth implements opTruncateToWidth (tier-0 ASM lift). Narrows register A to B bits. registerKind C selects sign-extending int path or zero-masking uint path. It never leaves the dispatch loop.
+TEXT ·handlerTruncateToWidth(SB), NOSPLIT|NOFRAME, $0
 	// Extract A (register index) into R1.
 	LSR  $8, R0, R1
 	AND  $0xFF, R1, R1

@@ -20,10 +20,12 @@ package extract
 
 import (
 	"fmt"
-	"go/format"
+	"go/ast"
+	"go/token"
 	"slices"
 	"strconv"
-	"strings"
+
+	"pipit.sh/pipit/internal/gosource"
 )
 
 // IndexFileName is the file the import-path index is written to.
@@ -40,34 +42,43 @@ func GenerateIndexFile(paths []string, outputPackage string) ([]byte, error) {
 	return defaultGenerator.GenerateIndexFile(paths, outputPackage)
 }
 
-// GenerateIndexFile produces the Go source listing the extracted import paths and nothing
-// else. It carries no reflect.Value, so a caller that only needs to know which packages
-// exist can link it without the symbol tables.
+// GenerateIndexFile produces the Go source listing the extracted import paths.
 //
 // Takes paths ([]string) which are the import paths to list.
 // Takes outputPackage (string) which is the Go package name for the generated file.
 //
 // Returns []byte which is the formatted Go source.
-// Returns error when formatting fails.
+// Returns error when rendering fails.
 func (g Generator) GenerateIndexFile(paths []string, outputPackage string) ([]byte, error) {
 	sorted := slices.Clone(paths)
 	slices.Sort(sorted)
 	sorted = slices.Compact(sorted)
 
-	var source strings.Builder
-	source.WriteString(g.marker() + "\n\n")
-	source.WriteString("package " + outputPackage + "\n\n")
-	source.WriteString("// ImportPaths lists every standard-library package the symbol tables register,\n")
-	source.WriteString("// sorted by import path.\n")
-	source.WriteString("var ImportPaths = []string{\n")
+	listed := gosource.Lines(&ast.CompositeLit{Type: &ast.ArrayType{Elt: ast.NewIdent("string")}})
 	for _, path := range sorted {
-		source.WriteString("\t" + strconv.Quote(path) + ",\n")
+		listed.Elts = append(listed.Elts, &ast.BasicLit{Kind: token.STRING, Value: strconv.Quote(path)})
 	}
-	source.WriteString("}\n")
-
-	formatted, err := format.Source([]byte(source.String()))
+	file := gosource.File{
+		Header:          g.marker(),
+		BuildConstraint: "",
+		Package:         outputPackage,
+		ImportGroups:    nil,
+		Declarations: []gosource.Declaration{{
+			Doc: []string{
+				"ImportPaths lists every standard-library package the symbol tables register,",
+				"sorted by import path.",
+			},
+			Directives: nil,
+			Node: &ast.GenDecl{Tok: token.VAR, Specs: []ast.Spec{&ast.ValueSpec{
+				Names:  []*ast.Ident{ast.NewIdent("ImportPaths")},
+				Values: []ast.Expr{listed},
+			}}},
+		}},
+		LoneImportUnparenthesised: false,
+	}
+	formatted, err := file.Render()
 	if err != nil {
-		return nil, fmt.Errorf("formatting %s: %w", IndexFileName, err)
+		return nil, fmt.Errorf("rendering %s: %w", IndexFileName, err)
 	}
 	return formatted, nil
 }

@@ -54,14 +54,6 @@ func indexFits(newIndex uint16, encodingByte bool) bool {
 // mergePoolIndex dispatches to the per-pool merge helper and returns the new caller-side
 // index.
 //
-// Used by the inliner's operand walker when remapping any per-function table reference.
-// The poolCallSites case is delegated to mergeCallSiteForCtx (which needs the
-// inlineContext); calling mergePoolIndex with poolCallSites returns (0, false).
-//
-// On any kind of overflow (e.g. caller's structLayoutTable already holds
-// byteEncodingLimit entries when the opcode encodes the index as uint8), returns (0,
-// false) so the caller can refuse the splice.
-//
 // Takes caller (*CompiledFunction) which is the inlining caller whose pool receives the
 // merged entry.
 // Takes callee (*CompiledFunction) which is the function being spliced.
@@ -70,9 +62,9 @@ func indexFits(newIndex uint16, encodingByte bool) bool {
 // Takes encodingByte (bool) which is true when the consuming opcode encodes the result in
 // a single byte and the index must fit in 8 bits.
 //
-// Returns the new caller-side index for the merged entry.
-// Returns true when the merge fits; false on overflow or when encodingByte is set and the
-// result exceeds the byte limit.
+// Returns uint16 which is the merged entry's caller-side index.
+// Returns bool which is false for poolCallSites, overflow or an index beyond the byte
+// limit.
 func mergePoolIndex(caller, callee *program.CompiledFunction, pool inlinePool, oldIndex uint16, encodingByte bool) (uint16, bool) {
 	switch pool {
 	case poolNone:
@@ -99,6 +91,8 @@ func mergePoolIndex(caller, callee *program.CompiledFunction, pool inlinePool, o
 		return 0, false
 	case poolFunctions:
 		return mergeFunctionIndex(caller, callee, oldIndex, encodingByte)
+	case poolGlobals:
+		return oldIndex, sameGlobalBases(caller, callee)
 	}
 	return 0, false
 }
@@ -141,8 +135,6 @@ func mergeConstantPoolIndex[T any](
 //
 // Returns the new caller-side index for the merged entry and true when the merge fits the
 // requested encoding.
-//
-// See mergePoolIndex for the broader contract.
 func mergeGeneralConstIndex(caller, callee *program.CompiledFunction, oldIndex uint16, encodingByte bool) (uint16, bool) {
 	if int(oldIndex) >= len(callee.GeneralConstants) {
 		return 0, false
@@ -169,8 +161,8 @@ func mergeGeneralConstIndex(caller, callee *program.CompiledFunction, oldIndex u
 // Takes oldIndex (uint16) which is the entry's index in the callee pool.
 // Takes encodingByte (bool) which is true when the result must fit in a single byte.
 //
-// Returns the new caller-side index for the merged entry and true when the merge fits
-// the requested encoding.
+// Returns the new caller-side index for the merged entry and true when the merge fits the
+// requested encoding.
 func mergeTypeTableIndex(caller, callee *program.CompiledFunction, oldIndex uint16, encodingByte bool) (uint16, bool) {
 	if int(oldIndex) >= len(callee.TypeTable) {
 		return 0, false
@@ -186,21 +178,14 @@ func mergeTypeTableIndex(caller, callee *program.CompiledFunction, oldIndex uint
 	return newIndex, indexFits(newIndex, encodingByte)
 }
 
-// mergeCallSiteForCtx deep-copies the callee's callSites[oldIndex] entry, remaps
-// argument/return register operands via ctx.remap, rebuilds the argCopyProgram against
-// the callee's parameterKinds, and appends the result to caller.callSites.
-//
-// Multi-level inlining path: when the callee's body contains an isa.SubOpCall, the splice
-// copies the corresponding CallSite into the caller so the runtime can dispatch through
-// it.
+// mergeCallSiteForCtx copies a callee call site into the caller with remapped registers.
 //
 // Takes ctx (*inlineContext) which carries caller, callee, and the register remap table.
 // Takes oldIndex (uint16) which is the callee CallSite index to merge.
 // Takes encodingByte (bool) which is true when the result must fit in a single byte.
 //
-// Returns the new caller-side CallSite index.
-// Returns true when the merge succeeded; false on overflow or when any register failed to
-// map.
+// Returns uint16 which is the new caller-side CallSite index.
+// Returns bool which is false on overflow or when any register failed to map.
 func mergeCallSiteForCtx(ctx *inlineContext, oldIndex uint16, encodingByte bool) (uint16, bool) {
 	caller := ctx.caller
 	callee := ctx.callee
@@ -221,6 +206,9 @@ func mergeCallSiteForCtx(ctx *inlineContext, oldIndex uint16, encodingByte bool)
 	newSite := buildRemappedCallSite(&source, arguments, returns)
 	if !remapSpecialRegisters(ctx, &source, &newSite) {
 		return 0, false
+	}
+	if newSite.CachedCallee == caller {
+		newSite.RecursionUnrolled = true
 	}
 
 	if newSite.CachedCallee != nil && len(newSite.CachedCallee.ParameterKinds) == len(arguments) {
@@ -428,4 +416,18 @@ func structLayoutEqual(a, b program.StructFieldLayout) bool {
 		}
 	}
 	return true
+}
+
+// sameGlobalBases reports whether two functions address the global store from the same
+// bases, so a global index means the same slot in both.
+//
+// Takes caller (*program.CompiledFunction) which is the function receiving the splice.
+// Takes callee (*program.CompiledFunction) which is the function being spliced in.
+//
+// Returns bool which is true when the bases agree.
+func sameGlobalBases(caller, callee *program.CompiledFunction) bool {
+	if caller.GlobalBases == callee.GlobalBases {
+		return true
+	}
+	return caller.GlobalBases != nil && callee.GlobalBases != nil && *caller.GlobalBases == *callee.GlobalBases
 }

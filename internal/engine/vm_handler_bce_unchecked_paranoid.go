@@ -18,20 +18,6 @@
 
 //go:build pipit_bce_paranoid
 
-// Paranoid (safety-harness) variants of the bounds-check-elimination
-// handlers. The default fast variants live in
-// vm_handler_bce_unchecked.go and skip the bounds check based on a
-// compile-time proof emitted by the BCE pass. A defective proof there
-// is undefined behaviour at runtime.
-//
-// Building with -tags pipit_bce_paranoid swaps in this file: every
-// "unchecked" handler regains an explicit bounds check and routes
-// out-of-range accesses through vm.evalError + opPanicError, mirroring
-// the checked variants exactly. CI enables this tag for the
-// adversarial-bytecode fuzz runs so a bad proof surfaces as a clean
-// verifier-style failure rather than a Go runtime panic or memory
-// corruption. Production builds leave the tag off.
-
 package engine
 
 import (
@@ -52,9 +38,10 @@ const (
 	errIdxOutOfRangeFmt = "%w: %d with length %d"
 )
 
-// handleSliceGetIntDirectUnchecked is the paranoid variant of handleSliceGetIntDirect. It
-// reinstates the runtime bounds check dropped by the fast variant so an incorrect
-// compile-time BCE proof is reported as a regular interpreter error.
+// handleGetSliceInt64ElementUnchecked is the paranoid variant of
+// handleGetSliceInt64Element. It reinstates the runtime bounds check dropped by the fast
+// variant so an incorrect compile-time BCE proof is reported as a regular interpreter
+// error.
 //
 // Takes vm (*VM) which receives the bounds-check error when triggered.
 // Takes registers (*Registers) which holds the SlicesInt collection and the int index.
@@ -63,10 +50,10 @@ const (
 //
 // Returns opContinue on success or opPanicError when the index is outside [0,
 // len(slice)).
-func handleSliceGetIntDirectUnchecked(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetSliceInt64ElementUnchecked(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	slice := registers.SlicesInt[instruction.B]
 	index := registers.Ints[instruction.C]
-	if uint64(index) >= uint64(len(slice)) { //nolint:gosec // unsigned bounds check
+	if index < 0 || index >= int64(len(slice)) {
 		vm.evalError = fmt.Errorf(errIdxOutOfRangeFmt, fault.ErrIndexOutOfRange, index, len(slice))
 		return opPanicError
 	}
@@ -74,8 +61,9 @@ func handleSliceGetIntDirectUnchecked(vm *VM, _ *CallFrame, registers *Registers
 	return opContinue
 }
 
-// handleSliceSetIntDirectUnchecked is the paranoid variant of handleSliceSetIntDirect.
-// The runtime bounds check is restored to surface bad BCE proofs as interpreter errors.
+// handleSetSliceInt64ElementUnchecked is the paranoid variant of
+// handleSetSliceInt64Element. The runtime bounds check is restored to surface bad BCE
+// proofs as interpreter errors.
 //
 // Takes vm (*VM) which receives the bounds-check error when triggered.
 // Takes registers (*Registers) which holds the SlicesInt collection, the index, and the
@@ -85,10 +73,10 @@ func handleSliceGetIntDirectUnchecked(vm *VM, _ *CallFrame, registers *Registers
 //
 // Returns opContinue on success or opPanicError when the index is outside [0,
 // len(slice)).
-func handleSliceSetIntDirectUnchecked(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetSliceInt64ElementUnchecked(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	slice := registers.SlicesInt[instruction.A]
 	index := registers.Ints[instruction.B]
-	if uint64(index) >= uint64(len(slice)) { //nolint:gosec // unsigned bounds check
+	if index < 0 || index >= int64(len(slice)) {
 		vm.evalError = fmt.Errorf(errIdxOutOfRangeFmt, fault.ErrIndexOutOfRange, index, len(slice))
 		return opPanicError
 	}
@@ -96,9 +84,10 @@ func handleSliceSetIntDirectUnchecked(vm *VM, _ *CallFrame, registers *Registers
 	return opContinue
 }
 
-// handleSliceGetIntUnchecked is the paranoid variant of the reflect-bank bounds-elided
-// get. The runtime range check is restored so a defective BCE proof on a general-bank
-// slice surfaces through vm.evalError instead of letting reflect.Value.Index panic.
+// handleGetElementInt64Unchecked is the paranoid variant of the reflect-bank
+// bounds-elided get. The runtime range check is restored so a defective BCE proof on a
+// general-bank slice surfaces through vm.evalError instead of letting reflect.Value.Index
+// panic.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes registers (*Registers) which holds the collection and index.
@@ -106,7 +95,7 @@ func handleSliceSetIntDirectUnchecked(vm *VM, _ *CallFrame, registers *Registers
 //
 // Returns opContinue on success or opPanicError when the collection is not indexable or
 // the index falls outside [0, len).
-func handleSliceGetIntUnchecked(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetElementInt64Unchecked(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	collection, indexPanicResult, ok := resolveIndexCollection(vm, registers.General[instruction.B])
 	if !ok {
 		return indexPanicResult
@@ -126,8 +115,8 @@ func handleSliceGetIntUnchecked(vm *VM, _ *CallFrame, registers *Registers, inst
 	return opContinue
 }
 
-// handleSliceSetIntUnchecked is the paranoid variant of the reflect-bank bounds-elided
-// set. The runtime range check is restored.
+// handleSetElementInt64Unchecked is the paranoid variant of the reflect-bank
+// bounds-elided set. The runtime range check is restored.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes registers (*Registers) which holds the collection, index and value.
@@ -135,7 +124,7 @@ func handleSliceGetIntUnchecked(vm *VM, _ *CallFrame, registers *Registers, inst
 //
 // Returns opContinue on success or opPanicError when the collection is not indexable or
 // the index falls outside [0, len).
-func handleSliceSetIntUnchecked(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetElementInt64Unchecked(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	collection, indexPanicResult, ok := resolveIndexCollection(vm, registers.General[instruction.A])
 	if !ok {
 		return indexPanicResult

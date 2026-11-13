@@ -134,13 +134,13 @@ func TestGeneratedArithmeticFileContainsExpectedHandlers(t *testing.T) {
 	require.NotEmpty(t, arithContent, "no vm_dispatch_arith_amd64.s generated")
 
 	expectedHandlers := []string{
-		"handlerAddInt", "handlerSubInt", "handlerMulInt",
-		"handlerDivInt", "handlerRemInt",
-		"handlerBitAnd", "handlerBitOr", "handlerBitXor",
-		"handlerBitAndNot",
-		"handlerShiftLeft", "handlerShiftRight",
-		"handlerAddFloat", "handlerSubFloat",
-		"handlerMulFloat", "handlerDivFloat",
+		"handlerAddInt64", "handlerSubtractInt64", "handlerMultiplyInt64",
+		"handlerDivideInt64", "handlerRemainderInt64",
+		"handlerBitAndInt64", "handlerBitOrInt64", "handlerBitXorInt64",
+		"handlerBitAndNotInt64",
+		"handlerShiftLeftInt64", "handlerShiftRightInt64",
+		"handlerAddFloat64", "handlerSubtractFloat64",
+		"handlerMultiplyFloat64", "handlerDivideFloat64",
 	}
 
 	for _, handler := range expectedHandlers {
@@ -168,9 +168,9 @@ func TestGeneratedComparisonFileContainsExpectedHandlers(t *testing.T) {
 	require.NotEmpty(t, cmpContent, "no vm_dispatch_cmp_amd64.s generated")
 
 	expectedHandlers := []string{
-		"handlerEqInt", "handlerNeInt", "handlerLtInt",
-		"handlerLeInt", "handlerGtInt", "handlerGeInt",
-		"handlerEqFloat", "handlerNeFloat",
+		"handlerEqualInt64", "handlerNotEqualInt64", "handlerLessThanInt64",
+		"handlerLessOrEqualInt64", "handlerGreaterThanInt64", "handlerGreaterOrEqualInt64",
+		"handlerEqualFloat64", "handlerNotEqualFloat64",
 		"handlerJump",
 		"handlerJumpIfTrue", "handlerJumpIfFalse",
 	}

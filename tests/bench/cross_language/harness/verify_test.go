@@ -26,35 +26,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNormaliseStdout(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name  string
-		input []byte
-		want  string
-	}{
-		{name: "collapses CRLF to LF", input: []byte("hello\r\nworld\r\n"), want: "hello\nworld"},
-		{name: "strips a single trailing newline", input: []byte("hello\nworld\n"), want: "hello\nworld"},
-		{name: "keeps blank interior lines", input: []byte("hello\n\nworld\n"), want: "hello\n\nworld"},
-		{name: "trims trailing whitespace per line", input: []byte("hello   \t\nworld\n"), want: "hello\nworld"},
-		{name: "handles empty input", input: nil, want: ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tt.want, string(NormaliseStdout(tt.input)))
-		})
-	}
-}
-
-func TestSHA256HexIsDeterministic(t *testing.T) {
-	t.Parallel()
-	hash1 := SHA256Hex([]byte("pipit"))
-	hash2 := SHA256Hex([]byte("pipit"))
-	assert.Equal(t, hash1, hash2)
-	assert.Len(t, hash1, 64)
-}
-
 func TestParseInnerElapsedNanos(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

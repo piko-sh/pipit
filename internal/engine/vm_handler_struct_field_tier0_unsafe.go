@@ -33,12 +33,10 @@ const (
 	// header (Size_=8 + PtrBytes=8 + Hash=4 + TFlag=1 + Align_=1 + FieldAlign_=1 = 23). The
 	// low 5 bits of the byte encode reflect.Kind.
 	abiTypeKindOffset = program.AbiTypeKindByteOffset
-
-	// efaceDataPointerOffsetMoved documents that the constant now lives in function.go
-	// beside the other neutral abi offsets so safe builds compile. efaceDataPointerOffset is
-	// the byte offset of the data pointer within Go's eface header (one uintptr-sized type
-	// pointer precedes the data pointer).
 )
+
+// anyReflectTypeABI is the *abi.Type of the empty interface.
+var anyReflectTypeABI = reflectValueABIType(reflect.TypeFor[any]())
 
 // readTier0StructFieldLayout looks up the structLayoutTable entry at instruction.c (uint8
 // index). The index is range-checked against the function's structLayoutTable; an
@@ -90,7 +88,7 @@ func panicTier0UnexpectedFieldKind(frame *CallFrame, op string, got reflect.Kind
 	))
 }
 
-// handleGetStructFieldGeneralT0 reads a pointer or interface struct field.
+// handleGetStructFieldGeneral reads a pointer or interface struct field.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -98,7 +96,7 @@ func panicTier0UnexpectedFieldKind(frame *CallFrame, op string, got reflect.Kind
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleGetStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	if int(layout.FieldTypeIndex) < len(frame.Function.TypeTable) {
 		if result, handled := tryGetStructFieldUnsafe(vm, frame, registers, instruction, layout); handled {
@@ -109,10 +107,10 @@ func handleGetStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Register
 }
 
 // tryGetStructFieldUnsafe attempts the unsafe Pointer-kind hot path for
-// opGetStructFieldGeneralT0.
+// opGetStructFieldGeneral.
 //
 // Interface-kind layouts are safe via the unsafe path because tryResolveStructFieldLayout
-// rejects generic-erased receiver types at compile time; every Interface layout reaching
+// rejects generic-erased receiver types at compile time. Every Interface layout reaching
 // this handler has a runtime struct whose field really is a 16-byte eface at the cached
 // offset (cycle-broken *Self or genuine interface field).
 //
@@ -124,7 +122,7 @@ func handleGetStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Register
 // Takes layout (StructFieldLayout) which is the pre-resolved layout entry.
 //
 // Returns OpResult and handled=true when the unsafe path completed (success or empty
-// receiver); handled=false routes through the reflect-walk fallback.
+// receiver). handled=false routes through the reflect-walk fallback.
 func tryGetStructFieldUnsafe(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction, layout program.StructFieldLayout) (OpResult, bool) {
 	base, ok := structFieldReceiverBase(registers, instruction.B)
 	fieldType := frame.Function.TypeTable[layout.FieldTypeIndex]
@@ -269,9 +267,9 @@ func getStructFieldGeneralFallback(vm *VM, frame *CallFrame, registers *Register
 	return opContinue
 }
 
-// handleGetStructFieldRawPointerT0 specialises handleGetStructFieldGeneralT0 for
-// cycle-broken interface{} fields whose held value the Compiler has proved is always a
-// pointer of a statically-known type (the cycle-broken *Self to any substitution in
+// handleGetStructFieldRawPointer specialises handleGetStructFieldGeneral for cycle-broken
+// interface{} fields whose held value the Compiler has proved is always a pointer of a
+// statically-known type (the cycle-broken *Self to any substitution in
 // convertFieldBreakingCycles).
 //
 // The Compiler emits this only for cycle-broken Interface layouts whose held value is
@@ -283,7 +281,7 @@ func getStructFieldGeneralFallback(vm *VM, frame *CallFrame, registers *Register
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleGetStructFieldRawPointerT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldRawPointer(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	recvRaw := (*unsafeReflectValue)(unsafe.Pointer(new(registers.General[instruction.B])))
 	var base unsafe.Pointer
@@ -341,8 +339,8 @@ func snapshotPointerLeaf(field reflect.Value) reflect.Value {
 //
 // Mirrors the cycle-broken interface unwrap branch in handleGetField so subsequent field
 // accesses see the user's pointer/struct directly.
-// Returns the zero Value for nil interface holds so downstream nil checks in opTestNil
-// keep working.
+// Returns the zero Value for nil interface holds so downstream nil checks in
+// isa.OpJumpIfNil keep working.
 //
 // Takes field (reflect.Value) which is the leaf value just read from the struct.
 //
@@ -361,14 +359,12 @@ func unwrapInterfaceLeaf(field reflect.Value) reflect.Value {
 	return field
 }
 
-// handleSetStructFieldGeneralT0 writes a pointer or interface struct field.
+// handleSetStructFieldGeneral writes a pointer or interface struct field.
 //
-// Operand A=general structReg, B=general valueReg, C=structLayoutTable index. Reflects on
-// the field address via reflect.NewAt and uses Set to install the value through Go's GC
-// write barrier. Skipping the barrier (e.g. by direct *(*unsafe.Pointer)(fieldPointer) =
-// uintptr store) would corrupt the GC tricolour invariant for pointer-bearing fields. The
-// Set call handles the interface-wrapping step when the field type is interface{} and the
-// value type is the concrete held type - matching handleSetField's coercion.
+// Every route (the pointer store, the interface store and the reflect fallback) applies
+// the store barrier, MaterialiseArenaValue, unless the escape pass granted the PC or the
+// value is a nil pointer (storeNilPointerField). It reflects on the field address via
+// reflect.NewAt and uses Set to install the value through Go's GC write barrier.
 //
 // Takes vm (*VM) which supports coerceValue's closure coercion.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -376,23 +372,32 @@ func unwrapInterfaceLeaf(field reflect.Value) reflect.Value {
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleSetStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	value := registers.General[instruction.B]
+	granted := pcGranted(frame.Function.FieldStoreArenaSafePCs, frame.ProgramCounter-1)
 	if int(layout.FieldTypeIndex) >= len(frame.Function.TypeTable) {
-		return setStructFieldGeneralReflectFallback(vm, frame, registers, instruction, layout, value)
+		return setStructFieldGeneralReflectFallback(vm, frame, registers, instruction, layout, value, granted)
 	}
 	fieldType := frame.Function.TypeTable[layout.FieldTypeIndex]
 	base, ok := structFieldReceiverBase(registers, instruction.A)
 	if !ok || fieldType == nil {
-		return setStructFieldGeneralReflectFallback(vm, frame, registers, instruction, layout, value)
+		return setStructFieldGeneralReflectFallback(vm, frame, registers, instruction, layout, value, granted)
 	}
 	fieldPointer := unsafe.Add(base, uintptr(layout.Offset))
 	if reflect.Kind(layout.Kind) == reflect.Interface {
 		if !layoutStructMatchesReceiver(frame, registers, instruction.A, layout) {
-			return setStructFieldGeneralReflectFallback(vm, frame, registers, instruction, layout, value)
+			return setStructFieldGeneralReflectFallback(vm, frame, registers, instruction, layout, value, granted)
 		}
-		return setStructInterfaceField(vm, value, fieldPointer, fieldType)
+		if storeNilPointerField(reflect.Interface, fieldPointer, fieldType, value) {
+			return opContinue
+		}
+		return storeStructInterfaceField(vm, fieldPointer, fieldType, value, granted)
+	}
+	if reflect.Kind(layout.Kind) == reflect.Pointer && (storeNilPointerField(reflect.Pointer, fieldPointer, fieldType, value) ||
+		storePointerFieldWithoutLicence(vm.Arena, fieldPointer, fieldType, value) ||
+		storePointerFieldRevokedEpoch(vm.Arena, fieldPointer, fieldType, value, granted)) {
+		return opContinue
 	}
 	field := unsafeNewAt(reflectValueABIType(fieldType), fieldPointer, fieldType.Kind())
 	if !value.IsValid() {
@@ -400,23 +405,338 @@ func handleSetStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Register
 		return opContinue
 	}
 	coerced := coerceValue(vm, value, fieldType)
-	if !frame.Function.FieldStoreArenaSafePCs[frame.ProgramCounter-1] {
-		coerced = MaterialiseArenaValue(vm.Arena, coerced)
+	if !granted && !optimisticOwnSlotStore(vm.Arena, fieldPointer, coerced) {
+		coerced = materialiseArenaValueIntoSlot(vm.Arena, coerced, fieldType)
 	}
 	field.Set(coerced)
 	return opContinue
 }
 
-// handleCopyStructFieldGeneralT0 fuses a field-to-field copy for general-bank struct
+// storeStructInterfaceField is handleSetStructFieldGeneral's interface-field route, once
+// the layout matches the receiver. A pointer stored by an arena without a licence or
+// under a revoked epoch goes without reflection.
+//
+// Takes vm (*VM) which runs the store.
+// Takes fieldPointer (unsafe.Pointer) which is the field's address.
+// Takes fieldType (reflect.Type) which is the field's interface type.
+// Takes value (reflect.Value) which is the value stored.
+// Takes granted (bool) which is true when the compiler granted the store as arena safe.
+//
+// Returns OpResult which is the store's result.
+func storeStructInterfaceField(vm *VM, fieldPointer unsafe.Pointer, fieldType reflect.Type, value reflect.Value, granted bool) OpResult {
+	if storePointerInAnyFieldWithoutLicence(vm.Arena, fieldPointer, fieldType, value) {
+		return opContinue
+	}
+	if storePointerInAnyFieldRevokedEpoch(vm.Arena, fieldPointer, fieldType, value, granted) {
+		return opContinue
+	}
+	if !granted && !krefMemberSlotStore(vm.Arena, fieldPointer, value) {
+		value = MaterialiseArenaValue(vm.Arena, value)
+	}
+	return setStructInterfaceField(vm, value, fieldPointer, fieldType)
+}
+
+// storePointerFieldWithoutLicence is handleSetStructFieldGeneral's pointer-field route
+// for an arena without a licence (the abandon fallback's, or a variable initialiser's
+// heap-data arena), without reflection (pointerStoreWithoutLicence).
+//
+// Takes arena (*RegisterArena) which ran the store. It may be nil.
+// Takes fieldPointer (unsafe.Pointer) which is the field's address.
+// Takes fieldType (reflect.Type) which is the field's pointer type.
+// Takes value (reflect.Value) which is the value stored.
+//
+// Returns bool which is true when the store was made.
+func storePointerFieldWithoutLicence(arena *RegisterArena, fieldPointer unsafe.Pointer, fieldType reflect.Type, value reflect.Value) bool {
+	_, pointer, ok := pointerStoreWithoutLicence(arena, value, reflectValueABIType(fieldType))
+	if ok {
+		*(*unsafe.Pointer)(fieldPointer) = pointer
+	}
+	return ok
+}
+
+// storePointerInAnyFieldWithoutLicence is handleSetStructFieldGeneral's route for a
+// pointer stored into an empty-interface field, the cycle-broken shape of a recursive
+// struct's pointer field, for an arena without a licence and without reflection
+// (pointerStoreWithoutLicence). The field receives the eface setStructInterfaceField
+// builds for a direct pointer.
+//
+// Takes arena (*RegisterArena) which ran the store. It may be nil.
+// Takes fieldPointer (unsafe.Pointer) which is the field's address.
+// Takes fieldType (reflect.Type) which is the field's interface type.
+// Takes value (reflect.Value) which is the value stored.
+//
+// Returns bool which is true when the store was made.
+func storePointerInAnyFieldWithoutLicence(arena *RegisterArena, fieldPointer unsafe.Pointer, fieldType reflect.Type, value reflect.Value) bool {
+	if reflectValueABIType(fieldType) != anyReflectTypeABI {
+		return false
+	}
+	pointerType, pointer, ok := pointerStoreWithoutLicence(arena, value, nil)
+	if ok {
+		*(*[2]unsafe.Pointer)(fieldPointer) = [2]unsafe.Pointer{pointerType, pointer}
+	}
+	return ok
+}
+
+// storePointerInAnySlotWithoutLicence is storeIndexedElement's route for a pointer stored
+// into an addressable element of type any for an arena without a licence, without
+// reflection (pointerStoreWithoutLicence).
+//
+// There coerceValue leaves a pointer assignable to any as it is, the optimistic string
+// and own-slot stores stand aside, MaterialiseArenaValue keeps the pointer as it is, and
+// writeAnyInterfaceSlotFast writes the pointer's eface.
+//
+// Takes arena (*RegisterArena) which ran the store; may be nil.
+// Takes target (reflect.Value) which is the element written.
+// Takes value (reflect.Value) which is the value stored.
+//
+// Returns bool which is true when the store was made.
+func storePointerInAnySlotWithoutLicence(arena *RegisterArena, target, value reflect.Value) bool {
+	targetRaw := (*unsafeReflectValue)(unsafe.Pointer(&target))
+	if targetRaw.typ != anyReflectTypeABI || targetRaw.flag&flagIndir == 0 || targetRaw.ptr == nil {
+		return false
+	}
+	pointerType, pointer, ok := pointerStoreWithoutLicence(arena, value, nil)
+	if ok {
+		*(*[2]unsafe.Pointer)(targetRaw.ptr) = [2]unsafe.Pointer{pointerType, pointer}
+	}
+	return ok
+}
+
+// storePointerFieldRevokedEpoch is handleSetStructFieldGeneral's pointer-field route for
+// a licensed arena in a revoked epoch whose blind hand-offs are local (the revoked-epoch
+// fast path, revokedEpochLocalBlind).
+//
+// Takes arena (*RegisterArena) which ran the store. It may be nil.
+// Takes fieldPointer (unsafe.Pointer) which is the field's address.
+// Takes fieldType (reflect.Type) which is the field's pointer type.
+// Takes value (reflect.Value) which is the value stored.
+// Takes granted (bool) which is true when the compiler granted the store.
+//
+// Returns bool which is true when the store was made.
+func storePointerFieldRevokedEpoch(arena *RegisterArena, fieldPointer unsafe.Pointer, fieldType reflect.Type, value reflect.Value, granted bool) bool {
+	if !revokedEpochLocalBlind(arena) {
+		return false
+	}
+	_, pointer, ok := plainPointerOf(value, reflectValueABIType(fieldType))
+	if !ok {
+		return false
+	}
+	if !granted {
+		arena.noteRevokedEpochHandOff(handOffUntracedContainer, value)
+	}
+	*(*unsafe.Pointer)(fieldPointer) = pointer
+	return true
+}
+
+// storePointerInAnyFieldRevokedEpoch is the any-field route of
+// storePointerFieldRevokedEpoch.
+//
+// Takes arena (*RegisterArena) which ran the store; may be nil.
+// Takes fieldPointer (unsafe.Pointer) which is the field's address.
+// Takes fieldType (reflect.Type) which is the field's interface type.
+// Takes value (reflect.Value) which is the value stored.
+// Takes granted (bool) which is true when the compiler granted the store.
+//
+// Returns bool which is true when the store was made.
+func storePointerInAnyFieldRevokedEpoch(arena *RegisterArena, fieldPointer unsafe.Pointer, fieldType reflect.Type, value reflect.Value, granted bool) bool {
+	if reflectValueABIType(fieldType) != anyReflectTypeABI || !revokedEpochLocalBlind(arena) {
+		return false
+	}
+	pointerType, pointer, ok := plainPointerOf(value, nil)
+	if !ok {
+		return false
+	}
+	if !granted {
+		arena.noteRevokedEpochHandOff(handOffUntracedContainer, value)
+	}
+	*(*[2]unsafe.Pointer)(fieldPointer) = [2]unsafe.Pointer{pointerType, pointer}
+	return true
+}
+
+// storePointerInAnySlotRevokedEpoch is storeIndexedElement's route for a non-nil pointer
+// stored into an addressable element of type any, for a licensed arena in a revoked epoch
+// whose blind hand-offs are local (the revoked-epoch fast path, revokedEpochLocalBlind).
+//
+// Takes arena (*RegisterArena) which ran the store; may be nil.
+// Takes target (reflect.Value) which is the element written.
+// Takes value (reflect.Value) which is the value stored.
+//
+// Returns bool which is true when the store was made.
+func storePointerInAnySlotRevokedEpoch(arena *RegisterArena, target, value reflect.Value) bool {
+	targetRaw := (*unsafeReflectValue)(unsafe.Pointer(&target))
+	if targetRaw.typ != anyReflectTypeABI || targetRaw.flag&(flagIndir|flagAddr) != flagIndir|flagAddr || targetRaw.ptr == nil {
+		return false
+	}
+	pointerType, pointer, ok := plainPointerOf(value, nil)
+	if !ok || !revokedEpochLocalBlind(arena) || arena.krefContains(targetRaw.ptr) {
+		return false
+	}
+	arena.noteRevokedEpochHandOff(handOffUntracedContainer, value)
+	*(*[2]unsafe.Pointer)(targetRaw.ptr) = [2]unsafe.Pointer{pointerType, pointer}
+	return true
+}
+
+// copyPointerFieldRevokedEpoch is handleCopyStructFieldGeneral's barriered copy under the
+// revoked-epoch fast path (revokedEpochLocalBlind) for a non-nil pointer in a pointer
+// field, or a non-nil pointer held in an any field.
+//
+// Takes arena (*RegisterArena) which ran the copy. It may be nil.
+// Takes fieldType (reflect.Type) which is the destination field's type.
+// Takes source (unsafe.Pointer) which is the source field's address.
+// Takes destination (unsafe.Pointer) which is the destination field's address.
+//
+// Returns bool which is true when the copy was made.
+func copyPointerFieldRevokedEpoch(arena *RegisterArena, fieldType reflect.Type, source, destination unsafe.Pointer) bool {
+	if !revokedEpochLocalBlind(arena) {
+		return false
+	}
+	typeWord := reflectValueABIType(fieldType)
+	switch fieldType.Kind() {
+	case reflect.Pointer:
+		pointer := *(*unsafe.Pointer)(source)
+		if pointer == nil {
+			return false
+		}
+		arena.noteRevokedEpochHandOff(handOffUntracedContainer, unsafeNewAt(typeWord, source, reflect.Pointer))
+		*(*unsafe.Pointer)(destination) = pointer
+	case reflect.Interface:
+		eface := *(*[2]unsafe.Pointer)(source)
+		if typeWord != anyReflectTypeABI || eface[0] == nil || eface[1] == nil ||
+			reflect.Kind(*(*uint8)(unsafe.Add(eface[0], abiTypeKindOffset))&uint8(flagKindMask)) != reflect.Pointer {
+			return false
+		}
+		arena.noteRevokedEpochHandOff(handOffUntracedContainer, unsafeNewAt(typeWord, source, reflect.Interface))
+		*(*[2]unsafe.Pointer)(destination) = eface
+	default:
+		return false
+	}
+	return true
+}
+
+// storeNilPointerField stores a nil pointer into a struct field without a store barrier.
+//
+// This route of handleSetStructFieldGeneral accepts a pointer field of the value's own
+// type or an empty-interface field (the cycle-broken shape of a recursive struct's
+// pointer field). The field receives the words the barriered route writes, either a nil
+// pointer, or the pointer type's eface with a nil data word.
+//
+// The store-census build and an armed abort injection keep the barrier, so the census
+// still sees every store and an injected abort still lands at every hand-off.
+//
+// Takes kind (reflect.Kind) which is the field's kind from its layout.
+// Takes fieldPointer (unsafe.Pointer) which is the field's address.
+// Takes fieldType (reflect.Type) which is the field's type.
+// Takes value (reflect.Value) which is the value stored.
+//
+// Returns bool which is true when the store was made.
+func storeNilPointerField(kind reflect.Kind, fieldPointer unsafe.Pointer, fieldType reflect.Type, value reflect.Value) bool {
+	if storeCensusBuilt || abortInjectArmed() {
+		return false
+	}
+	raw := (*unsafeReflectValue)(unsafe.Pointer(&value))
+	if raw.typ == nil || reflect.Kind(raw.flag&flagKindMask) != reflect.Pointer || raw.flag&licenceFlagRO != 0 ||
+		efaceDataPointerFromValue(raw) != nil {
+		return false
+	}
+	switch kind {
+	case reflect.Pointer:
+		if raw.typ != reflectValueABIType(fieldType) {
+			return false
+		}
+		*(*unsafe.Pointer)(fieldPointer) = nil
+	case reflect.Interface:
+		if reflectValueABIType(fieldType) != anyReflectTypeABI {
+			return false
+		}
+		*(*[2]unsafe.Pointer)(fieldPointer) = [2]unsafe.Pointer{raw.typ, nil}
+	default:
+		return false
+	}
+	return true
+}
+
+// copiesNilReference reports whether handleCopyStructFieldGeneral's barriered copy moves
+// a nil pointer, or an empty interface whose data word is nil (a nil interface, or one
+// holding a nil pointer, map, channel or function), so that the plain copy may take it.
+//
+// Takes fieldType (reflect.Type) which is the destination field's type, which the source
+// field shares.
+// Takes source (unsafe.Pointer) which is the source field's address.
+//
+// Returns bool which is true when the copy needs no barrier.
+func copiesNilReference(fieldType reflect.Type, source unsafe.Pointer) bool {
+	if storeCensusBuilt || abortInjectArmed() {
+		return false
+	}
+	switch fieldType.Kind() {
+	case reflect.Pointer:
+		return *(*unsafe.Pointer)(source) == nil
+	case reflect.Interface:
+		return reflectValueABIType(fieldType) == anyReflectTypeABI && (*[2]unsafe.Pointer)(source)[1] == nil
+	default:
+		return false
+	}
+}
+
+// plainPointerOf reads a non-nil pointer value with no read-only flag, of pointerType
+// when that is non-nil, without reflection.
+//
+// Takes value (reflect.Value) which is the value.
+// Takes pointerType (unsafe.Pointer) which is the *abi.Type required, or nil for any.
+//
+// Returns typ (unsafe.Pointer) which is the value's *abi.Type.
+// Returns pointer (unsafe.Pointer) which is the pointer.
+// Returns ok (bool) which is true for such a pointer.
+func plainPointerOf(value reflect.Value, pointerType unsafe.Pointer) (typ, pointer unsafe.Pointer, ok bool) {
+	raw := (*unsafeReflectValue)(unsafe.Pointer(&value))
+	if raw.typ == nil || pointerType != nil && raw.typ != pointerType ||
+		reflect.Kind(raw.flag&flagKindMask) != reflect.Pointer || raw.flag&licenceFlagRO != 0 {
+		return nil, nil, false
+	}
+	pointer = efaceDataPointerFromValue(raw)
+	if pointer == nil {
+		return nil, nil, false
+	}
+	return raw.typ, pointer, true
+}
+
+// pointerStoreWithoutLicence decides a general struct-field store of a pointer for an
+// arena without a licence (the abandon fallback's, or a variable initialiser's heap-data
+// arena) as MaterialiseArenaValue would, without reflection.
+//
+// Takes arena (*RegisterArena) which ran the store; may be nil.
+// Takes value (reflect.Value) which is the value stored.
+// Takes pointerType (unsafe.Pointer) which is the *abi.Type the value must have, or nil
+// for any pointer type.
+//
+// Returns typ (unsafe.Pointer) which is the value's *abi.Type.
+// Returns pointer (unsafe.Pointer) which is the pointer to store.
+// Returns ok (bool) which is true when the caller makes the store.
+func pointerStoreWithoutLicence(arena *RegisterArena, value reflect.Value, pointerType unsafe.Pointer) (typ, pointer unsafe.Pointer, ok bool) {
+	if arena != nil && (arena.licensed || len(arena.kref.sorted) != 0) {
+		return nil, nil, false
+	}
+	raw := (*unsafeReflectValue)(unsafe.Pointer(&value))
+	if raw.typ == nil || pointerType != nil && raw.typ != pointerType ||
+		reflect.Kind(raw.flag&flagKindMask) != reflect.Pointer || raw.flag&licenceFlagRO != 0 {
+		return nil, nil, false
+	}
+	pointer = efaceDataPointerFromValue(raw)
+	if pointer == nil {
+		return nil, nil, false
+	}
+	return raw.typ, pointer, true
+}
+
+// handleCopyStructFieldGeneral fuses a field-to-field copy for general-bank struct
 // fields.
 //
-// Replaces the GET_STRUCT_FIELD_GENERAL_T0 + SET_STRUCT_FIELD_GENERAL_T0 pair the
-// peephole pass emits when the intermediate destination register is read exactly once (by
-// the SET) and written exactly once (by the GET). The fused op skips the intermediate
-// reflect.Value materialisation in the GET (no register write) and the matching
-// extraction in the SET, going directly from `*(sourceBase+srcOffset)` to
-// `*(destinationBase+dstOffset)` via runtime.typedmemmove (which preserves the
-// destination's write barriers).
+// Replaces the GET_STRUCT_FIELD_GENERAL + SET_STRUCT_FIELD_GENERAL pair the peephole pass
+// emits when the intermediate destination register is read exactly once (by the SET) and
+// written exactly once (by the GET). The fused op skips the intermediate reflect.Value
+// materialisation in the GET (no register write) and the matching extraction in the SET,
+// going directly from `*(sourceBase+srcOffset)` to `*(destinationBase+dstOffset)` via
+// runtime.typedmemmove (which preserves the destination's write barriers).
 //
 // Takes vm (*VM) which is carried for the fallback path.
 // Takes frame (*CallFrame) which supplies the type and layout tables.
@@ -424,7 +744,7 @@ func handleSetStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Register
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue after the copy or fallback completes.
-func handleCopyStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleCopyStructFieldGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	sourceLayout := readTier0StructFieldLayout(frame, instruction.C)
 	extension := readExtensionWord(frame)
 	frame.ProgramCounter++
@@ -449,12 +769,24 @@ func handleCopyStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Registe
 	}
 	sourceFieldPointer := unsafe.Add(sourceBase, uintptr(sourceLayout.Offset))
 	destinationFieldPointer := unsafe.Add(destinationBase, uintptr(destinationLayout.Offset))
+	if krefCopyNeedsBarrier(vm.Arena, sourceBase, sourceFieldPointer, destinationFieldType) &&
+		!copiesNilReference(destinationFieldType, sourceFieldPointer) {
+		if copyPointerFieldRevokedEpoch(vm.Arena, destinationFieldType, sourceFieldPointer, destinationFieldPointer) {
+			return opContinue
+		}
+		fetched := unsafeNewAt(reflectValueABIType(destinationFieldType), sourceFieldPointer, destinationFieldType.Kind())
+		setProxy := isa.Instruction{Op: instruction.Op, A: instruction.B, B: 0, C: 0}
+		return setStructFieldGeneralReflectFallback(vm, frame, registers, setProxy, destinationLayout, fetched, false)
+	}
 	runtimeTypedmemmove(reflectValueABIType(destinationFieldType), destinationFieldPointer, sourceFieldPointer)
+	if storeCensusBuilt {
+		censusNoteFusedCopy(vm.Arena, destinationBase, destinationFieldType, destinationFieldPointer)
+	}
 	return opContinue
 }
 
 // copyStructFieldGeneralFallback runs the slow GET-then-SET sequence when the fast path
-// in handleCopyStructFieldGeneralT0 cannot apply.
+// in handleCopyStructFieldGeneral cannot apply.
 //
 // Takes vm (*VM) which is threaded into the reflect fallback.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -479,7 +811,7 @@ func copyStructFieldGeneralFallback(
 		}
 	}
 	setProxy := isa.Instruction{Op: instr.Op, A: instr.B, B: 0, C: 0}
-	return setStructFieldGeneralReflectFallback(vm, frame, registers, setProxy, destinationLayout, fetched)
+	return setStructFieldGeneralReflectFallback(vm, frame, registers, setProxy, destinationLayout, fetched, false)
 }
 
 // getStructFieldGeneralReflectRead reads a struct field via the reflect-walk path the SET
@@ -623,10 +955,11 @@ func efaceDataPointerFromValue(valueRaw *unsafeReflectValue) unsafe.Pointer {
 // setStructFieldGeneralReflectFallback writes a general-bank value to a struct field via
 // the reflect.Field walk.
 //
-// Used when the unsafe-pointer base is unavailable (non-addressable receiver) or when the
-// field's storage layout requires reflect's full ABI handling (interface-kind leaves).
-// The CanSet/CanAddr rebind strips the flagRO bit that reflect.Value.Field sets on
-// unexported fields, without which Set/SetZero would panic.
+// The fallback is used for non-addressable receivers or interface leaves requiring
+// reflection's full ABI handling. The CanSet/CanAddr rebind removes flagRO from
+// unexported fields so Set and SetZero can operate. MaterialiseArenaValue applies the
+// store barrier unless escape analysis granted the store's program counter. A fused
+// copy's fallback is never granted.
 //
 // Takes vm (*VM) for closure-coercion support in coerceValue.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -635,10 +968,11 @@ func efaceDataPointerFromValue(valueRaw *unsafeReflectValue) unsafe.Pointer {
 // Takes layout (StructFieldLayout) which describes the field path.
 // Takes value (reflect.Value) which is the right-hand-side value to install at the
 // field's storage.
+// Takes granted (bool) which is true when the escape pass granted the store's PC.
 //
 // Returns opContinue once the write completes or is skipped, or the raised interpreted
 // panic when the receiver is a nil pointer.
-func setStructFieldGeneralReflectFallback(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction, layout program.StructFieldLayout, value reflect.Value) OpResult {
+func setStructFieldGeneralReflectFallback(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction, layout program.StructFieldLayout, value reflect.Value, granted bool) OpResult {
 	field, walkOK := structFieldReflectWrite(registers, frame, instruction.A, layout)
 	if !walkOK {
 		return structFieldFallbackMiss(vm, frame, registers, instruction.A)
@@ -650,7 +984,11 @@ func setStructFieldGeneralReflectFallback(vm *VM, frame *CallFrame, registers *R
 		field.SetZero()
 		return opContinue
 	}
-	coerced := wrapForInterfaceField(vm, coerceValue(vm, value, field.Type()), field.Type())
+	coerced := coerceValue(vm, value, field.Type())
+	if !granted {
+		coerced = MaterialiseArenaValue(vm.Arena, coerced)
+	}
+	coerced = wrapForInterfaceField(vm, coerced, field.Type())
 	if err := checkInterfaceFieldValue(vm, coerced, field.Type()); err != nil {
 		vm.evalError = err
 		return opPanicError
@@ -659,14 +997,13 @@ func setStructFieldGeneralReflectFallback(vm *VM, frame *CallFrame, registers *R
 	return opContinue
 }
 
-// handleGetStructFieldIndexGeneral reads one element of an array-typed struct field:
-// general[A] = receiver[B].field(layout[C]).elem[ints[ext1.C]].
+// handleGetStructFieldElementGeneral reads one element of an array-typed struct field.
 //
-// Fuses the GET_STRUCT_FIELD_GENERAL_T0 + INDEX pair the Compiler previously emitted for
-// expressions like node.children[slot]. Pointer-kind elements load the pointer word
-// directly; interface-kind elements reuse the direct-iface eface read; every other
+// Fuses the GET_STRUCT_FIELD_GENERAL + GET_ELEMENT pair the Compiler previously emitted
+// for expressions like node.children[slot]. Pointer-kind elements load the pointer word
+// directly. Interface-kind elements reuse the direct-iface eface read. Every other
 // element shape goes through an addressable reflect view with the same non-nil interface
-// unwrap the INDEX handler applies.
+// unwrap the GET_ELEMENT handler applies.
 //
 // Takes vm (*VM) which supplies panic plumbing for the bounds check.
 // Takes frame (*CallFrame) which provides the layout table, type table, and PC.
@@ -674,7 +1011,7 @@ func setStructFieldGeneralReflectFallback(vm *VM, frame *CallFrame, registers *R
 // Takes instruction (instruction) which carries A=dest, B=receiver, C=layout index.
 //
 // Returns OpResult indicating the next execution step.
-func handleGetStructFieldIndexGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldElementGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	indexRegister, arrayLength, elementSize, elementKind := readFusedArrayFieldExtensions(frame)
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	index := int(registers.Ints[indexRegister])

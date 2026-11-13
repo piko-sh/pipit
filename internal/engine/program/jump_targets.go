@@ -28,15 +28,8 @@ const (
 	extension24Limit = 1 << 24
 )
 
-// JumpTargetAt decodes the absolute target of the jump at pc.
-//
-// Every layout isa.JumpLayoutOf() knows is decoded here, with the same arithmetic the
-// handlers use: word-layout jumps land at pc+1+offset, extension-layout jumps at the word
-// after their extension words and any OpNop padding (the fused map-index-ok branches keep
-// that offset in B|C of their extension word, beside the ok register in A), and the
-// range-next steps at pc+2 plus their 24-bit forward offset. The type-switch dispatch has
-// no single target and is reported as not a jump; its OpTypeSwitchCase rows and default
-// jump decode on their own.
+// JumpTargetAt decodes the absolute target of the jump at pc. The type-switch dispatch
+// has no single target and is reported as not a jump.
 //
 // Takes body ([]isa.Instruction) which is the instruction stream.
 // Takes pc (int) which is the candidate jump's program counter.
@@ -132,9 +125,9 @@ func SetJumpTarget(body []isa.Instruction, pc, target int) (ok bool) {
 }
 
 // JumpWordCount returns how many instruction words the jump at instr occupies before any
-// OpNop padding: one for a word-layout jump, two when the offset lives in the first
-// extension word, three when it lives in the second, and one for anything that is not a
-// jump.
+// OpNoOperation padding. It returns one for a word-layout jump, two when the offset lives
+// in the first extension word, three when it lives in the second, and one for anything
+// that is not a jump.
 //
 // Takes instr (isa.Instruction) which is the candidate jump.
 //
@@ -145,8 +138,8 @@ func JumpWordCount(instr isa.Instruction) int {
 }
 
 // JumpFootprint returns how many words the jump at instr spans in total, including the
-// OpNop padding a fusion left after its extension words. The program counter of the
-// fall-through successor is pc plus this value.
+// OpNoOperation padding a fusion left after its extension words. The program counter of
+// the fall-through successor is pc plus this value.
 //
 // Takes instr (isa.Instruction) which is the candidate jump.
 //
@@ -180,15 +173,16 @@ func (*CompiledFunction) BuildJumpTargets(body []isa.Instruction) map[int]bool {
 	return JumpTargetsOf(body)
 }
 
-// extensionWordAt returns body[pc] when it is an OpExt word.
+// extensionWordAt returns body[pc] when it is an OpExtension word.
 //
 // Takes body ([]isa.Instruction) which is the instruction stream.
 // Takes pc (int) which is the expected position of the extension word.
 //
 // Returns ext (isa.Instruction) which is the extension word.
-// Returns ok (bool) which is false when pc is out of range or the word is not OpExt.
+// Returns ok (bool) which is false when pc is out of range or the word is not
+// OpExtension.
 func extensionWordAt(body []isa.Instruction, pc int) (ext isa.Instruction, ok bool) {
-	if pc < 0 || pc >= len(body) || body[pc].Op != isa.OpExt {
+	if pc < 0 || pc >= len(body) || body[pc].Op != isa.OpExtension {
 		return isa.Instruction{}, false
 	}
 	return body[pc], true
@@ -221,7 +215,7 @@ func setExtension24Offset(ext *isa.Instruction, offset int) (ok bool) {
 	if offset < 0 || offset >= extension24Limit {
 		return false
 	}
-	*ext = isa.NewInstruction(isa.OpExt,
+	*ext = isa.NewInstruction(isa.OpExtension,
 		uint8(offset), uint8(offset>>isa.WideBitShift), uint8(offset>>(2*isa.WideBitShift))) //nolint:gosec // range-checked above
 	return true
 }

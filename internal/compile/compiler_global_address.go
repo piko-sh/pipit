@@ -178,7 +178,8 @@ func (c *Compiler) compileAddressOfGlobal(identifier *ast.Ident) (program.VarLoc
 // before any initialiser.
 //
 // It allocates the pointer cell of every indirect package variable and, when go/types
-// init order is used, stores the typed zero of every uninitialised general-bank variable.
+// init order is used, stores the zero value of every variable declared without an
+// initialiser, in every bank.
 //
 // Takes files ([]*ast.File) whose declarations name the variables to prepare.
 func (c *Compiler) emitPackageVarPrologue(ctx context.Context, files []*ast.File) {
@@ -193,8 +194,8 @@ func (c *Compiler) emitPackageVarPrologue(ctx context.Context, files []*ast.File
 //
 // Takes spec (*ast.ValueSpec) which declares the variable.
 // Takes name (*ast.Ident) which is the variable's declaring identifier.
-// Takes zeroValueless (bool) which requests a typed zero for a general-bank variable
-// declared without an initialiser.
+// Takes zeroValueless (bool) which requests the zero value of a variable declared without
+// an initialiser.
 func (c *Compiler) emitPackageVarPrologueFor(ctx context.Context, spec *ast.ValueSpec, name *ast.Ident, zeroValueless bool) {
 	if name.Name == typemap.BlankIdentName {
 		return
@@ -207,8 +208,15 @@ func (c *Compiler) emitPackageVarPrologueFor(ctx context.Context, spec *ast.Valu
 		c.emitIndirectGlobalCell(ctx, name, gv)
 		return
 	}
-	if zeroValueless && gv.Kind == isa.RegisterGeneral && len(spec.Values) == 0 {
-		c.emitGlobalZeroGeneral(ctx, name, gv)
+	if zeroValueless && len(spec.Values) == 0 {
+		if gv.Kind == isa.RegisterGeneral {
+			c.emitGlobalZeroGeneral(ctx, name, gv)
+			return
+		}
+		register := c.Scopes.Alloc.AllocTemp(gv.Kind)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLoadZero), register, uint8(gv.Kind))
+		c.emitSetGlobalOp(ctx, register, gv)
+		c.Scopes.Alloc.FreeTemp(gv.Kind, register)
 	}
 }
 
@@ -233,8 +241,8 @@ func (c *Compiler) emitIndirectGlobalCell(ctx context.Context, name *ast.Ident, 
 	zero := c.Scopes.Alloc.AllocTemp(gv.Kind)
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLoadZero), zero, uint8(gv.Kind))
 	cell := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpAllocIndirect, cell, zero, uint8(gv.Kind))
-	program.EmitExtension(c.Function, typeIndex, isa.AllocIndirectHeapCell)
+	program.Emit(c.Function, isa.OpAllocateIndirect, cell, zero, uint8(gv.Kind))
+	program.EmitExtension(c.Function, typeIndex, isa.AllocateIndirectHeapCell)
 	c.emitSetGlobalOp(ctx, cell, gv)
 	c.Scopes.Alloc.FreeTemp(isa.RegisterGeneral, cell)
 	c.Scopes.Alloc.FreeTemp(gv.Kind, zero)

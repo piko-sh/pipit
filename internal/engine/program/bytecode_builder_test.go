@@ -159,18 +159,18 @@ func TestEmitHelpersAppendTheExpectedEncoding(t *testing.T) {
 		compiledFunction := NewNamedFunction("body")
 
 		require.Equal(t, 0, CurrentPC(compiledFunction))
-		position := Emit(compiledFunction, isa.OpAddInt, 1, 2, 3)
+		position := Emit(compiledFunction, isa.OpAddInt64, 1, 2, 3)
 
 		require.Equal(t, 0, position)
 		require.Equal(t, 1, CurrentPC(compiledFunction))
-		require.Equal(t, isa.Instruction{Op: isa.OpAddInt, A: 1, B: 2, C: 3}, compiledFunction.Body[0])
+		require.Equal(t, isa.Instruction{Op: isa.OpAddInt64, A: 1, B: 2, C: 3}, compiledFunction.Body[0])
 	})
 
 	t.Run("a wide operand splits across the low and high bytes", func(t *testing.T) {
 		t.Parallel()
 		compiledFunction := NewNamedFunction("body")
 
-		EmitWide(compiledFunction, isa.OpLoadIntConst, 0, 300)
+		EmitWide(compiledFunction, isa.OpLoadInt64Constant, 0, 300)
 
 		require.Equal(t, uint16(300), compiledFunction.Body[0].WideIndex())
 	})
@@ -182,7 +182,7 @@ func TestEmitHelpersAppendTheExpectedEncoding(t *testing.T) {
 		EmitExtension(compiledFunction, 4000, 7)
 
 		extension := compiledFunction.Body[0]
-		require.Equal(t, isa.OpExt, extension.Op)
+		require.Equal(t, isa.OpExtension, extension.Op)
 		require.Equal(t, uint16(4000), isa.JoinWide(extension.A, extension.B),
 			"an extension word carries its payload in operands A and B")
 		require.Equal(t, uint8(7), extension.C, "operand C stays free for the owning opcode's flag")
@@ -194,11 +194,11 @@ func TestEmitHelpersAppendTheExpectedEncoding(t *testing.T) {
 		t.Parallel()
 		compiledFunction := NewNamedFunction("body")
 
-		EmitTier1(compiledFunction, isa.SubOpNegInt, 1, 2)
+		EmitTier1(compiledFunction, isa.SubOpNegateInt64, 1, 2)
 		EmitTier2(compiledFunction, isa.SubOpTier2Return, 1)
 		EmitTier3(compiledFunction, isa.SubOpTier3ReturnVoid)
 
-		require.Equal(t, isa.NewTier1Instruction(isa.SubOpNegInt, 1, 2), compiledFunction.Body[0])
+		require.Equal(t, isa.NewTier1Instruction(isa.SubOpNegateInt64, 1, 2), compiledFunction.Body[0])
 		require.Equal(t, isa.NewTier2Instruction(isa.SubOpTier2Return, 1), compiledFunction.Body[1])
 		require.Equal(t, isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid), compiledFunction.Body[2])
 	})
@@ -218,8 +218,8 @@ func TestPatchJumpWritesTheDistanceToTheCurrentPosition(t *testing.T) {
 
 	compiledFunction := NewNamedFunction("body")
 	patchPC := EmitJump(compiledFunction, isa.OpJumpIfFalse, 0)
-	Emit(compiledFunction, isa.OpAddInt, 0, 0, 0)
-	Emit(compiledFunction, isa.OpAddInt, 0, 0, 0)
+	Emit(compiledFunction, isa.OpAddInt64, 0, 0, 0)
+	Emit(compiledFunction, isa.OpAddInt64, 0, 0, 0)
 
 	PatchJump(compiledFunction, patchPC)
 
@@ -287,11 +287,11 @@ func TestBlockerForInstructionNamesWhyInliningWasRefused(t *testing.T) {
 		{name: "a defer blocks inlining", instruction: isa.Instruction{Op: isa.OpDefer}, want: InlineRefusalDefer},
 		{name: "a goroutine launch blocks inlining", instruction: isa.Instruction{Op: isa.OpGo}, want: InlineRefusalGo},
 		{name: "making a closure blocks inlining", instruction: isa.Instruction{Op: isa.OpMakeClosure}, want: InlineRefusalClosureOps},
-		{name: "reading an upvalue blocks inlining", instruction: isa.Instruction{Op: isa.OpGetUpvalue}, want: InlineRefusalClosureOps},
-		{name: "writing an upvalue blocks inlining", instruction: isa.Instruction{Op: isa.OpSetUpvalue}, want: InlineRefusalClosureOps},
-		{name: "a channel send blocks inlining", instruction: isa.Instruction{Op: isa.OpChannelSend}, want: InlineRefusalChannelOps},
-		{name: "synchronising closure upvalues blocks inlining", instruction: isa.NewTier2Instruction(isa.SubOpTier2SyncClosureUpvalues, 0), want: InlineRefusalClosureOps},
-		{name: "an ordinary instruction gives no named reason", instruction: isa.Instruction{Op: isa.OpAddInt}, want: InlineRefusalUnknown},
+		{name: "reading an upvalue blocks inlining", instruction: isa.Instruction{Op: isa.OpGetCapturedVariable}, want: InlineRefusalClosureOps},
+		{name: "writing an upvalue blocks inlining", instruction: isa.Instruction{Op: isa.OpSetCapturedVariable}, want: InlineRefusalClosureOps},
+		{name: "a channel send blocks inlining", instruction: isa.Instruction{Op: isa.OpSendToChannel}, want: InlineRefusalChannelOps},
+		{name: "synchronising closure upvalues blocks inlining", instruction: isa.NewTier2Instruction(isa.SubOpTier2SynchroniseClosureCapturedVariables, 0), want: InlineRefusalClosureOps},
+		{name: "an ordinary instruction gives no named reason", instruction: isa.Instruction{Op: isa.OpAddInt64}, want: InlineRefusalUnknown},
 	}
 
 	for _, tt := range tests {
@@ -305,11 +305,8 @@ func TestBlockerForInstructionNamesWhyInliningWasRefused(t *testing.T) {
 func TestMayAliasIsConservativeWhenItCannotProveOtherwise(t *testing.T) {
 	t.Parallel()
 
-	info := &PointerAliasInfo{PerPCEnv: []AliasEnvironment{{Class: [GeneralAliasBankSize]AliasClass{}}}}
-	info.PerPCEnv[0].Class[1] = 1
-	info.PerPCEnv[0].Class[2] = 2
-	info.PerPCEnv[0].Class[3] = 1
-	info.PerPCEnv[0].Class[4] = AliasClassWild
+	info := NewPointerAliasInfo(1, 5)
+	copy(info.ClassesAt(0), []AliasClass{AliasClassWild, 1, 2, 1, AliasClassWild})
 
 	tests := []struct {
 		info *PointerAliasInfo
@@ -324,6 +321,9 @@ func TestMayAliasIsConservativeWhenItCannotProveOtherwise(t *testing.T) {
 		{name: "a negative position assumes aliasing", info: info, pc: -1, regA: 1, regB: 2, want: true},
 		{name: "a position past the analysis assumes aliasing", info: info, pc: 99, regA: 1, regB: 2, want: true},
 		{name: "a wild class assumes aliasing", info: info, pc: 0, regA: 4, regB: 1, want: true},
+		{name: "a register past the tracked ones assumes aliasing", info: info, pc: 0, regA: 1, regB: 5, want: true},
+		{name: "an analysis that tracks nothing assumes aliasing", info: NewPointerAliasInfo(1, 0), pc: 0, regA: 1, regB: 2, want: true},
+		{name: "an empty analysis assumes aliasing", info: &PointerAliasInfo{}, pc: 0, regA: 1, regB: 2, want: true},
 		{name: "different classes cannot alias", info: info, pc: 0, regA: 1, regB: 2, want: false},
 		{name: "the same class may alias", info: info, pc: 0, regA: 1, regB: 3, want: true},
 	}
@@ -379,7 +379,7 @@ func TestCompiledFileSetExposesItsEntrypoints(t *testing.T) {
 		t.Parallel()
 		bundle := NewCompiledFileSet(NewNamedFunction("root"), nil, nil, nil)
 		allocation := SlotAllocation{}
-		allocation[isa.RegisterInt] = 3
+		allocation[isa.RegisterInt64] = 3
 
 		bundle.SetSlotAllocation(allocation)
 		bundle.SetPackageVariables([]PackageVariableMetadata{{Name: "Counter"}})

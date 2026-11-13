@@ -43,7 +43,7 @@ func compileLoggingRetries(t *testing.T, source string) (*program.CompiledFuncti
 	t.Helper()
 
 	symbols := symtab.NewSymbolRegistry(nil)
-	result, err := frontend.Typecheck(testPackageName, map[string]string{"main.go": source}, symbols)
+	result, err := frontend.Typecheck(testPackageName, map[string]string{"main.go": source}, symbols.Importer(t.Context()))
 	require.NoError(t, err, "the fixture source must type-check before it can be compiled")
 
 	rootFunction := program.NewNamedFunction("<root>")
@@ -60,7 +60,7 @@ func compileLoggingRetries(t *testing.T, source string) (*program.CompiledFuncti
 	}
 	var records bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&records, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	ctx := logging.ContextWithLogger(t.Context(), logger)
+	ctx := logging.WithLogger(t.Context(), logger)
 	_, compileErr := CompileParsedPackage(ctx, config, result.Files, testPackageName, nil)
 
 	var retried []string

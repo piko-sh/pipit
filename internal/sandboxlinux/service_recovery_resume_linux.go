@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
@@ -27,6 +27,8 @@ import (
 	"sync"
 
 	"golang.org/x/sys/unix"
+
+	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 // ResumeRelease finishes a release whose filesystem cleanup was durably recorded. It
@@ -45,7 +47,7 @@ func (owner *ServiceRecoveryClaim) ResumeRelease(ctx context.Context, parentPath
 	if ctx == nil || !filepath.IsAbs(parentPath) {
 		return ErrInvalidLimits
 	}
-	ctx, cancel := context.WithTimeout(ctx, workerCleanupTimeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, workerCleanupTimeout, sandboxwire.ErrCleanupTimedOut)
 	defer cancel()
 	owner.mutex.Lock()
 	defer owner.mutex.Unlock()

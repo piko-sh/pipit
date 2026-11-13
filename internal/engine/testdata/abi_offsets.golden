@@ -1,4 +1,4 @@
-struct dispatchContext size=728 align=8
+struct dispatchContext size=744 align=8
   vm                                       offset=0     size=8
   codeBase                                 offset=8     size=8
   codeLength                               offset=16    size=8
@@ -86,6 +86,8 @@ struct dispatchContext size=728 align=8
   arenaGenericBytesSlabHeader              offset=704   size=8
   arenaGenericBytesIndexPointer            offset=712   size=8
   arenaGenericBytesCharged                 offset=720   size=8
+  arenaRouteState                          offset=728   size=8
+  globals                                  offset=736   size=8
 
 struct CallFrame size=536 align=8
   Function                                 offset=0     size=8
@@ -203,6 +205,8 @@ ProvideDispatchContextOffsets
   ArenaGenericBytesSlabHeader              = 704
   ArenaGenericBytesIndexPointer            = 712
   ArenaGenericBytesCharged                 = 720
+  ArenaRouteState                          = 728
+  Globals                                  = 736
   CurrentFrame                             = 600
   PollBudget                               = 592
   AsmCallInfoBasesPtr                      = 264
@@ -304,6 +308,18 @@ ProvideCallFrameOffsets
   StructLiteralEntryAlignMask              = 16
   StructLiteralEntryFlag                   = 24
   FunctionTypeTableLen                     = 496
+  FunctionFieldStoreGrants                 = 112
+  RouteLocalBlind                          = 104
+  FunctionGlobalBases                      = 8
+  GlobalStoreShared                        = 288
+  GlobalStoreInts                          = 192
+  GlobalStoreFloats                        = 168
+  GlobalStoreBools                         = 96
+  GlobalStoreUints                         = 48
+  GlobalStoreGeneral                       = 72
+  RouteNoteSeq                             = 0
+  RouteNotesUntraced                       = 72
+  RouteNotesBlind                          = 96
   SharedCells                              = 8
   Upvalues                                 = 344
   ReturnDestPtr                            = 368

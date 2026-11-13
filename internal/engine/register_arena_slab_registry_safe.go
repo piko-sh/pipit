@@ -20,19 +20,30 @@
 
 package engine
 
-import "sync/atomic"
-
-// The safe and WASM builds keep no unsafe slabs, so no string can point into another VM's
-// arena and the slab registry records nothing.
+import (
+	"sync/atomic"
+	"weak"
+)
 
 // arenaSlabOwners numbers arenas, as in the unsafe build.
 var arenaSlabOwners atomic.Uint64
 
 // recordArenaSlab is a no-op without unsafe slabs.
 //
-// Takes owner (uint64) which identifies the arena; ignored in this build.
-// Takes slab ([]byte) which is the byte slab; ignored in this build.
-func recordArenaSlab(uint64, []byte) {}
+// Takes owner (uint64) which identifies the arena. It is ignored in this build.
+// Takes live (weak.Pointer[RegisterArena]) which points weakly at the arena. It is
+// ignored in this build.
+// Takes slab ([]byte) which is the byte slab. It is ignored in this build.
+func recordArenaSlab(uint64, weak.Pointer[RegisterArena], []byte) {}
+
+// swapArenaSlab is a no-op without unsafe slabs.
+//
+// Takes owner (uint64) which identifies the arena. It is ignored in this build.
+// Takes live (weak.Pointer[RegisterArena]) which points weakly at the arena. It is
+// ignored in this build.
+// Takes previous ([]byte) which is the slab being replaced. It is ignored in this build.
+// Takes slab ([]byte) which is its replacement. It is ignored in this build.
+func swapArenaSlab(uint64, weak.Pointer[RegisterArena], []byte, []byte) {}
 
 // forgetArenaSlab is a no-op without unsafe slabs.
 //

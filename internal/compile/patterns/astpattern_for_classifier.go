@@ -336,6 +336,9 @@ func isIntegerLiteralZero(expr ast.Expr) bool {
 func resolveIntegerConstant(expr ast.Expr, info *types.Info) (int64, bool) {
 	if info != nil {
 		if typeAndValue, ok := info.Types[expr]; ok && typeAndValue.Value != nil {
+			if typeAndValue.Value.Kind() != constant.Int {
+				return 0, false
+			}
 			if value, ok := constant.Int64Val(typeAndValue.Value); ok {
 				return value, true
 			}

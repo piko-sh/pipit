@@ -98,9 +98,9 @@ func TestPathBBatchConsumesGoRunAndStopsAtAssembly(t *testing.T) {
 	t.Parallel()
 	registers := Registers{General: []reflect.Value{reflect.ValueOf(2), reflect.ValueOf(3), {}}}
 	body := []isa.Instruction{
-		isa.NewInstruction(isa.OpAdd, 2, 0, 1),
-		isa.NewInstruction(isa.OpAdd, 2, 2, 1),
-		isa.NewInstruction(isa.OpAddInt, 0, 0, 0),
+		isa.NewInstruction(isa.OpAddGeneral, 2, 0, 1),
+		isa.NewInstruction(isa.OpAddGeneral, 2, 2, 1),
+		isa.NewInstruction(isa.OpAddInt64, 0, 0, 0),
 	}
 	frame := CallFrame{}
 	ctx := dispatchContext{}

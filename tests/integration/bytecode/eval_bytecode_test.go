@@ -44,8 +44,8 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 			want: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
 
-				hasLoad := findOpcode(compiledFunction, isa.OpLoadIntConst) >= 0 ||
-					findTier1SubOp(compiledFunction, isa.SubOpLoadIntConstSmall) >= 0
+				hasLoad := findOpcode(compiledFunction, isa.OpLoadInt64Constant) >= 0 ||
+					findTier1SubOp(compiledFunction, isa.SubOpLoadInt64Immediate) >= 0
 				require.True(t, hasLoad, "expected int load in:\n%s", compiledFunction.Disassemble())
 			},
 		},
@@ -54,7 +54,7 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 			code: "5",
 			want: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpLoadIntConstSmall)
+				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpLoadInt64Immediate)
 			},
 		},
 		{
@@ -62,7 +62,7 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 			code: `x := 1; y := 2; x + y`,
 			want: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsAnyOpcode(t, compiledFunction, isa.OpAddInt, isa.OpAddIntConst)
+				requireContainsAnyOpcode(t, compiledFunction, isa.OpAddInt64, isa.OpAddInt64Constant)
 			},
 		},
 		{
@@ -70,7 +70,7 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 			code: `x := 10; y := 3; x - y`,
 			want: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsAnyOpcode(t, compiledFunction, isa.OpSubInt, isa.OpSubIntConst)
+				requireContainsAnyOpcode(t, compiledFunction, isa.OpSubtractInt64, isa.OpSubtractInt64Constant)
 			},
 		},
 		{
@@ -78,7 +78,7 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 			code: `x := 3; y := 4; x * y`,
 			want: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsAnyOpcode(t, compiledFunction, isa.OpMulInt, isa.OpMulIntConst)
+				requireContainsAnyOpcode(t, compiledFunction, isa.OpMultiplyInt64, isa.OpMultiplyInt64Constant)
 			},
 		},
 		{
@@ -86,7 +86,7 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 			code: `x := 10; y := 3; x / y`,
 			want: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsOpcode(t, compiledFunction, isa.OpDivInt)
+				requireContainsOpcode(t, compiledFunction, isa.OpDivideInt64)
 			},
 		},
 		{
@@ -94,7 +94,7 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 			code: `x := 1.5; y := 2.5; x + y`,
 			want: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsOpcode(t, compiledFunction, isa.OpAddFloat)
+				requireContainsOpcode(t, compiledFunction, isa.OpAddFloat64)
 			},
 		},
 		{
@@ -102,7 +102,7 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 			code: `x := 5.0; y := 2.0; x - y`,
 			want: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsOpcode(t, compiledFunction, isa.OpSubFloat)
+				requireContainsOpcode(t, compiledFunction, isa.OpSubtractFloat64)
 			},
 		},
 		{
@@ -110,7 +110,7 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 			code: `x := "hello"; y := " world"; x + y`,
 			want: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsOpcode(t, compiledFunction, isa.OpConcatString)
+				requireContainsOpcode(t, compiledFunction, isa.OpConcatenateString)
 			},
 		},
 		{
@@ -119,9 +119,9 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 			want: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
 
-				hasEq := findOpcode(compiledFunction, isa.OpEqInt) >= 0 ||
-					findTier1SubOp(compiledFunction, isa.SubOpEqIntConstJumpFalse) >= 0 ||
-					findTier1SubOp(compiledFunction, isa.SubOpEqIntConstJumpTrue) >= 0
+				hasEq := findOpcode(compiledFunction, isa.OpEqualInt64) >= 0 ||
+					findTier1SubOp(compiledFunction, isa.SubOpEqualInt64ConstantThenJumpIfFalse) >= 0 ||
+					findTier1SubOp(compiledFunction, isa.SubOpEqualInt64ConstantThenJumpIfTrue) >= 0
 				require.True(t, hasEq, "expected equality comparison in:\n%s", compiledFunction.Disassemble())
 			},
 		},
@@ -132,7 +132,7 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 				t.Helper()
 
 				hasJump := findOpcode(compiledFunction, isa.OpJumpIfFalse) >= 0 ||
-					findTier1SubOp(compiledFunction, isa.SubOpGtIntConstJumpFalse) >= 0
+					findTier1SubOp(compiledFunction, isa.SubOpGreaterThanInt64ConstantThenJumpIfFalse) >= 0
 				require.True(t, hasJump, "expected conditional jump in:\n%s", compiledFunction.Disassemble())
 			},
 		},
@@ -141,9 +141,8 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 			code: `sum := 0; for i := 0; i < 10; i++ { sum += i }; sum`,
 			want: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				hasJump := findTier1SubOp(compiledFunction, isa.SubOpJump) >= 0 ||
-					findTier1SubOp(compiledFunction, isa.SubOpIncIntJumpLt) >= 0
-				require.True(t, hasJump, "expected loop jump in:\n%s", compiledFunction.Disassemble())
+				require.True(t, hasBackwardJump(compiledFunction),
+					"expected a jump back to the loop's top in:\n%s", compiledFunction.Disassemble())
 			},
 		},
 		{
@@ -151,7 +150,7 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 			code: `x := true; !x`,
 			want: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpNot)
+				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpNotInt64)
 			},
 		},
 		{
@@ -159,7 +158,7 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 			code: `x := 0xFF; y := 0x0F; x & y`,
 			want: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsOpcode(t, compiledFunction, isa.OpBitAnd)
+				requireContainsOpcode(t, compiledFunction, isa.OpBitAndInt64)
 			},
 		},
 		{
@@ -167,7 +166,7 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 			code: `x := 42; -x`,
 			want: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpNegInt)
+				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpNegateInt64)
 			},
 		},
 		{
@@ -175,7 +174,7 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 			code: `x := 3.14; -x`,
 			want: func(t *testing.T, compiledFunction *program.CompiledFunction) {
 				t.Helper()
-				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpNegFloat)
+				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpNegateFloat64)
 			},
 		},
 		{
@@ -221,7 +220,7 @@ func TestCompilerEmitsExpectedBytecode(t *testing.T) {
 				t.Helper()
 				dis := compiledFunction.Disassemble()
 				require.NotEmpty(t, dis)
-				require.Contains(t, dis, "ADD_INT")
+				require.Contains(t, dis, "ADD_INT64")
 			},
 		},
 	}

@@ -45,22 +45,22 @@ func TestReadFrameVariableReadsEveryBank(t *testing.T) {
 		load func(*Registers)
 		want any
 	}{
-		{name: "the int bank", kind: isa.RegisterInt, load: func(r *Registers) { r.Ints[1] = 4 }, want: int64(4)},
-		{name: "the float bank", kind: isa.RegisterFloat, load: func(r *Registers) { r.Floats[1] = 1.5 }, want: 1.5},
+		{name: "the int bank", kind: isa.RegisterInt64, load: func(r *Registers) { r.Ints[1] = 4 }, want: int64(4)},
+		{name: "the float bank", kind: isa.RegisterFloat64, load: func(r *Registers) { r.Floats[1] = 1.5 }, want: 1.5},
 		{name: "the string bank", kind: isa.RegisterString, load: func(r *Registers) { r.Strings[1] = "s" }, want: "s"},
 		{name: "the bool bank", kind: isa.RegisterBool, load: func(r *Registers) { r.Bools[1] = true }, want: true},
-		{name: "the uint bank", kind: isa.RegisterUint, load: func(r *Registers) { r.Uints[1] = 6 }, want: uint64(6)},
-		{name: "the complex bank", kind: isa.RegisterComplex, load: func(r *Registers) { r.Complex[1] = 2i }, want: 2i},
+		{name: "the uint bank", kind: isa.RegisterUint64, load: func(r *Registers) { r.Uints[1] = 6 }, want: uint64(6)},
+		{name: "the complex bank", kind: isa.RegisterComplex128, load: func(r *Registers) { r.Complex[1] = 2i }, want: 2i},
 		{
 			name: "the general bank", kind: isa.RegisterGeneral,
 			load: func(r *Registers) { r.General[1] = reflect.ValueOf("boxed") }, want: "boxed",
 		},
 		{
-			name: "the int-slice bank", kind: isa.RegisterSliceInt,
+			name: "the int-slice bank", kind: isa.RegisterSliceInt64,
 			load: func(r *Registers) { r.SlicesInt[1] = []int64{1} }, want: []int64{1},
 		},
 		{
-			name: "the float-slice bank", kind: isa.RegisterSliceFloat,
+			name: "the float-slice bank", kind: isa.RegisterSliceFloat64,
 			load: func(r *Registers) { r.slicesFloat[1] = []float64{1.5} }, want: []float64{1.5},
 		},
 		{
@@ -72,7 +72,7 @@ func TestReadFrameVariableReadsEveryBank(t *testing.T) {
 			load: func(r *Registers) { r.slicesBool[1] = []bool{true} }, want: []bool{true},
 		},
 		{
-			name: "the uint-slice bank", kind: isa.RegisterSliceUint,
+			name: "the uint-slice bank", kind: isa.RegisterSliceUint64,
 			load: func(r *Registers) { r.slicesUint[1] = []uint64{2} }, want: []uint64{2},
 		},
 		{
@@ -103,7 +103,7 @@ func TestReadFrameVariableRefusesUnreachableLocations(t *testing.T) {
 
 		vm, frame, _ := newStandardVM(t)
 
-		require.False(t, vm.ReadFrameVariable(frame, debugVariable("v", isa.RegisterInt, 200)).IsValid())
+		require.False(t, vm.ReadFrameVariable(frame, debugVariable("v", isa.RegisterInt64, 200)).IsValid())
 	})
 
 	t.Run("an unset general register reads nothing", func(t *testing.T) {
@@ -143,7 +143,7 @@ func TestReadFrameVariableFollowsAHeapPromotedVariable(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(&promoted)
 		entry := program.DebugVarEntry{
 			Name:     "v",
-			Location: program.VarLocation{Kind: isa.RegisterGeneral, Register: 1, IsIndirect: true, OriginalKind: isa.RegisterInt},
+			Location: program.VarLocation{Kind: isa.RegisterGeneral, Register: 1, IsIndirect: true, OriginalKind: isa.RegisterInt64},
 		}
 
 		value := vm.ReadFrameVariable(frame, entry)
@@ -173,14 +173,14 @@ func TestReadFrameVariableReadsACapturedCell(t *testing.T) {
 		cell *program.UpvalueCell
 		want any
 	}{
-		{name: "an int cell", cell: &program.UpvalueCell{Kind: isa.RegisterInt, IntValue: 4}, want: int64(4)},
-		{name: "a float cell", cell: &program.UpvalueCell{Kind: isa.RegisterFloat, FloatValue: 1.5}, want: 1.5},
+		{name: "an int cell", cell: &program.UpvalueCell{Kind: isa.RegisterInt64, IntValue: 4}, want: int64(4)},
+		{name: "a float cell", cell: &program.UpvalueCell{Kind: isa.RegisterFloat64, FloatValue: 1.5}, want: 1.5},
 		{name: "a string cell", cell: &program.UpvalueCell{Kind: isa.RegisterString, StringValue: "s"}, want: "s"},
 		{name: "a bool cell", cell: &program.UpvalueCell{Kind: isa.RegisterBool, BoolValue: true}, want: true},
-		{name: "a uint cell", cell: &program.UpvalueCell{Kind: isa.RegisterUint, UintValue: 6}, want: uint64(6)},
-		{name: "a complex cell", cell: &program.UpvalueCell{Kind: isa.RegisterComplex, ComplexValue: 2i}, want: 2i},
+		{name: "a uint cell", cell: &program.UpvalueCell{Kind: isa.RegisterUint64, UintValue: 6}, want: uint64(6)},
+		{name: "a complex cell", cell: &program.UpvalueCell{Kind: isa.RegisterComplex128, ComplexValue: 2i}, want: 2i},
 		{
-			name: "an int-slice cell", cell: &program.UpvalueCell{Kind: isa.RegisterSliceInt, SliceIntValue: []int64{1}},
+			name: "an int-slice cell", cell: &program.UpvalueCell{Kind: isa.RegisterSliceInt64, SliceIntValue: []int64{1}},
 			want: []int64{1},
 		},
 		{
@@ -247,14 +247,14 @@ func TestWriteFrameVariableStoresScalarBanks(t *testing.T) {
 		inspect func(*testing.T, *Registers)
 	}{
 		{
-			name: "the int bank", kind: isa.RegisterInt, value: 7,
+			name: "the int bank", kind: isa.RegisterInt64, value: 7,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, int64(7), r.Ints[1])
 			},
 		},
 		{
-			name: "the float bank", kind: isa.RegisterFloat, value: 2.5,
+			name: "the float bank", kind: isa.RegisterFloat64, value: 2.5,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.InDelta(t, 2.5, r.Floats[1], 0)
@@ -275,14 +275,14 @@ func TestWriteFrameVariableStoresScalarBanks(t *testing.T) {
 			},
 		},
 		{
-			name: "the uint bank", kind: isa.RegisterUint, value: uint(8),
+			name: "the uint bank", kind: isa.RegisterUint64, value: uint(8),
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, uint64(8), r.Uints[1])
 			},
 		},
 		{
-			name: "the complex bank", kind: isa.RegisterComplex, value: 3i,
+			name: "the complex bank", kind: isa.RegisterComplex128, value: 3i,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, 3i, r.Complex[1])
@@ -310,7 +310,7 @@ func TestWriteFrameVariableRefusesWhatItCannotStore(t *testing.T) {
 
 		vm, frame, _ := newStandardVM(t)
 
-		require.ErrorIs(t, vm.WriteFrameVariable(frame, debugVariable("v", isa.RegisterInt, 1), reflect.Value{}),
+		require.ErrorIs(t, vm.WriteFrameVariable(frame, debugVariable("v", isa.RegisterInt64, 1), reflect.Value{}),
 			fault.ErrVariableNotWritable)
 	})
 
@@ -318,7 +318,7 @@ func TestWriteFrameVariableRefusesWhatItCannotStore(t *testing.T) {
 		t.Parallel()
 
 		vm, frame, _ := newStandardVM(t)
-		entry := program.DebugVarEntry{Location: program.VarLocation{Kind: isa.RegisterInt, IsIndirect: true}}
+		entry := program.DebugVarEntry{Location: program.VarLocation{Kind: isa.RegisterInt64, IsIndirect: true}}
 
 		require.ErrorIs(t, vm.WriteFrameVariable(frame, entry, reflect.ValueOf(1)), fault.ErrVariableNotWritable)
 	})
@@ -327,7 +327,7 @@ func TestWriteFrameVariableRefusesWhatItCannotStore(t *testing.T) {
 		t.Parallel()
 
 		vm, frame, _ := newStandardVM(t)
-		entry := program.DebugVarEntry{Location: program.VarLocation{Kind: isa.RegisterInt, IsCaptured: true}}
+		entry := program.DebugVarEntry{Location: program.VarLocation{Kind: isa.RegisterInt64, IsCaptured: true}}
 
 		require.ErrorIs(t, vm.WriteFrameVariable(frame, entry, reflect.ValueOf(1)), fault.ErrVariableNotWritable)
 	})
@@ -337,7 +337,7 @@ func TestWriteFrameVariableRefusesWhatItCannotStore(t *testing.T) {
 
 		vm, frame, _ := newStandardVM(t)
 
-		require.ErrorIs(t, vm.WriteFrameVariable(frame, debugVariable("v", isa.RegisterSliceInt, 1), reflect.ValueOf([]int64{1})),
+		require.ErrorIs(t, vm.WriteFrameVariable(frame, debugVariable("v", isa.RegisterSliceInt64, 1), reflect.ValueOf([]int64{1})),
 			fault.ErrVariableNotWritable)
 	})
 
@@ -346,7 +346,7 @@ func TestWriteFrameVariableRefusesWhatItCannotStore(t *testing.T) {
 
 		vm, frame, _ := newStandardVM(t)
 
-		require.ErrorIs(t, vm.WriteFrameVariable(frame, debugVariable("v", isa.RegisterInt, 200), reflect.ValueOf(1)),
+		require.ErrorIs(t, vm.WriteFrameVariable(frame, debugVariable("v", isa.RegisterInt64, 200), reflect.ValueOf(1)),
 			fault.ErrVariableNotWritable)
 	})
 
@@ -355,7 +355,7 @@ func TestWriteFrameVariableRefusesWhatItCannotStore(t *testing.T) {
 
 		vm, frame, _ := newStandardVM(t)
 
-		require.Error(t, vm.WriteFrameVariable(frame, debugVariable("v", isa.RegisterInt, 1), reflect.ValueOf(1.5)),
+		require.Error(t, vm.WriteFrameVariable(frame, debugVariable("v", isa.RegisterInt64, 1), reflect.ValueOf(1.5)),
 			"a fractional value cannot round-trip through the int bank")
 	})
 
@@ -364,7 +364,7 @@ func TestWriteFrameVariableRefusesWhatItCannotStore(t *testing.T) {
 
 		vm, frame, _ := newStandardVM(t)
 
-		require.ErrorIs(t, vm.WriteFrameVariable(frame, debugVariable("v", isa.RegisterInt, 1), reflect.ValueOf("s")),
+		require.ErrorIs(t, vm.WriteFrameVariable(frame, debugVariable("v", isa.RegisterInt64, 1), reflect.ValueOf("s")),
 			fault.ErrVariableNotWritable)
 	})
 }
@@ -418,7 +418,7 @@ func TestWriteFrameVariableStoresIntoACapturedCell(t *testing.T) {
 		t.Parallel()
 
 		vm, frame, _ := newStandardVM(t)
-		cell := &program.UpvalueCell{Kind: isa.RegisterInt}
+		cell := &program.UpvalueCell{Kind: isa.RegisterInt64}
 		frame.upvalues = []upvalue{{Value: cell}}
 		entry := program.DebugVarEntry{Location: program.VarLocation{IsUpvalue: true, UpvalueIndex: 0}}
 
@@ -492,7 +492,7 @@ func TestFrameVariablesReportsTheLiveSet(t *testing.T) {
 
 		vm, frame, registers := newStandardVM(t)
 		frame.Function.DebugVarTable = &program.DebugVarTable{Entries: []program.DebugVarEntry{
-			debugVariable("count", isa.RegisterInt, 1),
+			debugVariable("count", isa.RegisterInt64, 1),
 			debugVariable("label", isa.RegisterString, 1),
 		}}
 		registers.Ints[1] = 4
@@ -502,7 +502,7 @@ func TestFrameVariablesReportsTheLiveSet(t *testing.T) {
 		require.Len(t, variables, 2)
 		require.Equal(t, "count", variables[0].Name)
 		require.Equal(t, int64(4), variables[0].Value)
-		require.Equal(t, isa.RegisterInt.String(), variables[0].Kind)
+		require.Equal(t, isa.RegisterInt64.String(), variables[0].Kind)
 		require.Equal(t, "s", variables[1].Value)
 	})
 }
@@ -515,7 +515,7 @@ func TestVariableKindNamePrefersTheOriginalBank(t *testing.T) {
 		location program.VarLocation
 		want     string
 	}{
-		{name: "a direct variable names its own bank", location: program.VarLocation{Kind: isa.RegisterInt}, want: isa.RegisterInt.String()},
+		{name: "a direct variable names its own bank", location: program.VarLocation{Kind: isa.RegisterInt64}, want: isa.RegisterInt64.String()},
 		{
 			name:     "a heap-promoted variable names the bank it had",
 			location: program.VarLocation{Kind: isa.RegisterGeneral, IsIndirect: true, OriginalKind: isa.RegisterString},

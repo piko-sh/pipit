@@ -52,3 +52,30 @@ func coerce[T any](v any) T {
 	}
 	return converted
 }
+
+// valueAs gives a value an iterator yielded the element type of the slice or map it is
+// stored in.
+//
+// Takes value (reflect.Value) which is the yielded value.
+// Takes target (reflect.Type) which is the element, key or value type.
+//
+// Returns reflect.Value which is value as target when it can be, or value unchanged so
+// that reflect reports the mismatch.
+func valueAs(value reflect.Value, target reflect.Type) reflect.Value {
+	if !value.IsValid() {
+		return reflect.Zero(target)
+	}
+	if value.Type().AssignableTo(target) {
+		return value
+	}
+	if value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return reflect.Zero(target)
+		}
+		return valueAs(value.Elem(), target)
+	}
+	if value.Type().ConvertibleTo(target) && value.Kind() == target.Kind() {
+		return value.Convert(target)
+	}
+	return value
+}

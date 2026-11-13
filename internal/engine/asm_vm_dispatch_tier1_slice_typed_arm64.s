@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerSliceGetIntDirect sets ints[A] = slicesInt[B][ints[C]] with bounds check.
-TEXT ·handlerSliceGetIntDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceInt64Element sets ints[A] = slicesInt[B][ints[C]] with bounds check.
+TEXT ·handlerGetSliceInt64Element(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	MOVD CTX_SLICES_INT_BASE(R19), R5
@@ -48,8 +48,8 @@ TEXT ·handlerSliceGetIntDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	B    ·pathBFallback(SB)
 
-// handlerSliceSetIntDirect sets slicesInt[A][ints[B]] = ints[C] with bounds check.
-TEXT ·handlerSliceSetIntDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSetSliceInt64Element sets slicesInt[A][ints[B]] = ints[C] with bounds check.
+TEXT ·handlerSetSliceInt64Element(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	MOVD CTX_SLICES_INT_BASE(R19), R5
@@ -70,8 +70,8 @@ TEXT ·handlerSliceSetIntDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	B    ·pathBFallback(SB)
 
-// handlerSliceGetIntDirectUnchecked sets ints[A] = slicesInt[B][ints[C]] without a bounds check (BCE-proven).
-TEXT ·handlerSliceGetIntDirectUnchecked(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceInt64ElementUnchecked sets ints[A] = slicesInt[B][ints[C]] without a bounds check (BCE-proven).
+TEXT ·handlerGetSliceInt64ElementUnchecked(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	MOVD CTX_SLICES_INT_BASE(R19), R5
@@ -89,8 +89,8 @@ TEXT ·handlerSliceGetIntDirectUnchecked(SB), NOSPLIT|NOFRAME, $0
 	MOVD R9, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSliceSetIntDirectUnchecked sets slicesInt[A][ints[B]] = ints[C] without a bounds check (BCE-proven).
-TEXT ·handlerSliceSetIntDirectUnchecked(SB), NOSPLIT|NOFRAME, $0
+// handlerSetSliceInt64ElementUnchecked sets slicesInt[A][ints[B]] = ints[C] without a bounds check (BCE-proven).
+TEXT ·handlerSetSliceInt64ElementUnchecked(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	MOVD CTX_SLICES_INT_BASE(R19), R5
@@ -107,8 +107,8 @@ TEXT ·handlerSliceSetIntDirectUnchecked(SB), NOSPLIT|NOFRAME, $0
 	MOVD R9, (R6)(R8<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpLenSliceIntDirect sets ints[B] = int64(len(slicesInt[C])).
-TEXT ·handlerSubOpLenSliceIntDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerLengthSliceInt64 sets ints[B] = int64(len(slicesInt[C])).
+TEXT ·handlerLengthSliceInt64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -120,8 +120,8 @@ TEXT ·handlerSubOpLenSliceIntDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpLenSliceFloatDirect sets ints[B] = int64(len(slicesFloat[C])).
-TEXT ·handlerSubOpLenSliceFloatDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerLengthSliceFloat64 sets ints[B] = int64(len(slicesFloat[C])).
+TEXT ·handlerLengthSliceFloat64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -133,8 +133,8 @@ TEXT ·handlerSubOpLenSliceFloatDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpLenSliceStringDirect sets ints[B] = int64(len(slicesString[C])).
-TEXT ·handlerSubOpLenSliceStringDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerLengthSliceString sets ints[B] = int64(len(slicesString[C])).
+TEXT ·handlerLengthSliceString(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -146,8 +146,8 @@ TEXT ·handlerSubOpLenSliceStringDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpLenSliceBoolDirect sets ints[B] = int64(len(slicesBool[C])).
-TEXT ·handlerSubOpLenSliceBoolDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerLengthSliceBool sets ints[B] = int64(len(slicesBool[C])).
+TEXT ·handlerLengthSliceBool(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -159,8 +159,8 @@ TEXT ·handlerSubOpLenSliceBoolDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpLenSliceUintDirect sets ints[B] = int64(len(slicesUint[C])).
-TEXT ·handlerSubOpLenSliceUintDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerLengthSliceUint64 sets ints[B] = int64(len(slicesUint[C])).
+TEXT ·handlerLengthSliceUint64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -172,8 +172,8 @@ TEXT ·handlerSubOpLenSliceUintDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpLenSliceByteDirect sets ints[B] = int64(len(slicesByte[C])).
-TEXT ·handlerSubOpLenSliceByteDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerLengthSliceByte sets ints[B] = int64(len(slicesByte[C])).
+TEXT ·handlerLengthSliceByte(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -185,8 +185,8 @@ TEXT ·handlerSubOpLenSliceByteDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpSliceGetFloatDirect sets floats[B] = slicesFloat[C][ints[ext.A]] with bounds check.
-TEXT ·handlerSubOpSliceGetFloatDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceFloat64Element sets floats[B] = slicesFloat[C][ints[ext.A]] with bounds check.
+TEXT ·handlerGetSliceFloat64Element(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -209,8 +209,8 @@ TEXT ·handlerSubOpSliceGetFloatDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceSetFloatDirect sets slicesFloat[B][ints[C]] = floats[ext.A] with bounds check.
-TEXT ·handlerSubOpSliceSetFloatDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSetSliceFloat64Element sets slicesFloat[B][ints[C]] = floats[ext.A] with bounds check.
+TEXT ·handlerSetSliceFloat64Element(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -233,8 +233,8 @@ TEXT ·handlerSubOpSliceSetFloatDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceGetUintDirect sets uints[B] = slicesUint[C][ints[ext.A]] with bounds check.
-TEXT ·handlerSubOpSliceGetUintDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceUint64Element sets uints[B] = slicesUint[C][ints[ext.A]] with bounds check.
+TEXT ·handlerGetSliceUint64Element(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -258,8 +258,8 @@ TEXT ·handlerSubOpSliceGetUintDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceSetUintDirect sets slicesUint[B][ints[C]] = uints[ext.A] with bounds check.
-TEXT ·handlerSubOpSliceSetUintDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSetSliceUint64Element sets slicesUint[B][ints[C]] = uints[ext.A] with bounds check.
+TEXT ·handlerSetSliceUint64Element(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -283,8 +283,8 @@ TEXT ·handlerSubOpSliceSetUintDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceGetBoolDirect sets bools[B] = slicesBool[C][ints[ext.A]] with bounds check.
-TEXT ·handlerSubOpSliceGetBoolDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceBoolElement sets bools[B] = slicesBool[C][ints[ext.A]] with bounds check.
+TEXT ·handlerGetSliceBoolElement(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -308,8 +308,8 @@ TEXT ·handlerSubOpSliceGetBoolDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceSetBoolDirect sets slicesBool[B][ints[C]] = bools[ext.A] with bounds check.
-TEXT ·handlerSubOpSliceSetBoolDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSetSliceBoolElement sets slicesBool[B][ints[C]] = bools[ext.A] with bounds check.
+TEXT ·handlerSetSliceBoolElement(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -333,8 +333,8 @@ TEXT ·handlerSubOpSliceSetBoolDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceGetStringDirect sets strings[B] = slicesString[C][ints[ext.A]] with bounds check.
-TEXT ·handlerSubOpSliceGetStringDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceStringElement sets strings[B] = slicesString[C][ints[ext.A]] with bounds check.
+TEXT ·handlerGetSliceStringElement(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R4
 	MOVBU (R4), R4
 	CBNZ R4, wb_fallback
@@ -369,8 +369,8 @@ bounds_fail:
 wb_fallback:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceGetByteDirect sets uints[B] = uint64(slicesByte[C][ints[ext.A]]) with bounds check.
-TEXT ·handlerSubOpSliceGetByteDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceByteElement sets uints[B] = uint64(slicesByte[C][ints[ext.A]]) with bounds check.
+TEXT ·handlerGetSliceByteElement(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -396,8 +396,32 @@ TEXT ·handlerSubOpSliceGetByteDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceSetByteDirect sets slicesByte[B][ints[C]] = byte(uints[ext.A]) with bounds check.
-TEXT ·handlerSubOpSliceSetByteDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerGetSliceByteElementInt64 sets ints[B] = int64(slicesByte[C][ints[ext.A]]) with bounds check.
+TEXT ·handlerGetSliceByteElementInt64(SB), NOSPLIT|NOFRAME, $0
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	LSR  $24, R0, R4
+	MOVD CTX_SLICES_BYTE_BASE(R19), R5
+	MOVD $24, R9
+	MUL  R9, R4, R7
+	ADD  R7, R5, R5
+	MOVD 0(R5), R6
+	MOVD 8(R5), R7
+	MOVWU (R22)(R20<<2), R8
+	LSR  $8, R8, R8
+	AND  $0xFF, R8, R8
+	MOVD (R23)(R8<<3), R8
+	CMP  R7, R8
+	BHS  bounds_fail
+	MOVBU (R6)(R8), R7
+	MOVD R7, (R23)(R3<<3)
+	ADD  $1, R20, R20
+	DISPATCH_NEXT()
+bounds_fail:
+	B    ·pathBFallback(SB)
+
+// handlerSetSliceByteElement sets slicesByte[B][ints[C]+ext.B] = byte(uints[ext.A]) with bounds check.
+TEXT ·handlerSetSliceByteElement(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -406,12 +430,15 @@ TEXT ·handlerSubOpSliceSetByteDirect(SB), NOSPLIT|NOFRAME, $0
 	MOVD $24, R9
 	MUL  R9, R3, R7
 	ADD  R7, R5, R5
+	MOVWU (R22)(R20<<2), R9
+	LSR  $16, R9, R10
+	AND  $0xFF, R10, R10
+	ADD  R10, R8, R8
 	MOVD 0(R5), R6
 	MOVD 8(R5), R7
 	CMP  R7, R8
 	BHS  bounds_fail
-	MOVWU (R22)(R20<<2), R3
-	LSR  $8, R3, R3
+	LSR  $8, R9, R3
 	AND  $0xFF, R3, R3
 	MOVD CTX_UINTS_BASE(R19), R5
 	LSL  $3, R3, R3
@@ -423,8 +450,71 @@ TEXT ·handlerSubOpSliceSetByteDirect(SB), NOSPLIT|NOFRAME, $0
 bounds_fail:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceByteSlice sets slicesByte[A] = slicesByte[C][ints[ext.b]:ints[ext.c]] (no max-bound) inline.
-TEXT ·handlerSubOpSliceByteSlice(SB), NOSPLIT|NOFRAME, $0
+// handlerSetSliceByteElementRun stores ext1.C bytes at slicesByte[B][ints[C]+ext1.B] onwards, the byte of each store from the uint register its own extension word names in A.
+TEXT ·handlerSetSliceByteElementRun(SB), NOSPLIT|NOFRAME, $0
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	LSR  $24, R0, R4
+	MOVD (R23)(R4<<3), R8
+	MOVD CTX_SLICES_BYTE_BASE(R19), R5
+	MOVD $24, R9
+	MUL  R9, R3, R7
+	ADD  R7, R5, R5
+	MOVD 0(R5), R6
+	MOVD 8(R5), R7
+	MOVWU (R22)(R20<<2), R9
+	LSR  $16, R9, R10
+	AND  $0xFF, R10, R10
+	ADD  R10, R8, R8
+	CMP  R7, R8
+	BHS  bounds_fail
+	LSR  $24, R9, R10
+	CMP  $2, R10
+	BLT  bounds_fail
+	CMP  $4, R10
+	BHI  bounds_fail
+	SUB  R8, R7, R7
+	CMP  R7, R10
+	BHI  bounds_fail
+	ADD  R8, R6, R6
+	MOVD CTX_UINTS_BASE(R19), R5
+	LSR  $8, R9, R3
+	AND  $0xFF, R3, R3
+	MOVD (R5)(R3<<3), R7
+	MOVB R7, 0(R6)
+	ADD  $1, R20, R4
+	MOVWU (R22)(R4<<2), R9
+	LSR  $8, R9, R3
+	AND  $0xFF, R3, R3
+	MOVD (R5)(R3<<3), R7
+	MOVB R7, 1(R6)
+	CMP  $3, R10
+	BLT  run_of_two
+	ADD  $2, R20, R4
+	MOVWU (R22)(R4<<2), R9
+	LSR  $8, R9, R3
+	AND  $0xFF, R3, R3
+	MOVD (R5)(R3<<3), R7
+	MOVB R7, 2(R6)
+	CMP  $4, R10
+	BLT  run_of_three
+	ADD  $3, R20, R4
+	MOVWU (R22)(R4<<2), R9
+	LSR  $8, R9, R3
+	AND  $0xFF, R3, R3
+	MOVD (R5)(R3<<3), R7
+	MOVB R7, 3(R6)
+	ADD  $1, R20, R20
+run_of_three:
+	ADD  $1, R20, R20
+run_of_two:
+	ADD  $2, R20, R20
+	DISPATCH_NEXT()
+bounds_fail:
+	B    ·pathBFallback(SB)
+
+// handlerSliceSliceByte sets slicesByte[A] = slicesByte[C][ints[ext.b]:ints[ext.c]] (no max-bound) inline.
+TEXT ·handlerSliceSliceByte(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R4
 	MOVBU (R4), R4
 	CBNZ R4, wb_fallback
@@ -479,8 +569,8 @@ bounds_fail:
 wb_fallback:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpMoveSliceInt copies slicesInt[C] to slicesInt[B] for the tier-1 typed-slice header move sub-op.
-TEXT ·handlerSubOpMoveSliceInt(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveSliceInt64 copies slicesInt[C] to slicesInt[B] for the tier-1 typed-slice header move sub-op.
+TEXT ·handlerMoveSliceInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R4
 	MOVBU (R4), R4
 	CBNZ R4, wb_fallback
@@ -505,8 +595,8 @@ TEXT ·handlerSubOpMoveSliceInt(SB), NOSPLIT|NOFRAME, $0
 wb_fallback:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpMoveSliceFloat copies slicesFloat[C] to slicesFloat[B] for the tier-1 typed-slice header move sub-op.
-TEXT ·handlerSubOpMoveSliceFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveSliceFloat64 copies slicesFloat[C] to slicesFloat[B] for the tier-1 typed-slice header move sub-op.
+TEXT ·handlerMoveSliceFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R4
 	MOVBU (R4), R4
 	CBNZ R4, wb_fallback
@@ -531,8 +621,8 @@ TEXT ·handlerSubOpMoveSliceFloat(SB), NOSPLIT|NOFRAME, $0
 wb_fallback:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpMoveSliceString copies slicesString[C] to slicesString[B] for the tier-1 typed-slice header move sub-op.
-TEXT ·handlerSubOpMoveSliceString(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveSliceString copies slicesString[C] to slicesString[B] for the tier-1 typed-slice header move sub-op.
+TEXT ·handlerMoveSliceString(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R4
 	MOVBU (R4), R4
 	CBNZ R4, wb_fallback
@@ -557,8 +647,8 @@ TEXT ·handlerSubOpMoveSliceString(SB), NOSPLIT|NOFRAME, $0
 wb_fallback:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpMoveSliceBool copies slicesBool[C] to slicesBool[B] for the tier-1 typed-slice header move sub-op.
-TEXT ·handlerSubOpMoveSliceBool(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveSliceBool copies slicesBool[C] to slicesBool[B] for the tier-1 typed-slice header move sub-op.
+TEXT ·handlerMoveSliceBool(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R4
 	MOVBU (R4), R4
 	CBNZ R4, wb_fallback
@@ -583,8 +673,8 @@ TEXT ·handlerSubOpMoveSliceBool(SB), NOSPLIT|NOFRAME, $0
 wb_fallback:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpMoveSliceUint copies slicesUint[C] to slicesUint[B] for the tier-1 typed-slice header move sub-op.
-TEXT ·handlerSubOpMoveSliceUint(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveSliceUint64 copies slicesUint[C] to slicesUint[B] for the tier-1 typed-slice header move sub-op.
+TEXT ·handlerMoveSliceUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R4
 	MOVBU (R4), R4
 	CBNZ R4, wb_fallback
@@ -609,8 +699,8 @@ TEXT ·handlerSubOpMoveSliceUint(SB), NOSPLIT|NOFRAME, $0
 wb_fallback:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpMoveSliceByte copies slicesByte[C] to slicesByte[B] for the tier-1 typed-slice header move sub-op.
-TEXT ·handlerSubOpMoveSliceByte(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveSliceByte copies slicesByte[C] to slicesByte[B] for the tier-1 typed-slice header move sub-op.
+TEXT ·handlerMoveSliceByte(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R4
 	MOVBU (R4), R4
 	CBNZ R4, wb_fallback
@@ -635,8 +725,8 @@ TEXT ·handlerSubOpMoveSliceByte(SB), NOSPLIT|NOFRAME, $0
 wb_fallback:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceSliceIntDirect performs slicesInt[A] = slicesInt[C][low:high] with bounds check (any two-index form).
-TEXT ·handlerSubOpSliceSliceIntDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSliceSliceInt64 performs slicesInt[A] = slicesInt[C][low:high] with bounds check (any two-index form).
+TEXT ·handlerSliceSliceInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R4
 	MOVBU (R4), R4
 	CBNZ R4, wb_fallback
@@ -692,8 +782,8 @@ bounds_fail:
 wb_fallback:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceSliceFloatDirect performs slicesFloat[A] = slicesFloat[C][low:high] with bounds check (any two-index form).
-TEXT ·handlerSubOpSliceSliceFloatDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSliceSliceFloat64 performs slicesFloat[A] = slicesFloat[C][low:high] with bounds check (any two-index form).
+TEXT ·handlerSliceSliceFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R4
 	MOVBU (R4), R4
 	CBNZ R4, wb_fallback
@@ -749,8 +839,8 @@ bounds_fail:
 wb_fallback:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceSliceStringDirect performs slicesString[A] = slicesString[C][low:high] with bounds check (any two-index form).
-TEXT ·handlerSubOpSliceSliceStringDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSliceSliceString performs slicesString[A] = slicesString[C][low:high] with bounds check (any two-index form).
+TEXT ·handlerSliceSliceString(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R4
 	MOVBU (R4), R4
 	CBNZ R4, wb_fallback
@@ -806,8 +896,8 @@ bounds_fail:
 wb_fallback:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceSliceBoolDirect performs slicesBool[A] = slicesBool[C][low:high] with bounds check (any two-index form).
-TEXT ·handlerSubOpSliceSliceBoolDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSliceSliceBool performs slicesBool[A] = slicesBool[C][low:high] with bounds check (any two-index form).
+TEXT ·handlerSliceSliceBool(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R4
 	MOVBU (R4), R4
 	CBNZ R4, wb_fallback
@@ -862,8 +952,8 @@ bounds_fail:
 wb_fallback:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceSliceUintDirect performs slicesUint[A] = slicesUint[C][low:high] with bounds check (any two-index form).
-TEXT ·handlerSubOpSliceSliceUintDirect(SB), NOSPLIT|NOFRAME, $0
+// handlerSliceSliceUint64 performs slicesUint[A] = slicesUint[C][low:high] with bounds check (any two-index form).
+TEXT ·handlerSliceSliceUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R4
 	MOVBU (R4), R4
 	CBNZ R4, wb_fallback
@@ -919,8 +1009,8 @@ bounds_fail:
 wb_fallback:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpAppendSliceIntDirect - 3-operand shim wrapping ·asmCallAppendSliceIntDirect (typed-bank []int64 append).
-TEXT ·handlerSubOpAppendSliceIntDirect(SB), NOSPLIT, $48-0
+// handlerAppendSliceInt64 - 3-operand shim wrapping ·asmCallAppendSliceInt64 (typed-bank []int64 append).
+TEXT ·handlerAppendSliceInt64(SB), NOSPLIT, $48-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -934,7 +1024,7 @@ TEXT ·handlerSubOpAppendSliceIntDirect(SB), NOSPLIT, $48-0
 	MOVD R1, 16(RSP)
 	MOVD R2, 24(RSP)
 	MOVD R3, 32(RSP)
-	BL   ·asmCallAppendSliceIntDirect(SB)
+	BL   ·asmCallAppendSliceInt64(SB)
 	MOVD 40(RSP), R19
 	MOVD CTX_SAVED_PC(R19), R20
 	MOVD CTX_CODE_BASE(R19), R22
@@ -947,8 +1037,8 @@ TEXT ·handlerSubOpAppendSliceIntDirect(SB), NOSPLIT, $48-0
 	ADD  $64, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpAppendSliceFloatDirect - 3-operand shim wrapping ·asmCallAppendSliceFloatDirect (typed-bank []float64 append).
-TEXT ·handlerSubOpAppendSliceFloatDirect(SB), NOSPLIT, $48-0
+// handlerAppendSliceFloat64 - 3-operand shim wrapping ·asmCallAppendSliceFloat64 (typed-bank []float64 append).
+TEXT ·handlerAppendSliceFloat64(SB), NOSPLIT, $48-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -962,7 +1052,7 @@ TEXT ·handlerSubOpAppendSliceFloatDirect(SB), NOSPLIT, $48-0
 	MOVD R1, 16(RSP)
 	MOVD R2, 24(RSP)
 	MOVD R3, 32(RSP)
-	BL   ·asmCallAppendSliceFloatDirect(SB)
+	BL   ·asmCallAppendSliceFloat64(SB)
 	MOVD 40(RSP), R19
 	MOVD CTX_SAVED_PC(R19), R20
 	MOVD CTX_CODE_BASE(R19), R22
@@ -975,8 +1065,8 @@ TEXT ·handlerSubOpAppendSliceFloatDirect(SB), NOSPLIT, $48-0
 	ADD  $64, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpAppendSliceStringDirect - 3-operand shim wrapping ·asmCallAppendSliceStringDirect (typed-bank []string append).
-TEXT ·handlerSubOpAppendSliceStringDirect(SB), NOSPLIT, $48-0
+// handlerAppendSliceString - 3-operand shim wrapping ·asmCallAppendSliceString (typed-bank []string append).
+TEXT ·handlerAppendSliceString(SB), NOSPLIT, $48-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -990,7 +1080,7 @@ TEXT ·handlerSubOpAppendSliceStringDirect(SB), NOSPLIT, $48-0
 	MOVD R1, 16(RSP)
 	MOVD R2, 24(RSP)
 	MOVD R3, 32(RSP)
-	BL   ·asmCallAppendSliceStringDirect(SB)
+	BL   ·asmCallAppendSliceString(SB)
 	MOVD 40(RSP), R19
 	MOVD CTX_SAVED_PC(R19), R20
 	MOVD CTX_CODE_BASE(R19), R22
@@ -1003,8 +1093,8 @@ TEXT ·handlerSubOpAppendSliceStringDirect(SB), NOSPLIT, $48-0
 	ADD  $64, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpAppendSliceBoolDirect - 3-operand shim wrapping ·asmCallAppendSliceBoolDirect (typed-bank []bool append).
-TEXT ·handlerSubOpAppendSliceBoolDirect(SB), NOSPLIT, $48-0
+// handlerAppendSliceBool - 3-operand shim wrapping ·asmCallAppendSliceBool (typed-bank []bool append).
+TEXT ·handlerAppendSliceBool(SB), NOSPLIT, $48-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -1018,7 +1108,7 @@ TEXT ·handlerSubOpAppendSliceBoolDirect(SB), NOSPLIT, $48-0
 	MOVD R1, 16(RSP)
 	MOVD R2, 24(RSP)
 	MOVD R3, 32(RSP)
-	BL   ·asmCallAppendSliceBoolDirect(SB)
+	BL   ·asmCallAppendSliceBool(SB)
 	MOVD 40(RSP), R19
 	MOVD CTX_SAVED_PC(R19), R20
 	MOVD CTX_CODE_BASE(R19), R22
@@ -1031,8 +1121,8 @@ TEXT ·handlerSubOpAppendSliceBoolDirect(SB), NOSPLIT, $48-0
 	ADD  $64, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpAppendSliceUintDirect - 3-operand shim wrapping ·asmCallAppendSliceUintDirect (typed-bank []uint64 append).
-TEXT ·handlerSubOpAppendSliceUintDirect(SB), NOSPLIT, $48-0
+// handlerAppendSliceUint64 - 3-operand shim wrapping ·asmCallAppendSliceUint64 (typed-bank []uint64 append).
+TEXT ·handlerAppendSliceUint64(SB), NOSPLIT, $48-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -1046,7 +1136,7 @@ TEXT ·handlerSubOpAppendSliceUintDirect(SB), NOSPLIT, $48-0
 	MOVD R1, 16(RSP)
 	MOVD R2, 24(RSP)
 	MOVD R3, 32(RSP)
-	BL   ·asmCallAppendSliceUintDirect(SB)
+	BL   ·asmCallAppendSliceUint64(SB)
 	MOVD 40(RSP), R19
 	MOVD CTX_SAVED_PC(R19), R20
 	MOVD CTX_CODE_BASE(R19), R22
@@ -1059,8 +1149,8 @@ TEXT ·handlerSubOpAppendSliceUintDirect(SB), NOSPLIT, $48-0
 	ADD  $64, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpAppendSliceByteDirect - 3-operand shim wrapping ·asmCallAppendSliceByteDirect (typed-bank []byte append).
-TEXT ·handlerSubOpAppendSliceByteDirect(SB), NOSPLIT, $48-0
+// handlerAppendSliceByte - 3-operand shim wrapping ·asmCallAppendSliceByte (typed-bank []byte append).
+TEXT ·handlerAppendSliceByte(SB), NOSPLIT, $48-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -1074,7 +1164,7 @@ TEXT ·handlerSubOpAppendSliceByteDirect(SB), NOSPLIT, $48-0
 	MOVD R1, 16(RSP)
 	MOVD R2, 24(RSP)
 	MOVD R3, 32(RSP)
-	BL   ·asmCallAppendSliceByteDirect(SB)
+	BL   ·asmCallAppendSliceByte(SB)
 	MOVD 40(RSP), R19
 	MOVD CTX_SAVED_PC(R19), R20
 	MOVD CTX_CODE_BASE(R19), R22

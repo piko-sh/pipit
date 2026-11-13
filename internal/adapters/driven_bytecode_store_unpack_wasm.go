@@ -22,6 +22,7 @@ package adapters
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 
 	"pipit.sh/pipit/internal/engine/program"
@@ -35,4 +36,14 @@ import (
 // Returns error which always indicates WASM is unsupported.
 func (*bytecodeStore) LoadCompiledFileSet(_ context.Context, _ string, _ *symtab.SymbolRegistry) (*program.CompiledFileSet, error) {
 	return nil, errors.New("bytecode loading is not supported in WASM builds")
+}
+
+// LoadCompiledFileSetWithDigest is a stub for WASM builds where filesystem-based bytecode
+// loading is not supported.
+//
+// Returns *program.CompiledFileSet which is always nil.
+// Returns [sha256.Size]byte which is always zero.
+// Returns error which always indicates WASM is unsupported.
+func (*bytecodeStore) LoadCompiledFileSetWithDigest(_ context.Context, _ string, _ *symtab.SymbolRegistry) (*program.CompiledFileSet, [sha256.Size]byte, error) {
+	return nil, [sha256.Size]byte{}, errors.New("bytecode loading is not supported in WASM builds")
 }

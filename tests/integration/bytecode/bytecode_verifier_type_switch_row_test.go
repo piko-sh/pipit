@@ -35,7 +35,7 @@ func TestVerifierRejectsBackwardTypeSwitchRow(t *testing.T) {
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpTypeSwitchJump), 1, 0)
 	builder.EmitJump(isa.OpTypeSwitchCase, 0, -2)
 	builder.EmitJump(isa.OpDrillTier1, uint8(isa.SubOpJump), 0)
-	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBool), 0, 1)
+	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBoolImmediateAsInt64), 0, 1)
 	builder.returnInt()
 	compiledFunction := builder.build()
 	report := &verify.VerificationReport{}

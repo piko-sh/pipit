@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerSubOpIncStructFieldInt increments the int field on the struct at ints[B] by one via asmCallIncStructFieldInt.
-TEXT ·handlerSubOpIncStructFieldInt(SB), NOSPLIT, $32-0
+// handlerIncrementStructFieldInt64 increments the int field on the struct at ints[B] by one via asmCallIncrementStructFieldInt64.
+TEXT ·handlerIncrementStructFieldInt64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -35,7 +35,7 @@ TEXT ·handlerSubOpIncStructFieldInt(SB), NOSPLIT, $32-0
 	MOVD R19, 8(RSP)
 	MOVD R1, 16(RSP)
 	MOVD R2, 24(RSP)
-	BL   ·asmCallIncStructFieldInt(SB)
+	BL   ·asmCallIncrementStructFieldInt64(SB)
 	MOVD 32(RSP), R19
 	MOVD CTX_SAVED_PC(R19), R20
 	MOVD CTX_CODE_BASE(R19), R22
@@ -48,8 +48,8 @@ TEXT ·handlerSubOpIncStructFieldInt(SB), NOSPLIT, $32-0
 	ADD  $48, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpDecStructFieldInt decrements the int field on the struct at ints[B] by one via asmCallDecStructFieldInt.
-TEXT ·handlerSubOpDecStructFieldInt(SB), NOSPLIT, $32-0
+// handlerDecrementStructFieldInt64 decrements the int field on the struct at ints[B] by one via asmCallDecrementStructFieldInt64.
+TEXT ·handlerDecrementStructFieldInt64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -58,7 +58,7 @@ TEXT ·handlerSubOpDecStructFieldInt(SB), NOSPLIT, $32-0
 	MOVD R19, 8(RSP)
 	MOVD R1, 16(RSP)
 	MOVD R2, 24(RSP)
-	BL   ·asmCallDecStructFieldInt(SB)
+	BL   ·asmCallDecrementStructFieldInt64(SB)
 	MOVD 32(RSP), R19
 	MOVD CTX_SAVED_PC(R19), R20
 	MOVD CTX_CODE_BASE(R19), R22
@@ -71,8 +71,8 @@ TEXT ·handlerSubOpDecStructFieldInt(SB), NOSPLIT, $32-0
 	ADD  $48, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpIncStructFieldUint increments the uint field on the struct at ints[B] by one via asmCallIncStructFieldUint.
-TEXT ·handlerSubOpIncStructFieldUint(SB), NOSPLIT, $32-0
+// handlerIncrementStructFieldUint64 increments the uint field on the struct at ints[B] by one via asmCallIncrementStructFieldUint64.
+TEXT ·handlerIncrementStructFieldUint64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -81,7 +81,7 @@ TEXT ·handlerSubOpIncStructFieldUint(SB), NOSPLIT, $32-0
 	MOVD R19, 8(RSP)
 	MOVD R1, 16(RSP)
 	MOVD R2, 24(RSP)
-	BL   ·asmCallIncStructFieldUint(SB)
+	BL   ·asmCallIncrementStructFieldUint64(SB)
 	MOVD 32(RSP), R19
 	MOVD CTX_SAVED_PC(R19), R20
 	MOVD CTX_CODE_BASE(R19), R22
@@ -94,8 +94,8 @@ TEXT ·handlerSubOpIncStructFieldUint(SB), NOSPLIT, $32-0
 	ADD  $48, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpDecStructFieldUint single-level shim wrapping asmCallDecStructFieldUint.
-TEXT ·handlerSubOpDecStructFieldUint(SB), NOSPLIT, $32-0
+// handlerDecrementStructFieldUint64 single-level shim wrapping asmCallDecrementStructFieldUint64.
+TEXT ·handlerDecrementStructFieldUint64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -104,7 +104,7 @@ TEXT ·handlerSubOpDecStructFieldUint(SB), NOSPLIT, $32-0
 	MOVD R19, 8(RSP)
 	MOVD R1, 16(RSP)
 	MOVD R2, 24(RSP)
-	BL   ·asmCallDecStructFieldUint(SB)
+	BL   ·asmCallDecrementStructFieldUint64(SB)
 	MOVD 32(RSP), R19
 	MOVD CTX_SAVED_PC(R19), R20
 	MOVD CTX_CODE_BASE(R19), R22

@@ -38,28 +38,28 @@ func TestBuildCallArgCopyProgramEmitsOneEntryPerArgument(t *testing.T) {
 	}{
 		{
 			name:       "one same-bank argument",
-			arguments:  []VarLocation{{Kind: isa.RegisterInt, Register: 3}},
-			paramKinds: []isa.RegisterKind{isa.RegisterInt}, paramRegs: []uint8{0},
+			arguments:  []VarLocation{{Kind: isa.RegisterInt64, Register: 3}},
+			paramKinds: []isa.RegisterKind{isa.RegisterInt64}, paramRegs: []uint8{0},
 			wantLen: 1,
 		},
 		{
 			name: "several arguments across banks",
 			arguments: []VarLocation{
-				{Kind: isa.RegisterInt, Register: 1},
+				{Kind: isa.RegisterInt64, Register: 1},
 				{Kind: isa.RegisterString, Register: 2},
 				{Kind: isa.RegisterGeneral, Register: 3},
 			},
-			paramKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterString, isa.RegisterGeneral},
+			paramKinds: []isa.RegisterKind{isa.RegisterInt64, isa.RegisterString, isa.RegisterGeneral},
 			paramRegs:  []uint8{0, 0, 0},
 			wantLen:    3,
 		},
 		{
 			name: "more arguments than parameters stops at the shorter list",
 			arguments: []VarLocation{
-				{Kind: isa.RegisterInt, Register: 1},
-				{Kind: isa.RegisterInt, Register: 2},
+				{Kind: isa.RegisterInt64, Register: 1},
+				{Kind: isa.RegisterInt64, Register: 2},
 			},
-			paramKinds: []isa.RegisterKind{isa.RegisterInt}, paramRegs: []uint8{0},
+			paramKinds: []isa.RegisterKind{isa.RegisterInt64}, paramRegs: []uint8{0},
 			wantLen: 1,
 		},
 	}
@@ -83,12 +83,12 @@ func TestBuildCallArgCopyProgramDeclinesMalformedInput(t *testing.T) {
 		paramKinds []isa.RegisterKind
 		paramRegs  []uint8
 	}{
-		{name: "no arguments", arguments: nil, paramKinds: []isa.RegisterKind{isa.RegisterInt}, paramRegs: []uint8{0}},
-		{name: "no parameters", arguments: []VarLocation{{Kind: isa.RegisterInt}}, paramKinds: nil, paramRegs: nil},
+		{name: "no arguments", arguments: nil, paramKinds: []isa.RegisterKind{isa.RegisterInt64}, paramRegs: []uint8{0}},
+		{name: "no parameters", arguments: []VarLocation{{Kind: isa.RegisterInt64}}, paramKinds: nil, paramRegs: nil},
 		{
 			name:       "a register list that does not match the kind list",
-			arguments:  []VarLocation{{Kind: isa.RegisterInt}},
-			paramKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterInt}, paramRegs: []uint8{0},
+			arguments:  []VarLocation{{Kind: isa.RegisterInt64}},
+			paramKinds: []isa.RegisterKind{isa.RegisterInt64, isa.RegisterInt64}, paramRegs: []uint8{0},
 		},
 	}
 
@@ -105,8 +105,8 @@ func TestBuildCallArgCopyProgramRecordsSourceAndDestination(t *testing.T) {
 	t.Parallel()
 
 	copyProgram := BuildCallArgCopyProgram(
-		[]VarLocation{{Kind: isa.RegisterInt, Register: 5}},
-		[]isa.RegisterKind{isa.RegisterInt},
+		[]VarLocation{{Kind: isa.RegisterInt64, Register: 5}},
+		[]isa.RegisterKind{isa.RegisterInt64},
 		[]uint8{2},
 	)
 
@@ -122,18 +122,18 @@ func TestSameKindCopyOpCoversEveryRegisterBank(t *testing.T) {
 		name string
 		kind isa.RegisterKind
 	}{
-		{name: "the integer bank", kind: isa.RegisterInt},
-		{name: "the float bank", kind: isa.RegisterFloat},
+		{name: "the integer bank", kind: isa.RegisterInt64},
+		{name: "the float bank", kind: isa.RegisterFloat64},
 		{name: "the string bank", kind: isa.RegisterString},
 		{name: "the general bank", kind: isa.RegisterGeneral},
 		{name: "the boolean bank", kind: isa.RegisterBool},
-		{name: "the unsigned bank", kind: isa.RegisterUint},
-		{name: "the complex bank", kind: isa.RegisterComplex},
-		{name: "the integer slice bank", kind: isa.RegisterSliceInt},
-		{name: "the float slice bank", kind: isa.RegisterSliceFloat},
+		{name: "the unsigned bank", kind: isa.RegisterUint64},
+		{name: "the complex bank", kind: isa.RegisterComplex128},
+		{name: "the integer slice bank", kind: isa.RegisterSliceInt64},
+		{name: "the float slice bank", kind: isa.RegisterSliceFloat64},
 		{name: "the string slice bank", kind: isa.RegisterSliceString},
 		{name: "the boolean slice bank", kind: isa.RegisterSliceBool},
-		{name: "the unsigned slice bank", kind: isa.RegisterSliceUint},
+		{name: "the unsigned slice bank", kind: isa.RegisterSliceUint64},
 		{name: "the byte slice bank", kind: isa.RegisterSliceByte},
 	}
 
@@ -167,34 +167,34 @@ func TestDetectTailCallArgsAliasSpotsAnOverwrittenSource(t *testing.T) {
 		{
 			name: "arguments already in their destination order do not alias",
 			arguments: []VarLocation{
-				{Kind: isa.RegisterInt, Register: 0},
-				{Kind: isa.RegisterInt, Register: 1},
+				{Kind: isa.RegisterInt64, Register: 0},
+				{Kind: isa.RegisterInt64, Register: 1},
 			},
-			paramKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterInt},
+			paramKinds: []isa.RegisterKind{isa.RegisterInt64, isa.RegisterInt64},
 			want:       false,
 		},
 		{
 			name: "a later argument reading an earlier destination aliases",
 			arguments: []VarLocation{
-				{Kind: isa.RegisterInt, Register: 5},
-				{Kind: isa.RegisterInt, Register: 0},
+				{Kind: isa.RegisterInt64, Register: 5},
+				{Kind: isa.RegisterInt64, Register: 0},
 			},
-			paramKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterInt},
+			paramKinds: []isa.RegisterKind{isa.RegisterInt64, isa.RegisterInt64},
 			want:       true,
 		},
 		{
 			name: "a clash in a different bank does not alias",
 			arguments: []VarLocation{
-				{Kind: isa.RegisterInt, Register: 5},
+				{Kind: isa.RegisterInt64, Register: 5},
 				{Kind: isa.RegisterString, Register: 0},
 			},
-			paramKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterString},
+			paramKinds: []isa.RegisterKind{isa.RegisterInt64, isa.RegisterString},
 			want:       false,
 		},
 		{
 			name:       "a single argument cannot alias",
-			arguments:  []VarLocation{{Kind: isa.RegisterInt, Register: 0}},
-			paramKinds: []isa.RegisterKind{isa.RegisterInt},
+			arguments:  []VarLocation{{Kind: isa.RegisterInt64, Register: 0}},
+			paramKinds: []isa.RegisterKind{isa.RegisterInt64},
 			want:       false,
 		},
 		{

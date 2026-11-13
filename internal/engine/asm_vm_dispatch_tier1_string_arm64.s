@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerSubOpLenString sets ints[B] = len(strings[C]) for the tier-1 string-length sub-op.
-TEXT ·handlerSubOpLenString(SB), NOSPLIT|NOFRAME, $0
+// handlerLengthString sets ints[B] = len(strings[C]) for the tier-1 string-length sub-op.
+TEXT ·handlerLengthString(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -36,3 +36,28 @@ TEXT ·handlerSubOpLenString(SB), NOSPLIT|NOFRAME, $0
 	MOVD 8(R6), R7
 	MOVD R7, (R23)(R3<<3)
 	DISPATCH_NEXT()
+
+// handlerLengthGeneral sets ints[B] = len(general[C]) for a slice value. Every other kind, and an invalid value, falls back to handlerPathBShimLengthGeneral.
+TEXT ·handlerLengthGeneral(SB), NOSPLIT|NOFRAME, $0
+	LSR  $24, R0, R3
+	MOVD $24, R4
+	MUL  R4, R3, R4
+	MOVD CTX_GENERALS_BASE(R19), R6
+	ADD  R4, R6, R6
+	MOVD 0(R6), R7
+	CBZ  R7, length_shim
+	MOVD 16(R6), R7
+	AND  $FLAG_KIND_MASK, R7, R8
+	CMP  $REFLECT_SLICE, R8
+	BNE  length_shim
+	AND  $FLAG_INDIR, R7, R7
+	CBZ  R7, length_shim
+	MOVD 8(R6), R6
+	CBZ  R6, length_shim
+	MOVD 8(R6), R5
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	MOVD R5, (R23)(R3<<3)
+	DISPATCH_NEXT()
+length_shim:
+	B    ·handlerPathBShimLengthGeneral(SB)

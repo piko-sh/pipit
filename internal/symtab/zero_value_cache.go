@@ -54,7 +54,7 @@ var (
 // KindDefaultReflectType's fallback.
 func ZeroValueForKind(k isa.RegisterKind) reflect.Value {
 	switch k {
-	case isa.RegisterInt, isa.RegisterFloat, isa.RegisterString, isa.RegisterBool, isa.RegisterUint, isa.RegisterComplex:
+	case isa.RegisterInt64, isa.RegisterFloat64, isa.RegisterString, isa.RegisterBool, isa.RegisterUint64, isa.RegisterComplex128:
 		return kindZeroValueCache[k]
 	default:
 	}
@@ -105,11 +105,11 @@ func ZeroConstant(t reflect.Type) reflect.Value {
 }
 
 func init() {
-	kindZeroValueCache[isa.RegisterInt] = reflect.Zero(reflect.TypeFor[int64]())
-	kindZeroValueCache[isa.RegisterFloat] = reflect.Zero(reflect.TypeFor[float64]())
+	kindZeroValueCache[isa.RegisterInt64] = reflect.Zero(reflect.TypeFor[int64]())
+	kindZeroValueCache[isa.RegisterFloat64] = reflect.Zero(reflect.TypeFor[float64]())
 	kindZeroValueCache[isa.RegisterString] = reflect.Zero(reflect.TypeFor[string]())
 	kindZeroValueCache[isa.RegisterBool] = reflect.Zero(reflect.TypeFor[bool]())
-	kindZeroValueCache[isa.RegisterUint] = reflect.Zero(reflect.TypeFor[uint64]())
-	kindZeroValueCache[isa.RegisterComplex] = reflect.Zero(reflect.TypeFor[complex128]())
+	kindZeroValueCache[isa.RegisterUint64] = reflect.Zero(reflect.TypeFor[uint64]())
+	kindZeroValueCache[isa.RegisterComplex128] = reflect.Zero(reflect.TypeFor[complex128]())
 	kindZeroValueCache[isa.NumRegisterKinds] = reflect.Zero(reflect.TypeFor[any]())
 }

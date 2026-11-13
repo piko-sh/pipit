@@ -19,6 +19,7 @@
 package typemap
 
 import (
+	"go/token"
 	"go/types"
 	"testing"
 
@@ -44,27 +45,27 @@ func TestKindForBasicRoutesEveryBasicKindToItsBank(t *testing.T) {
 	}{
 		{name: "a bool", kind: types.Bool, want: isa.RegisterBool},
 		{name: "an untyped bool", kind: types.UntypedBool, want: isa.RegisterBool},
-		{name: "an int", kind: types.Int, want: isa.RegisterInt},
-		{name: "an int8", kind: types.Int8, want: isa.RegisterInt},
-		{name: "an int16", kind: types.Int16, want: isa.RegisterInt},
-		{name: "an int32", kind: types.Int32, want: isa.RegisterInt},
-		{name: "an int64", kind: types.Int64, want: isa.RegisterInt},
-		{name: "an untyped int", kind: types.UntypedInt, want: isa.RegisterInt},
-		{name: "an untyped rune", kind: types.UntypedRune, want: isa.RegisterInt},
-		{name: "a uint", kind: types.Uint, want: isa.RegisterUint},
-		{name: "a uint8", kind: types.Uint8, want: isa.RegisterUint},
-		{name: "a uint16", kind: types.Uint16, want: isa.RegisterUint},
-		{name: "a uint32", kind: types.Uint32, want: isa.RegisterUint},
-		{name: "a uint64", kind: types.Uint64, want: isa.RegisterUint},
-		{name: "a uintptr", kind: types.Uintptr, want: isa.RegisterUint},
-		{name: "a float32", kind: types.Float32, want: isa.RegisterFloat},
-		{name: "a float64", kind: types.Float64, want: isa.RegisterFloat},
-		{name: "an untyped float", kind: types.UntypedFloat, want: isa.RegisterFloat},
+		{name: "an int", kind: types.Int, want: isa.RegisterInt64},
+		{name: "an int8", kind: types.Int8, want: isa.RegisterInt64},
+		{name: "an int16", kind: types.Int16, want: isa.RegisterInt64},
+		{name: "an int32", kind: types.Int32, want: isa.RegisterInt64},
+		{name: "an int64", kind: types.Int64, want: isa.RegisterInt64},
+		{name: "an untyped int", kind: types.UntypedInt, want: isa.RegisterInt64},
+		{name: "an untyped rune", kind: types.UntypedRune, want: isa.RegisterInt64},
+		{name: "a uint", kind: types.Uint, want: isa.RegisterUint64},
+		{name: "a uint8", kind: types.Uint8, want: isa.RegisterUint64},
+		{name: "a uint16", kind: types.Uint16, want: isa.RegisterUint64},
+		{name: "a uint32", kind: types.Uint32, want: isa.RegisterUint64},
+		{name: "a uint64", kind: types.Uint64, want: isa.RegisterUint64},
+		{name: "a uintptr", kind: types.Uintptr, want: isa.RegisterUint64},
+		{name: "a float32", kind: types.Float32, want: isa.RegisterFloat64},
+		{name: "a float64", kind: types.Float64, want: isa.RegisterFloat64},
+		{name: "an untyped float", kind: types.UntypedFloat, want: isa.RegisterFloat64},
 		{name: "a string", kind: types.String, want: isa.RegisterString},
 		{name: "an untyped string", kind: types.UntypedString, want: isa.RegisterString},
-		{name: "a complex64", kind: types.Complex64, want: isa.RegisterComplex},
-		{name: "a complex128", kind: types.Complex128, want: isa.RegisterComplex},
-		{name: "an untyped complex", kind: types.UntypedComplex, want: isa.RegisterComplex},
+		{name: "a complex64", kind: types.Complex64, want: isa.RegisterComplex128},
+		{name: "a complex128", kind: types.Complex128, want: isa.RegisterComplex128},
+		{name: "an untyped complex", kind: types.UntypedComplex, want: isa.RegisterComplex128},
 		{name: "an untyped nil", kind: types.UntypedNil, want: isa.RegisterGeneral},
 		{name: "an unsafe pointer", kind: types.UnsafePointer, want: isa.RegisterGeneral},
 	}
@@ -85,14 +86,14 @@ func TestKindForTypeLooksThroughToTheUnderlyingBasic(t *testing.T) {
 		build func(*testing.T) types.Type
 		want  isa.RegisterKind
 	}{
-		{name: "a plain int", build: func(*testing.T) types.Type { return types.Typ[types.Int] }, want: isa.RegisterInt},
+		{name: "a plain int", build: func(*testing.T) types.Type { return types.Typ[types.Int] }, want: isa.RegisterInt64},
 		{
 			name: "a named integer",
 			build: func(t *testing.T) types.Type {
 				t.Helper()
 				return namedOf(t, "counter", types.Typ[types.Int])
 			},
-			want: isa.RegisterInt,
+			want: isa.RegisterInt64,
 		},
 		{
 			name: "a named string",
@@ -126,13 +127,13 @@ func TestKindForCallSlotPromotesASliceOfACanonicalWidth(t *testing.T) {
 		build func(*testing.T) types.Type
 		want  isa.RegisterKind
 	}{
-		{name: "a slice of int", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Int]) }, want: isa.RegisterSliceInt},
-		{name: "a slice of int64", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Int64]) }, want: isa.RegisterSliceInt},
-		{name: "a slice of float64", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Float64]) }, want: isa.RegisterSliceFloat},
+		{name: "a slice of int", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Int]) }, want: isa.RegisterSliceInt64},
+		{name: "a slice of int64", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Int64]) }, want: isa.RegisterSliceInt64},
+		{name: "a slice of float64", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Float64]) }, want: isa.RegisterSliceFloat64},
 		{name: "a slice of string", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.String]) }, want: isa.RegisterSliceString},
 		{name: "a slice of bool", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Bool]) }, want: isa.RegisterSliceBool},
-		{name: "a slice of uint", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Uint]) }, want: isa.RegisterSliceUint},
-		{name: "a slice of uint64", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Uint64]) }, want: isa.RegisterSliceUint},
+		{name: "a slice of uint", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Uint]) }, want: isa.RegisterSliceUint64},
+		{name: "a slice of uint64", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Uint64]) }, want: isa.RegisterSliceUint64},
 		{name: "a slice of byte", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Uint8]) }, want: isa.RegisterSliceByte},
 		{name: "a slice of float32 is boxed", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Float32]) }, want: isa.RegisterGeneral},
 		{name: "a slice of int32 is boxed", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Int32]) }, want: isa.RegisterGeneral},
@@ -145,7 +146,7 @@ func TestKindForCallSlotPromotesASliceOfACanonicalWidth(t *testing.T) {
 			},
 			want: isa.RegisterGeneral,
 		},
-		{name: "a value that is not a slice falls through to its bank", build: func(*testing.T) types.Type { return types.Typ[types.Int] }, want: isa.RegisterInt},
+		{name: "a value that is not a slice falls through to its bank", build: func(*testing.T) types.Type { return types.Typ[types.Int] }, want: isa.RegisterInt64},
 	}
 
 	for _, tt := range tests {
@@ -164,14 +165,14 @@ func TestKindForTypedSliceLooksThroughANameThatCallSlotsDoNot(t *testing.T) {
 		build func(*testing.T) types.Type
 		want  isa.RegisterKind
 	}{
-		{name: "a slice of int", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Int]) }, want: isa.RegisterSliceInt},
+		{name: "a slice of int", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Int]) }, want: isa.RegisterSliceInt64},
 		{
 			name: "a named slice of int",
 			build: func(t *testing.T) types.Type {
 				t.Helper()
 				return namedOf(t, "row", types.NewSlice(types.Typ[types.Int]))
 			},
-			want: isa.RegisterSliceInt,
+			want: isa.RegisterSliceInt64,
 		},
 		{
 			name: "a named slice of byte",
@@ -260,9 +261,9 @@ func TestKindForPromotedSlotRefusesWhatTheCalleeCannotTake(t *testing.T) {
 		want      isa.RegisterKind
 		wantTyped bool
 	}{
-		{name: "no context at all", slotType: sliceOfInt, context: nil, want: isa.RegisterSliceInt, wantTyped: true},
-		{name: "an empty context", slotType: sliceOfInt, context: &KindPromotionContext{}, want: isa.RegisterSliceInt, wantTyped: true},
-		{name: "a slot that has no typed bank", slotType: types.Typ[types.Int], context: &KindPromotionContext{}, want: isa.RegisterInt, wantTyped: false},
+		{name: "no context at all", slotType: sliceOfInt, context: nil, want: isa.RegisterSliceInt64, wantTyped: true},
+		{name: "an empty context", slotType: sliceOfInt, context: &KindPromotionContext{}, want: isa.RegisterSliceInt64, wantTyped: true},
+		{name: "a slot that has no typed bank", slotType: types.Typ[types.Int], context: &KindPromotionContext{}, want: isa.RegisterInt64, wantTyped: false},
 		{
 			name:      "a binding the caller has disqualified",
 			slotType:  sliceOfInt,
@@ -274,7 +275,7 @@ func TestKindForPromotedSlotRefusesWhatTheCalleeCannotTake(t *testing.T) {
 			name:      "a binding that is not on the disqualified list",
 			slotType:  sliceOfInt,
 			context:   &KindPromotionContext{BindingName: "ys", Disqualified: map[string]bool{"xs": true}},
-			want:      isa.RegisterSliceInt,
+			want:      isa.RegisterSliceInt64,
 			wantTyped: true,
 		},
 		{
@@ -288,21 +289,21 @@ func TestKindForPromotedSlotRefusesWhatTheCalleeCannotTake(t *testing.T) {
 			name:      "a callee parameter that accepts promotion",
 			slotType:  sliceOfInt,
 			context:   &KindPromotionContext{CalleeParamPromotions: []bool{true}, CalleeParamIndex: 0},
-			want:      isa.RegisterSliceInt,
+			want:      isa.RegisterSliceInt64,
 			wantTyped: true,
 		},
 		{
 			name:      "a parameter index past the callee's list",
 			slotType:  sliceOfInt,
 			context:   &KindPromotionContext{CalleeParamPromotions: []bool{true}, CalleeParamIndex: 7},
-			want:      isa.RegisterSliceInt,
+			want:      isa.RegisterSliceInt64,
 			wantTyped: true,
 		},
 		{
 			name:      "a negative parameter index",
 			slotType:  sliceOfInt,
 			context:   &KindPromotionContext{CalleeParamPromotions: []bool{true}, CalleeParamIndex: -1},
-			want:      isa.RegisterSliceInt,
+			want:      isa.RegisterSliceInt64,
 			wantTyped: true,
 		},
 	}
@@ -574,6 +575,79 @@ func TestRuntimeTypeStringRendersWhatTheEngineStoresAsATypeName(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.want, RuntimeTypeString(tt.build(t)))
+		})
+	}
+}
+
+func TestBinaryResultFitsNarrowTypeOnlyForOperationsThatCannotLeaveItsRange(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		build     func(*testing.T) types.Type
+		name      string
+		operation token.Token
+		want      bool
+	}{
+		{name: "and of uint8", operation: token.AND, build: func(*testing.T) types.Type { return types.Typ[types.Uint8] }, want: true},
+		{name: "or of int16", operation: token.OR, build: func(*testing.T) types.Type { return types.Typ[types.Int16] }, want: true},
+		{name: "exclusive or of uint32", operation: token.XOR, build: func(*testing.T) types.Type { return types.Typ[types.Uint32] }, want: true},
+		{name: "and-not of int8", operation: token.AND_NOT, build: func(*testing.T) types.Type { return types.Typ[types.Int8] }, want: true},
+		{name: "remainder of int32", operation: token.REM, build: func(*testing.T) types.Type { return types.Typ[types.Int32] }, want: true},
+		{name: "remainder of uint16", operation: token.REM, build: func(*testing.T) types.Type { return types.Typ[types.Uint16] }, want: true},
+		{name: "right shift of int8", operation: token.SHR, build: func(*testing.T) types.Type { return types.Typ[types.Int8] }, want: true},
+		{name: "right shift of uint32", operation: token.SHR, build: func(*testing.T) types.Type { return types.Typ[types.Uint32] }, want: true},
+		{name: "quotient of uint8", operation: token.QUO, build: func(*testing.T) types.Type { return types.Typ[types.Uint8] }, want: true},
+		{
+			name: "exclusive or of a named narrow type", operation: token.XOR, want: true,
+			build: func(t *testing.T) types.Type {
+				t.Helper()
+				return namedOf(t, "flags", types.Typ[types.Uint8])
+			},
+		},
+		{name: "quotient of int8 overflows at the least value", operation: token.QUO, build: func(*testing.T) types.Type { return types.Typ[types.Int8] }},
+		{name: "sum of uint8", operation: token.ADD, build: func(*testing.T) types.Type { return types.Typ[types.Uint8] }},
+		{name: "difference of uint16", operation: token.SUB, build: func(*testing.T) types.Type { return types.Typ[types.Uint16] }},
+		{name: "product of int32", operation: token.MUL, build: func(*testing.T) types.Type { return types.Typ[types.Int32] }},
+		{name: "left shift of uint32", operation: token.SHL, build: func(*testing.T) types.Type { return types.Typ[types.Uint32] }},
+		{name: "quotient of a float", operation: token.QUO, build: func(*testing.T) types.Type { return types.Typ[types.Float64] }},
+		{name: "sum of strings", operation: token.ADD, build: func(*testing.T) types.Type { return types.Typ[types.String] }},
+		{name: "a comparison", operation: token.LSS, build: func(*testing.T) types.Type { return types.Typ[types.Uint8] }},
+		{name: "a slice", operation: token.AND, build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Uint8]) }},
+		{name: "no type at all", operation: token.AND, build: func(*testing.T) types.Type { return nil }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, BinaryResultFitsNarrowType(tt.operation, tt.build(t)))
+		})
+	}
+}
+
+func TestConversionNeedsTruncationOnlyWhenTheDestinationIsNarrower(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		source      types.BasicKind
+		destination types.BasicKind
+		want        bool
+	}{
+		{name: "uint8 to uint32", source: types.Uint8, destination: types.Uint32},
+		{name: "uint16 to uint32", source: types.Uint16, destination: types.Uint32},
+		{name: "int8 to int16", source: types.Int8, destination: types.Int16},
+		{name: "uint32 to uint32", source: types.Uint32, destination: types.Uint32},
+		{name: "uint8 to uint64", source: types.Uint8, destination: types.Uint64},
+		{name: "uint64 to uint64", source: types.Uint64, destination: types.Uint64},
+		{name: "uint32 to uint8", source: types.Uint32, destination: types.Uint8, want: true},
+		{name: "uint16 to uint8", source: types.Uint16, destination: types.Uint8, want: true},
+		{name: "uint64 to uint32", source: types.Uint64, destination: types.Uint32, want: true},
+		{name: "int to int32", source: types.Int, destination: types.Int32, want: true},
+		{name: "int32 to int8", source: types.Int32, destination: types.Int8, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, ConversionNeedsTruncation(types.Typ[tt.source], types.Typ[tt.destination]))
 		})
 	}
 }

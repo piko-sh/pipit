@@ -32,9 +32,9 @@ func TestComputeInLoopMaskSeesFusedBackEdge(t *testing.T) {
 
 	lo, hi := isa.SplitOffset(-3)
 	caller := &program.CompiledFunction{Body: []isa.Instruction{
-		isa.NewTier1Instruction(isa.SubOpLoadIntConstSmall, 0, 1),
-		isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 0, 1),
-		isa.NewInstruction(isa.OpExt, lo, hi, 0),
+		isa.NewTier1Instruction(isa.SubOpLoadInt64Immediate, 0, 1),
+		isa.NewTier1Instruction(isa.SubOpLessThanInt64ThenJumpIfFalse, 0, 1),
+		isa.NewInstruction(isa.OpExtension, lo, hi, 0),
 		isa.NewTier2Instruction(isa.SubOpTier2Return, 0),
 	}}
 
@@ -52,12 +52,37 @@ func TestExtendInLoopMaskRecomputesForAppendedFusedBackEdge(t *testing.T) {
 	}}
 	mask := computeInLoopMask(caller)
 	caller.Body = append(caller.Body,
-		isa.NewTier1Instruction(isa.SubOpLoadIntConstSmall, 0, 1),
-		isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 0, 1),
-		isa.NewInstruction(isa.OpExt, lo, hi, 0),
+		isa.NewTier1Instruction(isa.SubOpLoadInt64Immediate, 0, 1),
+		isa.NewTier1Instruction(isa.SubOpLessThanInt64ThenJumpIfFalse, 0, 1),
+		isa.NewInstruction(isa.OpExtension, lo, hi, 0),
 	)
 
 	extendInLoopMaskForAppendedBody(caller, &mask)
 
 	require.Equal(t, []bool{false, true, true, false}, mask)
+}
+
+func TestMarkInLoopMarksEveryWordFromTheFirstAppendedOne(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		mask  []bool
+		want  []bool
+		start int
+	}{
+		{name: "the appended words of a loop's call", mask: []bool{false, true, false, false}, start: 2, want: []bool{false, true, true, true}},
+		{name: "words before the first appended one keep their mark", mask: []bool{true, false, false}, start: 1, want: []bool{true, true, true}},
+		{name: "nothing appended", mask: []bool{false, false}, start: 2, want: []bool{false, false}},
+		{name: "an empty mask", mask: nil, start: 0, want: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			markInLoop(tt.mask, tt.start)
+
+			require.Equal(t, tt.want, tt.mask, "a callee spliced at a site inside a loop runs once for each pass of the loop")
+		})
+	}
 }

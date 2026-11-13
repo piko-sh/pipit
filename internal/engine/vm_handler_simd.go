@@ -179,7 +179,3 @@ func simdSumFloat64(a []float64) float64 {
 func simdScaleFloat64(slice []float64, k float64) {
 	vectormaths.ScaleF64(slice, k)
 }
-
-// simdSubFloat64 and simdMulFloat64 are the binary operations passed to
-// simdElementwiseFloat64. Kept as standalone named functions so the Go Compiler can
-// inline them into the element-wise loop body without indirect-call overhead.

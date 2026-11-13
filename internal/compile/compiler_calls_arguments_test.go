@@ -19,6 +19,7 @@
 package compile
 
 import (
+	"go/types"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -49,4 +50,18 @@ func TestIsBlockingStdlibMethod(t *testing.T) {
 		require.Equalf(t, c.want, isBlockingStdlibMethod(c.receiver, c.method),
 			"isBlockingStdlibMethod(%q, %q)", c.receiver, c.method)
 	}
+}
+
+func TestTheResultsOfOneCallFillANativesParametersWhenTheirCountsFit(t *testing.T) {
+	t.Parallel()
+
+	two := types.NewTuple(types.NewParam(0, nil, "a", types.Typ[types.Int]), types.NewParam(0, nil, "b", types.Typ[types.Int]))
+	fixed := types.NewSignatureType(nil, nil, nil, two, nil, false)
+	require.True(t, multiReturnFillsParameters(fixed, 2), "math.Max(pair())")
+	require.False(t, multiReturnFillsParameters(fixed, 3))
+
+	variadicParameters := types.NewTuple(types.NewParam(0, nil, "w", types.Typ[types.Int]), types.NewParam(0, nil, "rest", types.NewSlice(types.Typ[types.Int])))
+	variadic := types.NewSignatureType(nil, nil, nil, variadicParameters, nil, true)
+	require.True(t, multiReturnFillsParameters(variadic, 1), "the variadic parameter may receive nothing")
+	require.True(t, multiReturnFillsParameters(variadic, 3))
 }

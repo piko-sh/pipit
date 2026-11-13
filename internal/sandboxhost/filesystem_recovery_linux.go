@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxhost
 
 import (
@@ -27,6 +27,7 @@ import (
 
 	"pipit.sh/pipit/internal/sandboxbroker"
 	"pipit.sh/pipit/internal/sandboxlinux"
+	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 // filesystemRecoveryPhase tracks the current step in a recovery sequence.
@@ -126,7 +127,7 @@ type linuxFilesystemRecoveryRecord struct {
 // Returns public error categories without discarding native failure details; the launch
 // record is removed once the original service has been released.
 func (owner *linuxFilesystemRecoveryRecord) Recover(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, filesystemCleanupTimeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, filesystemCleanupTimeout, sandboxwire.ErrCleanupTimedOut)
 	defer cancel()
 	if err := filesystemLaunchError(owner.recover(ctx)); err != nil {
 		return err
@@ -206,7 +207,7 @@ func newIsolatedFilesystemRecovery(ctx context.Context, config *IsolatedFilesyst
 	if !filepath.IsAbs(config.Worker.LinuxCgroupParent) {
 		return nil, ErrInvalidIsolatedConfig
 	}
-	ctx, cancel := context.WithTimeout(ctx, filesystemCleanupTimeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, filesystemCleanupTimeout, sandboxwire.ErrCleanupTimedOut)
 	defer cancel()
 	policy, err := isolatedFilesystemRecoveryPolicy(ctx, config)
 	if err != nil {

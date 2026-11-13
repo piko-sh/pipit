@@ -26,11 +26,11 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-// runMakeInterfaceMethodExpr builds a method-expression function value.
+// handleMakeInterfaceMethodExpression builds a method-expression function value.
 //
-// Handles isa.SubOpTier2MakeInterfaceMethodExpr. general[C] becomes a function that takes
-// the receiver as its first argument and resolves the method by name on that receiver's
-// dynamic type when called, through the same lookup GET_METHOD uses.
+// Handles isa.SubOpTier2MakeInterfaceMethodExpression. general[C] becomes a function that
+// takes the receiver as its first argument and resolves the method by name on that
+// receiver's dynamic type when called, through the same lookup BIND_METHOD_BY_NAME uses.
 //
 // Takes vm (*VM) which owns the method tables.
 // Takes frame (*CallFrame) which supplies the two extension words and the static receiver
@@ -41,14 +41,15 @@ import (
 // Returns OpResult which is opContinue or opPanicError.
 //
 // Panics if the receiver is missing, nil, or has no such method.
-func runMakeInterfaceMethodExpr(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMakeInterfaceMethodExpression(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	sitePC := safeconv.IntToUint32Truncate(frame.ProgramCounter - 1)
 	signature, methodName, ok := readInterfaceMethodExprWords(vm, frame)
 	if !ok {
 		return opPanicError
 	}
 	outTypes := slices.Collect(signature.Outs())
-	staticTypeName := frame.Function.GetMethodReceiverTypeNames[sitePC]
+	staticTypeName := frame.Function.BindMethodByNameReceiverTypeNames[sitePC]
+	vm.exportGuestCode()
 	registers.General[instruction.C] = reflect.MakeFunc(signature, func(arguments []reflect.Value) []reflect.Value {
 		if len(arguments) == 0 || !arguments[0].IsValid() {
 			panic(newInvariantError("method expression invoked without a receiver"))
@@ -83,9 +84,9 @@ func readInterfaceMethodExprWords(vm *VM, frame *CallFrame) (reflect.Type, strin
 	return frame.Function.TypeTable[typeIndex], frame.Function.StringConstants[nameIndex], true
 }
 
-// invokeInterfaceMethodExpr dispatches methodName on receiver's dynamic type: reflect
-// methods first, then methods reachable through embedded natives, pipit-declared methods
-// by type name, and finally methods promoted through an embedded field.
+// invokeInterfaceMethodExpr dispatches methodName on receiver's dynamic type. It tries
+// reflect methods first, then methods reachable through embedded natives, pipit-declared
+// methods by type name, and finally methods promoted through an embedded field.
 //
 // Takes vm (*VM) which owns the method tables.
 // Takes receiver (reflect.Value) which is the first argument of the expression.
@@ -97,7 +98,8 @@ func readInterfaceMethodExprWords(vm *VM, frame *CallFrame) (reflect.Type, strin
 // Returns []reflect.Value which holds the results shaped to outTypes.
 //
 // Panics with an interpreted runtime error when the receiver is nil or the method does
-// not exist.
+// not exist, and with the fault.ErrNoMethodBodyForReceiver error when the method has no
+// body for the receiver's type arguments.
 func invokeInterfaceMethodExpr(vm *VM, receiver reflect.Value, methodName, staticTypeName string, arguments []reflect.Value, outTypes []reflect.Type) []reflect.Value {
 	if receiver.Kind() == reflect.Interface {
 		receiver = receiver.Elem()
@@ -109,17 +111,28 @@ func invokeInterfaceMethodExpr(vm *VM, receiver reflect.Value, methodName, stati
 		return results
 	}
 	if funcIndex, ok := lookupMethodTableForReceiver(vm, receiver, methodName); ok && int(funcIndex) < len(vm.functions) {
-		own := newBoundMethodVM(vm, vm.functions[funcIndex], nil)
+		own := makeBoundMethodVM(vm, vm.functions[funcIndex], nil)
 		return shapeBoundMethodResults(own.invoke(receiver, arguments, identityArg), outTypes)
 	}
-	if bound := boundNativeMethodExpr(vm, receiver, methodName, staticTypeName); bound.IsValid() {
+	bound, err := boundNativeMethodExpr(vm, receiver, methodName, staticTypeName)
+	if err != nil {
+		panic(err)
+	}
+	if bound.IsValid() {
 		return shapeBoundMethodResults(bound.Call(adaptBoundArguments(bound.Type(), arguments)), outTypes)
 	}
-	funcIndex, promotedReceiver, ok := resolvePromotedMethod(vm, receiver, methodName)
-	if !ok || int(funcIndex) >= len(vm.functions) {
+	search := promotionSearch{vm: vm, methodName: methodName, interfaceHops: 0, reachedNil: false}
+	funcIndex, promotedReceiver, ok := search.at(receiver, 0)
+	switch {
+	case ok && int(funcIndex) < len(vm.functions):
+	case search.reachedNil:
+		panic(newRuntimePanicError(nilDereferenceMessage))
+	case search.interfaceHops > vm.callDepthLimit():
+		panic(vm.stackOverflowError())
+	default:
 		panic(newInvariantError("undefined method %s.%s", receiver.Type(), methodName))
 	}
-	promoted := newBoundMethodVM(vm, vm.functions[funcIndex], nil)
+	promoted := makeBoundMethodVM(vm, vm.functions[funcIndex], nil)
 	return shapeBoundMethodResults(promoted.invoke(promotedReceiver, arguments, identityArg), outTypes)
 }
 
@@ -151,9 +164,9 @@ func invokeReflectTypeMethodExpr(vm *VM, receiver reflect.Value, methodName stri
 	return shapeBoundMethodResults(results, outTypes), true
 }
 
-// boundNativeMethodExpr resolves methodName on a native receiver: its own method set,
-// then methods promoted from embedded native fields, then an externally registered script
-// method.
+// boundNativeMethodExpr resolves methodName on a native receiver. It tries its own method
+// set, then methods promoted from embedded native fields, then an externally registered
+// script method.
 //
 // Takes vm (*VM) which owns the external method registry.
 // Takes receiver (reflect.Value) which is the receiver value.
@@ -161,15 +174,17 @@ func invokeReflectTypeMethodExpr(vm *VM, receiver reflect.Value, methodName stri
 // Takes staticTypeName (string) which is the receiver's static type name.
 //
 // Returns reflect.Value which is the bound method, invalid when none resolves.
-func boundNativeMethodExpr(vm *VM, receiver reflect.Value, methodName, staticTypeName string) reflect.Value {
+// Returns error which wraps fault.ErrNoMethodBodyForReceiver when a script method was
+// found but no body was compiled for the receiver's type arguments.
+func boundNativeMethodExpr(vm *VM, receiver reflect.Value, methodName, staticTypeName string) (reflect.Value, error) {
 	bound := receiver.MethodByName(methodName)
 	if !bound.IsValid() {
 		bound = resolveNativeMethodOnEmbeds(receiver, methodName)
 	}
-	if !bound.IsValid() {
-		bound = resolveExternalPipitMethod(vm, receiver, methodName, staticTypeName)
+	if bound.IsValid() {
+		return bound, nil
 	}
-	return bound
+	return resolveExternalPipitMethod(vm, receiver, methodName, staticTypeName)
 }
 
 // adaptBoundArguments converts call arguments to the bound method's parameter types where

@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
@@ -28,12 +28,12 @@ import (
 )
 
 func TestFilesystemAggregateAdmissionBeforeCreation(t *testing.T) {
-	release, err := filesystemAggregateAdmission.acquire(context.Background(), testTenant)
+	release, err := filesystemAggregateAdmission.acquire(t.Context(), testTenant)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
@@ -52,7 +52,7 @@ func TestFilesystemAggregateAdmissionBeforeCreation(t *testing.T) {
 		t.Fatal("queued construction was not cancelled:", err)
 	}
 	release()
-	if owner, err := NewFilesystemAggregate(context.Background(), "invalid", Limits{}, testTenant); owner != nil || !errors.Is(err, ErrUnavailable) {
+	if owner, err := NewFilesystemAggregate(t.Context(), "invalid", Limits{}, testTenant); owner != nil || !errors.Is(err, ErrUnavailable) {
 		t.Fatal("released constructor did not reach native validation:", err)
 	}
 	if filesystemAggregateAdmission.gate(testTenant) != nil {
@@ -62,7 +62,7 @@ func TestFilesystemAggregateAdmissionBeforeCreation(t *testing.T) {
 
 func TestFilesystemAggregateRetainsAdmissionOnCleanupFailure(t *testing.T) {
 	var gate admission
-	release, err := gate.acquire(context.Background())
+	release, err := gate.acquire(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestFilesystemAggregateRetainsAdmissionOnCleanupFailure(t *testing.T) {
 		t.Fatal("failed cleanup released aggregate admission")
 	}
 	owner.Group.closed = true
-	if err := owner.Close(context.Background()); err != nil {
+	if err := owner.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	gate.mutex.Lock()
@@ -87,7 +87,7 @@ func TestFilesystemAggregateRetainsAdmissionOnCleanupFailure(t *testing.T) {
 	if active {
 		t.Fatal("completed cleanup retained aggregate admission")
 	}
-	if err := owner.Close(context.Background()); err != nil {
+	if err := owner.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -96,7 +96,7 @@ func TestFilesystemAggregateRejectsMissingContext(t *testing.T) {
 	if owner, err := NewFilesystemAggregate(nil, "invalid", Limits{}, testTenant); owner != nil || !errors.Is(err, ErrInvalidLimits) {
 		t.Fatal("missing context accepted:", err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if owner, err := NewFilesystemAggregate(ctx, "invalid", Limits{}, testTenant); owner != nil || !errors.Is(err, context.Canceled) {
 		t.Fatal("cancelled context reached resource creation:", err)

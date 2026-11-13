@@ -44,14 +44,14 @@ const (
 // registerLivenessWalk is a depth-first search for a read of one register that no prior
 // write precedes.
 type registerLivenessWalk struct {
-	// entered tracks branch targets already visited so cycles terminate.
-	entered map[int]bool
-
 	// compiledFunction is the function whose body is being walked.
 	compiledFunction *program.CompiledFunction
 
 	// body is the instruction stream being scanned.
 	body []isa.Instruction
+
+	// entered tracks branch targets already visited so cycles terminate.
+	entered enteredSet
 
 	// budget is the remaining instruction inspection allowance.
 	budget int
@@ -167,7 +167,7 @@ func newRegisterLivenessWalk(compiledFunction *program.CompiledFunction, body []
 	return &registerLivenessWalk{
 		compiledFunction: compiledFunction,
 		body:             body,
-		entered:          make(map[int]bool),
+		entered:          enteredSet{more: nil, few: [enteredInline]int{}, count: 0},
 		budget:           conditionLivenessBudget,
 		kind:             kind,
 		role:             isa.RoleForKind(kind),
@@ -185,10 +185,9 @@ func (w *registerLivenessWalk) deadFrom(start int) bool {
 	if start < 0 {
 		return false
 	}
-	if w.entered[start] {
+	if !w.entered.enter(start) {
 		return true
 	}
-	w.entered[start] = true
 	ownerPC := -1
 	for pc := start; pc < len(w.body); {
 		if w.budget <= 0 {
@@ -213,19 +212,17 @@ func (w *registerLivenessWalk) deadFrom(start int) bool {
 // walkVerdict is what one step of the liveness walk concluded about the word it read.
 type walkVerdict uint8
 
-// step classifies the word at pc: an extension word against the instruction that owns it,
-// a return as a read of the function's result slots and otherwise the end of the frame,
-// and any other instruction by its call site or operand shape. A jump is left to
-// branch().
+// step classifies one instruction or extension word.
 //
 // Takes pc (int) which is the word's program counter.
 // Takes ownerPC (*int) which tracks the last instruction seen, so extension words are
-// attributed; it is updated when the word is an instruction.
+// attributed. It is updated when the word is an instruction.
 //
-// Returns the verdict and, for walkContinue, the next program counter.
+// Returns walkVerdict which classifies the path at pc.
+// Returns int which is the next PC when the verdict is walkContinue.
 func (w *registerLivenessWalk) step(pc int, ownerPC *int) (walkVerdict, int) {
 	instr := w.body[pc]
-	if instr.Op == isa.OpExt {
+	if instr.Op == isa.OpExtension {
 		return verdictFor(w.extensionWordUse(*ownerPC, pc)), pc + 1
 	}
 	if program.IsReturnInstruction(instr) {
@@ -235,6 +232,9 @@ func (w *registerLivenessWalk) step(pc int, ownerPC *int) (walkVerdict, int) {
 		return walkDead, 0
 	}
 	reads, writes := w.classify(instr)
+	if writes && !reads && w.extensionWordsRead(pc) {
+		return walkLive, 0
+	}
 	if reads || writes {
 		return verdictFor(reads, writes), 0
 	}
@@ -283,6 +283,23 @@ func (w *registerLivenessWalk) branch(pc int) bool {
 		return w.deadFrom(target)
 	}
 	return w.deadFrom(pc+program.JumpFootprint(instr)) && w.deadFrom(target)
+}
+
+// extensionWordsRead reports whether an extension word of the instruction at pc may read
+// the register.
+//
+// An instruction reads its operands before it writes its result.
+//
+// Takes pc (int) which is the owning instruction.
+//
+// Returns true when one of its extension words may read reg.
+func (w *registerLivenessWalk) extensionWordsRead(pc int) bool {
+	for word := pc + 1; word < len(w.body) && w.body[word].Op == isa.OpExtension; word++ {
+		if reads, _ := w.extensionWordUse(pc, word); reads {
+			return true
+		}
+	}
+	return false
 }
 
 // extensionWordUse reports whether the extension word at pc may read the register, or

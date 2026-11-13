@@ -182,6 +182,18 @@ func TestTrimOldByteSlabs(t *testing.T) {
 		"trim should not act when at or under the cap")
 }
 
+func TestTrimRetainedSlabsReleasesDroppedEntry(t *testing.T) {
+	t.Parallel()
+	retained := make([][]byte, maxRetainedOldSlabsPerType+1)
+	for index := range retained {
+		retained[index] = make([]byte, 4)
+	}
+	backing := retained[:cap(retained)]
+	trimRetainedSlabs(&retained)
+	require.Len(t, retained, maxRetainedOldSlabsPerType)
+	require.Nil(t, backing[0], "the dropped entry must not stay reachable through the backing array")
+}
+
 func TestTrimOldGenericByteSlabs(t *testing.T) {
 	t.Parallel()
 	a := NewRegisterArena()
@@ -296,4 +308,74 @@ func TestSlabGenerationBumpsExactlyForContextMirroredBanks(t *testing.T) {
 			t.Logf("%s slab is not context-mirrored; bumped=%v (either is safe)", testCase.bank, bumped)
 		})
 	}
+}
+
+func TestTrimmingAFullChunkReleasesItsCharge(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		name     string
+		grow     func(*RegisterArena)
+		retained func(*RegisterArena) int
+		full     func(*RegisterArena) bool
+	}{
+		{
+			name:     "generic bytes",
+			grow:     func(a *RegisterArena) { a.growGenericBytesSlab(1) },
+			retained: func(a *RegisterArena) int { return len(a.oldGenericByteSlabs) },
+			full:     func(a *RegisterArena) bool { return len(a.genericBytesSlab) == genericBytesSlabChunk },
+		},
+		{
+			name:     "slice headers",
+			grow:     func(a *RegisterArena) { a.growSliceHeaderSlab() },
+			retained: func(a *RegisterArena) int { return len(a.oldSliceHeaderSlabs) },
+			full:     func(a *RegisterArena) bool { return len(a.sliceHeaderSlab) == sliceHeaderSlabChunk },
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			a := NewRegisterArena()
+			setArenaBudget(t, a, 1<<40)
+			for !testCase.full(a) {
+				testCase.grow(a)
+			}
+			for range maxRetainedOldSlabsPerType {
+				testCase.grow(a)
+			}
+			held := a.totalAllocatedBytes
+			for range 3 * maxRetainedOldSlabsPerType {
+				testCase.grow(a)
+				require.Equal(t, maxRetainedOldSlabsPerType, testCase.retained(a))
+				require.Equal(t, held, a.totalAllocatedBytes,
+					"a chunk dropped from a full retention list leaves the arena, so its charge leaves the budget with it")
+			}
+		})
+	}
+}
+
+func TestTrimmingADoublingSlabReleasesNothing(t *testing.T) {
+	t.Parallel()
+	a := NewRegisterArena()
+	setArenaBudget(t, a, 1<<40)
+	for range maxRetainedOldSlabsPerType + 4 {
+		before, beforeCapacity := a.totalAllocatedBytes, uint64(cap(a.intBackingSlab))*arenaSizeInt64
+		a.GrowIntBackingSlab(1)
+		require.Equal(t, before+uint64(cap(a.intBackingSlab))*arenaSizeInt64-beforeCapacity, a.totalAllocatedBytes,
+			"a doubling slab hands its charge to its successor, so dropping it later releases nothing")
+	}
+	require.Len(t, a.oldIntBackings, maxRetainedOldSlabsPerType)
+}
+
+func TestTrimmingAHeapDataSlabKeepsItsCharge(t *testing.T) {
+	a := acquireHeapDataArena(true)
+	defer releaseRegisterArena(true, a, false)
+	setArenaBudget(t, a, 1<<40)
+	var charged uint64
+	for range maxRetainedOldSlabsPerType + 4 {
+		before := a.totalAllocatedBytes
+		a.growGenericBytesSlab(64)
+		charged += a.totalAllocatedBytes - before
+	}
+	require.Len(t, a.oldGenericByteSlabs, maxRetainedOldSlabsPerType)
+	require.Equal(t, uint64(maxRetainedOldSlabsPerType+4)*64, charged,
+		"a heap-data arena charges every allocation for the whole run, retained or not")
 }

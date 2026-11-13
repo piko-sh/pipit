@@ -19,11 +19,17 @@
 package engine
 
 import (
+	"runtime"
 	"sync"
 	"testing"
 	"unsafe"
 
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	gcMarkPointerTestSinkMutex sync.Mutex
+	gcMarkPointerTestSink      any
 )
 
 func TestEnsureBoolSlice_GrowsCapacityWhenInsufficient(t *testing.T) {
@@ -54,11 +60,6 @@ func TestEnsureBoolSlice_TruncatesAndClears(t *testing.T) {
 	require.False(t, got[0])
 	require.False(t, got[1])
 }
-
-var (
-	gcMarkPointerTestSinkMutex sync.Mutex
-	gcMarkPointerTestSink      any
-)
 
 func heapPinned[T any](backing []T) []T {
 	gcMarkPointerTestSinkMutex.Lock()
@@ -298,4 +299,43 @@ func TestMarkPhase_NoOpWithNilArena(t *testing.T) {
 	vm.markPhase(state)
 
 	require.Zero(t, state.CurrentLiveBytes, "nil arena should leave state untouched")
+}
+
+func TestMutByteSlabBoundsSpanEveryRetiredSlab(t *testing.T) {
+	first, second := make([]byte, 16), make([]byte, 32)
+	low, high := mutByteSlabBounds([][]byte{nil, first, second, {}})
+	firstBase, secondBase := uintptr(unsafe.Pointer(&first[0])), uintptr(unsafe.Pointer(&second[0]))
+	require.Equal(t, min(firstBase, secondBase), low)
+	require.Equal(t, max(firstBase+16, secondBase+32), high)
+	low, high = mutByteSlabBounds(nil)
+	require.Zero(t, low)
+	require.Zero(t, high, "with no retired slab the bounds are unknown and the mark scans the empty list")
+}
+
+func TestMarkMutBytePointerRejectsAnAddressOutsideTheBounds(t *testing.T) {
+	arena := NewRegisterArena()
+	slab := make([]byte, 64)
+	arena.oldMutByteSlabs = [][]byte{slab}
+	state := acquireGCMarkState(arena)
+	defer releaseGCMarkState(state)
+	base := uintptr(unsafe.Pointer(&slab[0]))
+
+	markMutBytePointer(arena, state, base+64)
+	require.False(t, state.OldMutByteSlabLive[0], "one past the slab is outside it")
+	markMutBytePointer(arena, state, base+8)
+	require.True(t, state.OldMutByteSlabLive[0])
+	runtime.KeepAlive(slab)
+}
+
+func TestGCMarkStatePoolKeepsNoMoreThanItsBoundAfterABurst(t *testing.T) {
+	arena := NewRegisterArena()
+	bound := stablepoolRetentionBound(gcMarkStatePool.Cap(), gcMarkStatePool.MaxCap())
+	burst(2*bound, func() *gcMarkState { return acquireGCMarkState(arena) }, releaseGCMarkState)
+	kept := gcMarkStatePool.Drain()
+	t.Cleanup(func() {
+		for _, state := range kept {
+			gcMarkStatePool.Put(state)
+		}
+	})
+	require.LessOrEqual(t, len(kept), bound, "after a burst of %d mark states the pool keeps at most its bound", 2*bound)
 }

@@ -69,11 +69,11 @@ func TestGroupCleanupNeverAdoptsMissingHandle(t *testing.T) {
 
 func TestCgroupNativeCleanupRejectsReplacement(t *testing.T) {
 	parent := sandboxtest.CgroupParent(t)
-	group, err := newServiceGroup(parent, Limits{}, testTenant)
+	group, err := newServiceGroup(t.Context(), parent, Limits{}, testTenant)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	originalName := group.name
 	original, err := cgroupDirectoryIdentity(group.directory)
@@ -93,7 +93,7 @@ func TestCgroupNativeCleanupRejectsReplacement(t *testing.T) {
 	if err := group.closeGroup(ctx); !errors.Is(err, ErrUnavailable) || group.closed {
 		t.Fatal("missing original name did not retain ownership:", err)
 	}
-	replacement, err := newServiceGroup(parent, Limits{}, testTenant)
+	replacement, err := newServiceGroup(t.Context(), parent, Limits{}, testTenant)
 	if err != nil {
 		t.Fatal(err)
 	}

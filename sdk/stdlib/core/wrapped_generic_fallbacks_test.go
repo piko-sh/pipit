@@ -19,6 +19,7 @@
 package core
 
 import (
+	"fmt"
 	"iter"
 	"reflect"
 	"testing"
@@ -154,8 +155,8 @@ func TestWrappedUniqueMakePrimitives(t *testing.T) {
 func TestWrappedUniqueMakeRejectsNonComparable(t *testing.T) {
 	t.Parallel()
 	type customStruct struct{ Name string }
-	require.PanicsWithValue(t,
-		"unique.Make: unsupported type core.customStruct (must be a built-in comparable)",
+	require.PanicsWithError(t,
+		"no instantiation of this generic function for the type: unique.Make of core.customStruct",
 		func() { wrappedUniqueMake(customStruct{}) },
 	)
 }
@@ -374,6 +375,20 @@ func TestReflectSlicesAppendSeq(t *testing.T) {
 	require.Equal(t, []customString{"a", "b", "c"}, result)
 }
 
+type customStringer string
+
+func (s customStringer) String() string { return string(s) }
+
+func TestReflectSlicesAppendSeqStoresAnInterfaceYieldsDynamicValue(t *testing.T) {
+	t.Parallel()
+	base := []fmt.Stringer{customStringer("a")}
+	seq := func(yield func(any) bool) {
+		_ = yield(customStringer("b")) && yield(nil)
+	}
+	result := requireType[[]fmt.Stringer](t, reflectSlicesAppendSeq(base, seq))
+	require.Equal(t, []fmt.Stringer{customStringer("a"), customStringer("b"), nil}, result)
+}
+
 func TestReflectSlicesCompact(t *testing.T) {
 	t.Parallel()
 	in := []customString{"a", "a", "b", "c", "c", "c", "d"}
@@ -503,6 +518,16 @@ func TestReflectMapsInsert(t *testing.T) {
 	}
 	reflectMapsInsert(m, seq)
 	require.Equal(t, map[customString]int32{"a": 1, "b": 2, "c": 3}, m)
+}
+
+func TestReflectMapsInsertStoresInterfaceYieldsDynamicValues(t *testing.T) {
+	t.Parallel()
+	m := map[customString]fmt.Stringer{}
+	seq := func(yield func(any, any) bool) {
+		_ = yield(customString("b"), customStringer("two")) && yield("c", nil)
+	}
+	reflectMapsInsert(m, seq)
+	require.Equal(t, map[customString]fmt.Stringer{"b": customStringer("two"), "c": nil}, m)
 }
 
 func TestReflectMapsDeleteFunc(t *testing.T) {

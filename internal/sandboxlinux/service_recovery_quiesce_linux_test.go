@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
@@ -33,7 +33,7 @@ import (
 
 func TestServiceRecoveryQuiesceInvalidState(t *testing.T) {
 	var absent *ServiceRecoveryClaim
-	if err := absent.Quiesce(context.Background(), t.TempDir()); !errors.Is(err, errClosed) {
+	if err := absent.Quiesce(t.Context(), t.TempDir()); !errors.Is(err, errClosed) {
 		t.Fatal("missing owner accepted:", err)
 	}
 	owner := &ServiceRecoveryClaim{snapshot: &sandboxbroker.LinuxRecoveryClaim{}}
@@ -41,10 +41,10 @@ func TestServiceRecoveryQuiesceInvalidState(t *testing.T) {
 	if err := owner.Quiesce(nil, t.TempDir()); !errors.Is(err, ErrInvalidLimits) {
 		t.Fatal("missing cleanup context accepted:", err)
 	}
-	if err := owner.Quiesce(context.Background(), "relative"); !errors.Is(err, ErrInvalidLimits) {
+	if err := owner.Quiesce(t.Context(), "relative"); !errors.Is(err, ErrInvalidLimits) {
 		t.Fatal("relative parent accepted:", err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if err := owner.Quiesce(ctx, t.TempDir()); !errors.Is(err, context.Canceled) || owner.group != nil || owner.pending {
 		t.Fatal("cancelled cleanup touched resources:", err)
@@ -52,7 +52,7 @@ func TestServiceRecoveryQuiesceInvalidState(t *testing.T) {
 	if err := owner.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := owner.Quiesce(context.Background(), t.TempDir()); !errors.Is(err, errClosed) {
+	if err := owner.Quiesce(t.Context(), t.TempDir()); !errors.Is(err, errClosed) {
 		t.Fatal("closed claim accepted cleanup:", err)
 	}
 }

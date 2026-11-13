@@ -28,14 +28,14 @@ import (
 
 func newSizingFixture() (*program.CompiledFunction, *program.CompiledFunction) {
 	heavy := &program.CompiledFunction{}
-	heavy.NumRegisters[isa.RegisterInt] = 200
+	heavy.NumRegisters[isa.RegisterInt64] = 200
 	helper := &program.CompiledFunction{}
-	helper.NumRegisters[isa.RegisterInt] = 3
+	helper.NumRegisters[isa.RegisterInt64] = 3
 	entry := &program.CompiledFunction{}
-	entry.NumRegisters[isa.RegisterInt] = 4
+	entry.NumRegisters[isa.RegisterInt64] = 4
 	entry.CallSites = []program.CallSite{{FunctionIndex: 2}}
 	root := &program.CompiledFunction{}
-	root.NumRegisters[isa.RegisterInt] = 2
+	root.NumRegisters[isa.RegisterInt64] = 2
 	root.SetFunctions([]*program.CompiledFunction{heavy, entry, helper})
 	return root, entry
 }

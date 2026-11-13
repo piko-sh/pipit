@@ -35,19 +35,19 @@ func TestRegisterKindForReflectKindRoutesEveryScalar(t *testing.T) {
 		kind reflect.Kind
 		want isa.RegisterKind
 	}{
-		{name: "a plain int uses the integer bank", kind: reflect.Int, want: isa.RegisterInt},
-		{name: "an int8 uses the integer bank", kind: reflect.Int8, want: isa.RegisterInt},
-		{name: "an int16 uses the integer bank", kind: reflect.Int16, want: isa.RegisterInt},
-		{name: "an int32 uses the integer bank", kind: reflect.Int32, want: isa.RegisterInt},
-		{name: "an int64 uses the integer bank", kind: reflect.Int64, want: isa.RegisterInt},
-		{name: "a plain uint uses the unsigned bank", kind: reflect.Uint, want: isa.RegisterUint},
-		{name: "a uint8 uses the unsigned bank", kind: reflect.Uint8, want: isa.RegisterUint},
-		{name: "a uint16 uses the unsigned bank", kind: reflect.Uint16, want: isa.RegisterUint},
-		{name: "a uint32 uses the unsigned bank", kind: reflect.Uint32, want: isa.RegisterUint},
-		{name: "a uint64 uses the unsigned bank", kind: reflect.Uint64, want: isa.RegisterUint},
-		{name: "a uintptr uses the unsigned bank", kind: reflect.Uintptr, want: isa.RegisterUint},
-		{name: "a float32 uses the float bank", kind: reflect.Float32, want: isa.RegisterFloat},
-		{name: "a float64 uses the float bank", kind: reflect.Float64, want: isa.RegisterFloat},
+		{name: "a plain int uses the integer bank", kind: reflect.Int, want: isa.RegisterInt64},
+		{name: "an int8 uses the integer bank", kind: reflect.Int8, want: isa.RegisterInt64},
+		{name: "an int16 uses the integer bank", kind: reflect.Int16, want: isa.RegisterInt64},
+		{name: "an int32 uses the integer bank", kind: reflect.Int32, want: isa.RegisterInt64},
+		{name: "an int64 uses the integer bank", kind: reflect.Int64, want: isa.RegisterInt64},
+		{name: "a plain uint uses the unsigned bank", kind: reflect.Uint, want: isa.RegisterUint64},
+		{name: "a uint8 uses the unsigned bank", kind: reflect.Uint8, want: isa.RegisterUint64},
+		{name: "a uint16 uses the unsigned bank", kind: reflect.Uint16, want: isa.RegisterUint64},
+		{name: "a uint32 uses the unsigned bank", kind: reflect.Uint32, want: isa.RegisterUint64},
+		{name: "a uint64 uses the unsigned bank", kind: reflect.Uint64, want: isa.RegisterUint64},
+		{name: "a uintptr uses the unsigned bank", kind: reflect.Uintptr, want: isa.RegisterUint64},
+		{name: "a float32 uses the float bank", kind: reflect.Float32, want: isa.RegisterFloat64},
+		{name: "a float64 uses the float bank", kind: reflect.Float64, want: isa.RegisterFloat64},
 		{name: "a bool uses the boolean bank", kind: reflect.Bool, want: isa.RegisterBool},
 		{name: "a string uses the string bank", kind: reflect.String, want: isa.RegisterString},
 		{name: "a complex value falls back to the general bank", kind: reflect.Complex128, want: isa.RegisterGeneral},
@@ -73,11 +73,11 @@ func TestTypedSliceSubOpSelectorsCoverEveryTypedBank(t *testing.T) {
 		name string
 		kind isa.RegisterKind
 	}{
-		{name: "the integer slice bank", kind: isa.RegisterSliceInt},
-		{name: "the float slice bank", kind: isa.RegisterSliceFloat},
+		{name: "the integer slice bank", kind: isa.RegisterSliceInt64},
+		{name: "the float slice bank", kind: isa.RegisterSliceFloat64},
 		{name: "the string slice bank", kind: isa.RegisterSliceString},
 		{name: "the boolean slice bank", kind: isa.RegisterSliceBool},
-		{name: "the unsigned slice bank", kind: isa.RegisterSliceUint},
+		{name: "the unsigned slice bank", kind: isa.RegisterSliceUint64},
 		{name: "the byte slice bank", kind: isa.RegisterSliceByte},
 	}
 
@@ -103,7 +103,7 @@ func TestTypedSliceSubOpSelectorsCoverEveryTypedBank(t *testing.T) {
 				seen[subOp] = bank.name
 			}
 
-			for _, scalar := range []isa.RegisterKind{isa.RegisterInt, isa.RegisterFloat, isa.RegisterString, isa.RegisterGeneral, isa.RegisterBool, isa.RegisterUint, isa.RegisterComplex} {
+			for _, scalar := range []isa.RegisterKind{isa.RegisterInt64, isa.RegisterFloat64, isa.RegisterString, isa.RegisterGeneral, isa.RegisterBool, isa.RegisterUint64, isa.RegisterComplex128} {
 				_, ok := selector.pick(scalar)
 				require.Falsef(t, ok, "a scalar bank has no typed-slice %s sub-opcode", selector.name)
 			}
@@ -118,9 +118,9 @@ func TestStructFieldTier0SelectorsCoverTheScalarBanks(t *testing.T) {
 		name string
 		kind isa.RegisterKind
 	}{
-		{name: "the integer bank", kind: isa.RegisterInt},
-		{name: "the unsigned bank", kind: isa.RegisterUint},
-		{name: "the float bank", kind: isa.RegisterFloat},
+		{name: "the integer bank", kind: isa.RegisterInt64},
+		{name: "the unsigned bank", kind: isa.RegisterUint64},
+		{name: "the float bank", kind: isa.RegisterFloat64},
 		{name: "the boolean bank", kind: isa.RegisterBool},
 		{name: "the general bank", kind: isa.RegisterGeneral},
 	}
@@ -153,10 +153,10 @@ func TestUnsafeStructFieldSelectorsAgreeOnTheirAdmittedBanks(t *testing.T) {
 	t.Parallel()
 
 	banks := []isa.RegisterKind{
-		isa.RegisterInt, isa.RegisterFloat, isa.RegisterString, isa.RegisterGeneral,
-		isa.RegisterBool, isa.RegisterUint, isa.RegisterComplex,
-		isa.RegisterSliceInt, isa.RegisterSliceFloat, isa.RegisterSliceString,
-		isa.RegisterSliceBool, isa.RegisterSliceUint, isa.RegisterSliceByte,
+		isa.RegisterInt64, isa.RegisterFloat64, isa.RegisterString, isa.RegisterGeneral,
+		isa.RegisterBool, isa.RegisterUint64, isa.RegisterComplex128,
+		isa.RegisterSliceInt64, isa.RegisterSliceFloat64, isa.RegisterSliceString,
+		isa.RegisterSliceBool, isa.RegisterSliceUint64, isa.RegisterSliceByte,
 	}
 
 	for _, bank := range banks {
@@ -172,8 +172,8 @@ func TestTypedDirectAppendCoversTheTypedBanksOnly(t *testing.T) {
 	t.Parallel()
 
 	typed := []isa.RegisterKind{
-		isa.RegisterSliceInt, isa.RegisterSliceFloat, isa.RegisterSliceString,
-		isa.RegisterSliceBool, isa.RegisterSliceUint, isa.RegisterSliceByte,
+		isa.RegisterSliceInt64, isa.RegisterSliceFloat64, isa.RegisterSliceString,
+		isa.RegisterSliceBool, isa.RegisterSliceUint64, isa.RegisterSliceByte,
 	}
 
 	seen := make(map[isa.SubOpcode]bool, len(typed))
@@ -185,7 +185,7 @@ func TestTypedDirectAppendCoversTheTypedBanksOnly(t *testing.T) {
 		seen[subOp] = true
 	}
 
-	for _, scalar := range []isa.RegisterKind{isa.RegisterInt, isa.RegisterGeneral, isa.RegisterString} {
+	for _, scalar := range []isa.RegisterKind{isa.RegisterInt64, isa.RegisterGeneral, isa.RegisterString} {
 		_, ok := TypedDirectAppendSubOp(scalar)
 		require.Falsef(t, ok, "scalar bank %v has no direct append", scalar)
 	}

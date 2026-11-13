@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerCallInline handles OpCall with ASM-inlined fast path.
-TEXT ·handlerCallInline(SB), NOSPLIT, $32-0
+// handlerCall handles OpCall with ASM-inlined fast path.
+TEXT ·handlerCall(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	LSRW $16, R0, R1
 
@@ -150,6 +150,8 @@ ci_static_entry:
 	LSL  $3, R7, R11
 	ADD  R11, R8, R8
 	MOVD ACI_CALLEE_NUM_INTS(R2), R10
+	CMP  $0, R10
+	CSEL EQ, ZR, R8, R8
 	MOVD R8, CF_REGS_INTS_PTR(R9)
 	MOVD R10, CF_REGS_INTS_LEN(R9)
 	MOVD R10, CF_REGS_INTS_CAP(R9)
@@ -161,6 +163,8 @@ ci_static_entry:
 	LSL  $3, R7, R11
 	ADD  R11, R8, R8
 	MOVD ACI_CALLEE_NUM_FLOATS(R2), R10
+	CMP  $0, R10
+	CSEL EQ, ZR, R8, R8
 	MOVD R8, CF_REGS_FLOATS_PTR(R9)
 	MOVD R10, CF_REGS_FLOATS_LEN(R9)
 	MOVD R10, CF_REGS_FLOATS_CAP(R9)
@@ -611,8 +615,8 @@ ci_overflow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerCallInlineScalar handles opCallScalar; the compile-time gate guarantees scalar-only callees, so it shares handlerCallInline's inline-call body via EmitCallInline.
-TEXT ·handlerCallInlineScalar(SB), NOSPLIT, $32-0
+// handlerCallScalar handles isa.SubOpCallScalar. The compile-time gate guarantees scalar-only callees, so it shares handlerCall's inline-call body via EmitCallInline.
+TEXT ·handlerCallScalar(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	LSRW $16, R0, R1
 
@@ -736,6 +740,8 @@ ci_static_entry:
 	LSL  $3, R7, R11
 	ADD  R11, R8, R8
 	MOVD ACI_CALLEE_NUM_INTS(R2), R10
+	CMP  $0, R10
+	CSEL EQ, ZR, R8, R8
 	MOVD R8, CF_REGS_INTS_PTR(R9)
 	MOVD R10, CF_REGS_INTS_LEN(R9)
 	MOVD R10, CF_REGS_INTS_CAP(R9)
@@ -747,6 +753,8 @@ ci_static_entry:
 	LSL  $3, R7, R11
 	ADD  R11, R8, R8
 	MOVD ACI_CALLEE_NUM_FLOATS(R2), R10
+	CMP  $0, R10
+	CSEL EQ, ZR, R8, R8
 	MOVD R8, CF_REGS_FLOATS_PTR(R9)
 	MOVD R10, CF_REGS_FLOATS_LEN(R9)
 	MOVD R10, CF_REGS_FLOATS_CAP(R9)
@@ -1197,8 +1205,8 @@ ci_overflow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerCallMethodInline handles opCallMethod with a per-site receiver-type table and the ASM-inlined fast path.
-TEXT ·handlerCallMethodInline(SB), NOSPLIT, $32-0
+// handlerCallMethod handles isa.SubOpCallMethod with a per-site receiver-type table and the ASM-inlined fast path.
+TEXT ·handlerCallMethod(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	ADD  $1, R20, R20
 	LSRW $16, R0, R1
@@ -1358,6 +1366,8 @@ ci_static_entry:
 	LSL  $3, R7, R11
 	ADD  R11, R8, R8
 	MOVD ACI_CALLEE_NUM_INTS(R2), R10
+	CMP  $0, R10
+	CSEL EQ, ZR, R8, R8
 	MOVD R8, CF_REGS_INTS_PTR(R9)
 	MOVD R10, CF_REGS_INTS_LEN(R9)
 	MOVD R10, CF_REGS_INTS_CAP(R9)
@@ -1369,6 +1379,8 @@ ci_static_entry:
 	LSL  $3, R7, R11
 	ADD  R11, R8, R8
 	MOVD ACI_CALLEE_NUM_FLOATS(R2), R10
+	CMP  $0, R10
+	CSEL EQ, ZR, R8, R8
 	MOVD R8, CF_REGS_FLOATS_PTR(R9)
 	MOVD R10, CF_REGS_FLOATS_LEN(R9)
 	MOVD R10, CF_REGS_FLOATS_CAP(R9)
@@ -1854,8 +1866,8 @@ TEXT ·handlerCallInlineClearGeneralBank(SB), NOSPLIT, $24-0
 	MOVD CTX_JUMP_TABLE(R19), R25
 	RET
 
-// handlerReturnInline handles OpReturn with ASM-inlined fast path.
-TEXT ·handlerReturnInline(SB), NOSPLIT, $32-0
+// handlerReturn handles OpReturn with ASM-inlined fast path.
+TEXT ·handlerReturn(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD CTX_FRAME_POINTER(R19), R4
 	MOVD CTX_BASE_FRAME_POINTER(R19), R5
@@ -1882,6 +1894,15 @@ ri_no_simple_defer:
 	CBNZ R7, ri_fallback
 	MOVD CF_SHARED_CELLS(R8), R7
 	CBNZ R7, ri_fallback
+
+	MOVD CTX_ARENA_SLICEBYTE_IDX(R19), R7
+	MOVD (CF_ARENA_SAVE+96)(R8), R9
+	CMP  R9, R7
+	BLE  ri_sb_guard_done
+	MOVD $runtime·writeBarrier(SB), R7
+	MOVBU (R7), R7
+	CBNZ R7, ri_fallback
+ri_sb_guard_done:
 
 	LSRW $24, R0, R1
 	AND  $0xFF, R1, R1
@@ -2132,6 +2153,24 @@ ri_str_clear_loop:
 	BLT  ri_str_clear_loop
 
 ri_str_clear_done:
+	MOVD CTX_ARENA_SLICEBYTE_IDX(R19), R3
+	MOVD (CF_ARENA_SAVE+96)(R8), R5
+	SUB  R5, R3, R3
+	CMP  $0, R3
+	BLE  ri_sb_clear_done
+	MOVD $24, R1
+	MUL  R5, R1, R1
+	MOVD CTX_ARENA_SLICEBYTE_SLAB(R19), R6
+	ADD  R6, R1, R1
+ri_sb_clear_loop:
+	MOVD ZR, (R1)
+	MOVD ZR, 8(R1)
+	MOVD ZR, 16(R1)
+	ADD  $24, R1, R1
+	SUB  $1, R3, R3
+	CBNZ R3, ri_sb_clear_loop
+ri_sb_clear_done:
+
 	MOVD (CF_ARENA_SAVE+0)(R8), R1
 	MOVD R1, CTX_ARENA_INT_IDX(R19)
 	MOVD (CF_ARENA_SAVE+8)(R8), R1
@@ -2252,8 +2291,8 @@ ri_fallback:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerReturnVoidInline handles OpReturnVoid with ASM-inlined fast path.
-TEXT ·handlerReturnVoidInline(SB), NOSPLIT, $32-0
+// handlerReturnVoid handles OpReturnVoid with ASM-inlined fast path.
+TEXT ·handlerReturnVoid(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD CTX_FRAME_POINTER(R19), R4
 	MOVD CTX_BASE_FRAME_POINTER(R19), R5
@@ -2281,6 +2320,15 @@ rvi_no_simple_defer:
 	MOVD CF_SHARED_CELLS(R8), R7
 	CBNZ R7, rvi_fallback
 
+	MOVD CTX_ARENA_SLICEBYTE_IDX(R19), R7
+	MOVD (CF_ARENA_SAVE+96)(R8), R9
+	CMP  R9, R7
+	BLE  rvi_sb_guard_done
+	MOVD $runtime·writeBarrier(SB), R7
+	MOVBU (R7), R7
+	CBNZ R7, rvi_fallback
+rvi_sb_guard_done:
+
 	SUB  $1, R4, R21
 	MOVD $CALLFRAME_SIZE, R7
 	MUL  R21, R7, R9
@@ -2304,6 +2352,24 @@ rvi_str_clear_loop:
 	BLT  rvi_str_clear_loop
 
 rvi_str_clear_done:
+	MOVD CTX_ARENA_SLICEBYTE_IDX(R19), R3
+	MOVD (CF_ARENA_SAVE+96)(R8), R5
+	SUB  R5, R3, R3
+	CMP  $0, R3
+	BLE  rvi_sb_clear_done
+	MOVD $24, R1
+	MUL  R5, R1, R1
+	MOVD CTX_ARENA_SLICEBYTE_SLAB(R19), R6
+	ADD  R6, R1, R1
+rvi_sb_clear_loop:
+	MOVD ZR, (R1)
+	MOVD ZR, 8(R1)
+	MOVD ZR, 16(R1)
+	ADD  $24, R1, R1
+	SUB  $1, R3, R3
+	CBNZ R3, rvi_sb_clear_loop
+rvi_sb_clear_done:
+
 	MOVD (CF_ARENA_SAVE+0)(R8), R1
 	MOVD R1, CTX_ARENA_INT_IDX(R19)
 	MOVD (CF_ARENA_SAVE+8)(R8), R1
@@ -2424,17 +2490,28 @@ rvi_fallback:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerTailCallInline handles OpTailCall in-loop via handlerTailCallInlineSubroutine (no exit-reason round-trip).
-TEXT ·handlerTailCallInline(SB), NOSPLIT, $32-0
+// handlerTailCall handles isa.SubOpTailCall in-loop via handlerTailCallInlineSubroutine (no exit-reason round-trip).
+TEXT ·handlerTailCall(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	SUB  $1, R20, R20
 	MOVD R20, CTX_PC(R19)
 	BL   ·handlerTailCallInlineSubroutine(SB)
 	MOVD 0(RSP), R30
 	ADD  $48, RSP
+	MOVD CTX_POLL_BUDGET(R19), R0
+	SUB  $1, R0, R0
+	MOVD R0, CTX_POLL_BUDGET(R19)
+	CMP  $0, R0
+	BGT  poll_ok
+	MOVD R20, CTX_PC(R19)
+	MOVD $EXIT_POLL, R0
+	MOVD R0, CTX_EXIT_REASON(R19)
+	MOVD R20, CTX_EXIT_PC(R19)
+	JMP  ·dispatchExit(SB)
+poll_ok:
 	DISPATCH_NEXT()
 
-// handlerTailCallInlineSubroutine performs the asmTailCallExecute round-trip and reloads dispatcher registers; CALLed from handlerTailCallInline.
+// handlerTailCallInlineSubroutine performs the asmTailCallExecute round-trip and reloads dispatcher registers. Called from handlerTailCall.
 TEXT ·handlerTailCallInlineSubroutine(SB), NOSPLIT, $24-0
 	NO_LOCAL_POINTERS
 	MOVD R19, 8(RSP)

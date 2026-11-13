@@ -58,10 +58,10 @@ func TestPathBComplexTrampolinesDriveTheComplexBank(t *testing.T) {
 		trampoline pathBTrampolineFunc
 		want       complex128
 	}{
-		{name: "addition", trampoline: asmCallHandleAddComplex, want: 4 + 6i},
-		{name: "subtraction", trampoline: asmCallHandleSubComplex, want: -2 - 2i},
-		{name: "multiplication", trampoline: asmCallHandleMulComplex, want: (1 + 2i) * (3 + 4i)},
-		{name: "division", trampoline: asmCallHandleDivComplex, want: (1 + 2i) / (3 + 4i)},
+		{name: "addition", trampoline: asmCallHandleAddComplex128, want: 4 + 6i},
+		{name: "subtraction", trampoline: asmCallHandleSubtractComplex128, want: -2 - 2i},
+		{name: "multiplication", trampoline: asmCallHandleMultiplyComplex128, want: (1 + 2i) * (3 + 4i)},
+		{name: "division", trampoline: asmCallHandleDivideComplex128, want: (1 + 2i) / (3 + 4i)},
 	}
 
 	for _, tt := range tests {
@@ -86,10 +86,10 @@ func TestPathBComplexComparisonsWriteTheIntBank(t *testing.T) {
 		right      complex128
 		want       int64
 	}{
-		{name: "equality holds", trampoline: asmCallHandleEqComplex, right: 1 + 2i, want: 1},
-		{name: "equality fails", trampoline: asmCallHandleEqComplex, right: 9i, want: 0},
-		{name: "inequality holds", trampoline: asmCallHandleNeComplex, right: 9i, want: 1},
-		{name: "inequality fails", trampoline: asmCallHandleNeComplex, right: 1 + 2i, want: 0},
+		{name: "equality holds", trampoline: asmCallHandleEqualComplex128, right: 1 + 2i, want: 1},
+		{name: "equality fails", trampoline: asmCallHandleEqualComplex128, right: 9i, want: 0},
+		{name: "inequality holds", trampoline: asmCallHandleNotEqualComplex128, right: 9i, want: 1},
+		{name: "inequality fails", trampoline: asmCallHandleNotEqualComplex128, right: 1 + 2i, want: 0},
 	}
 
 	for _, tt := range tests {
@@ -105,10 +105,10 @@ func TestPathBComplexComparisonsWriteTheIntBank(t *testing.T) {
 	}
 }
 
-func TestPathBBuildComplexPairsTheFloatBank(t *testing.T) {
+func TestPathBMakeComplex128PairsTheFloat64Bank(t *testing.T) {
 	t.Parallel()
 
-	registers := runPathB(t, asmCallHandleBuildComplex, 0, 1, 2, func(r *Registers) {
+	registers := runPathB(t, asmCallHandleMakeComplex128, 0, 1, 2, func(r *Registers) {
 		r.Floats[1] = 1.5
 		r.Floats[2] = 2.5
 	})
@@ -134,14 +134,14 @@ func TestPathBGeneralComparisonsOrderTheirOperands(t *testing.T) {
 		right      any
 		want       int64
 	}{
-		{name: "equality on equal values", trampoline: asmCallHandleEqGeneral, left: 3, right: 3, want: 1},
-		{name: "equality on differing values", trampoline: asmCallHandleEqGeneral, left: 3, right: 4, want: 0},
-		{name: "inequality on differing values", trampoline: asmCallHandleNeGeneral, left: 3, right: 4, want: 1},
-		{name: "less than holds", trampoline: asmCallHandleLtGeneral, left: 3, right: 4, want: 1},
-		{name: "less than fails", trampoline: asmCallHandleLtGeneral, left: 4, right: 3, want: 0},
-		{name: "greater than holds", trampoline: asmCallHandleGtGeneral, left: 4, right: 3, want: 1},
-		{name: "less or equal holds on equality", trampoline: asmCallHandleLeGeneral, left: 3, right: 3, want: 1},
-		{name: "greater or equal holds on equality", trampoline: asmCallHandleGeGeneral, left: 3, right: 3, want: 1},
+		{name: "equality on equal values", trampoline: asmCallHandleEqualGeneral, left: 3, right: 3, want: 1},
+		{name: "equality on differing values", trampoline: asmCallHandleEqualGeneral, left: 3, right: 4, want: 0},
+		{name: "inequality on differing values", trampoline: asmCallHandleNotEqualGeneral, left: 3, right: 4, want: 1},
+		{name: "less than holds", trampoline: asmCallHandleLessThanGeneral, left: 3, right: 4, want: 1},
+		{name: "less than fails", trampoline: asmCallHandleLessThanGeneral, left: 4, right: 3, want: 0},
+		{name: "greater than holds", trampoline: asmCallHandleGreaterThanGeneral, left: 4, right: 3, want: 1},
+		{name: "less or equal holds on equality", trampoline: asmCallHandleLessOrEqualGeneral, left: 3, right: 3, want: 1},
+		{name: "greater or equal holds on equality", trampoline: asmCallHandleGreaterOrEqualGeneral, left: 3, right: 3, want: 1},
 	}
 
 	for _, tt := range tests {
@@ -166,10 +166,10 @@ func TestPathBInterfaceNilChecksReadTheGeneralBank(t *testing.T) {
 		value      reflect.Value
 		want       int64
 	}{
-		{name: "an unset register is nil", trampoline: asmCallHandleEqInterfaceNil, value: reflect.Value{}, want: 1},
-		{name: "a live value is not nil", trampoline: asmCallHandleEqInterfaceNil, value: reflect.ValueOf(3), want: 0},
-		{name: "the inverse on an unset register", trampoline: asmCallHandleNeInterfaceNil, value: reflect.Value{}, want: 0},
-		{name: "the inverse on a live value", trampoline: asmCallHandleNeInterfaceNil, value: reflect.ValueOf(3), want: 1},
+		{name: "an unset register is nil", trampoline: asmCallHandleEqualInterfaceNil, value: reflect.Value{}, want: 1},
+		{name: "a live value is not nil", trampoline: asmCallHandleEqualInterfaceNil, value: reflect.ValueOf(3), want: 0},
+		{name: "the inverse on an unset register", trampoline: asmCallHandleNotEqualInterfaceNil, value: reflect.Value{}, want: 0},
+		{name: "the inverse on a live value", trampoline: asmCallHandleNotEqualInterfaceNil, value: reflect.ValueOf(3), want: 1},
 	}
 
 	for _, tt := range tests {
@@ -197,11 +197,11 @@ func TestPathBStringTrampolinesCoverTheIntrinsics(t *testing.T) {
 			needle     string
 			want       bool
 		}{
-			{name: "contains a substring", trampoline: asmCallHandleStrContains, haystack: "hello", needle: "ell", want: true},
-			{name: "does not contain", trampoline: asmCallHandleStrContains, haystack: "hello", needle: "zzz", want: false},
-			{name: "has the prefix", trampoline: asmCallHandleStrHasPrefix, haystack: "hello", needle: "he", want: true},
-			{name: "has the suffix", trampoline: asmCallHandleStrHasSuffix, haystack: "hello", needle: "lo", want: true},
-			{name: "folds to equal", trampoline: asmCallHandleStrEqualFold, haystack: "Hello", needle: "hELLO", want: true},
+			{name: "contains a substring", trampoline: asmCallHandleStringsContains, haystack: "hello", needle: "ell", want: true},
+			{name: "does not contain", trampoline: asmCallHandleStringsContains, haystack: "hello", needle: "zzz", want: false},
+			{name: "has the prefix", trampoline: asmCallHandleStringsHasPrefix, haystack: "hello", needle: "he", want: true},
+			{name: "has the suffix", trampoline: asmCallHandleStringsHasSuffix, haystack: "hello", needle: "lo", want: true},
+			{name: "folds to equal", trampoline: asmCallHandleStringsEqualFold, haystack: "Hello", needle: "hELLO", want: true},
 		}
 
 		for _, tt := range tests {
@@ -227,10 +227,10 @@ func TestPathBStringTrampolinesCoverTheIntrinsics(t *testing.T) {
 			needle     string
 			want       int64
 		}{
-			{name: "the first occurrence", trampoline: asmCallHandleStrIndex, haystack: "abcabc", needle: "b", want: 1},
-			{name: "the last occurrence", trampoline: asmCallHandleStrLastIndex, haystack: "abcabc", needle: "b", want: 4},
-			{name: "an absent needle", trampoline: asmCallHandleStrIndex, haystack: "abc", needle: "z", want: -1},
-			{name: "the occurrence count", trampoline: asmCallHandleStrCount, haystack: "abcabc", needle: "b", want: 2},
+			{name: "the first occurrence", trampoline: asmCallHandleStringsIndex, haystack: "abcabc", needle: "b", want: 1},
+			{name: "the last occurrence", trampoline: asmCallHandleStringsLastIndex, haystack: "abcabc", needle: "b", want: 4},
+			{name: "an absent needle", trampoline: asmCallHandleStringsIndex, haystack: "abc", needle: "z", want: -1},
+			{name: "the occurrence count", trampoline: asmCallHandleStringsCount, haystack: "abcabc", needle: "b", want: 2},
 		}
 
 		for _, tt := range tests {
@@ -256,10 +256,10 @@ func TestPathBStringTrampolinesCoverTheIntrinsics(t *testing.T) {
 			operand    string
 			want       string
 		}{
-			{name: "trimming a cutset", trampoline: asmCallHandleStrTrim, source: "xxhixx", operand: "x", want: "hi"},
-			{name: "trimming a prefix", trampoline: asmCallHandleStrTrimPrefix, source: "prefix-body", operand: "prefix-", want: "body"},
-			{name: "trimming a suffix", trampoline: asmCallHandleStrTrimSuffix, source: "body-suffix", operand: "-suffix", want: "body"},
-			{name: "concatenation", trampoline: asmCallHandleConcatString, source: "ab", operand: "cd", want: "abcd"},
+			{name: "trimming a cutset", trampoline: asmCallHandleStringsTrim, source: "xxhixx", operand: "x", want: "hi"},
+			{name: "trimming a prefix", trampoline: asmCallHandleStringsTrimPrefix, source: "prefix-body", operand: "prefix-", want: "body"},
+			{name: "trimming a suffix", trampoline: asmCallHandleStringsTrimSuffix, source: "body-suffix", operand: "-suffix", want: "body"},
+			{name: "concatenation", trampoline: asmCallHandleConcatenateString, source: "ab", operand: "cd", want: "abcd"},
 		}
 
 		for _, tt := range tests {
@@ -278,19 +278,19 @@ func TestPathBStringTrampolinesCoverTheIntrinsics(t *testing.T) {
 	t.Run("a rune operand is read from the int bank", func(t *testing.T) {
 		t.Parallel()
 
-		registers := runPathB(t, asmCallHandleStrContainsRune, 0, 1, 2, func(r *Registers) {
+		registers := runPathB(t, asmCallHandleStringsContainsRune, 0, 1, 2, func(r *Registers) {
 			r.Strings[1] = "hello"
 			r.Ints[2] = 'e'
 		})
 		require.True(t, registers.Bools[0])
 
-		registers = runPathB(t, asmCallHandleStrIndexRune, 0, 1, 2, func(r *Registers) {
+		registers = runPathB(t, asmCallHandleStringsIndexRune, 0, 1, 2, func(r *Registers) {
 			r.Strings[1] = "hello"
 			r.Ints[2] = 'l'
 		})
 		require.Equal(t, int64(2), registers.Ints[0])
 
-		registers = runPathB(t, asmCallHandleConcatRuneString, 0, 1, 2, func(r *Registers) {
+		registers = runPathB(t, asmCallHandleConcatenateStringRune, 0, 1, 2, func(r *Registers) {
 			r.Strings[1] = "ab"
 			r.Ints[2] = 'c'
 		})
@@ -300,7 +300,7 @@ func TestPathBStringTrampolinesCoverTheIntrinsics(t *testing.T) {
 	t.Run("repeat reads its count from the int bank", func(t *testing.T) {
 		t.Parallel()
 
-		registers := runPathB(t, asmCallHandleStrRepeat, 0, 1, 2, func(r *Registers) {
+		registers := runPathB(t, asmCallHandleStringsRepeat, 0, 1, 2, func(r *Registers) {
 			r.Strings[1] = "ab"
 			r.Ints[2] = 3
 		})
@@ -310,7 +310,7 @@ func TestPathBStringTrampolinesCoverTheIntrinsics(t *testing.T) {
 	t.Run("split builds a slice in the general bank", func(t *testing.T) {
 		t.Parallel()
 
-		registers := runPathB(t, asmCallHandleStrSplit, 0, 1, 2, func(r *Registers) {
+		registers := runPathB(t, asmCallHandleStringsSplit, 0, 1, 2, func(r *Registers) {
 			r.Strings[1] = "a,b,c"
 			r.Strings[2] = ","
 		})
@@ -320,7 +320,7 @@ func TestPathBStringTrampolinesCoverTheIntrinsics(t *testing.T) {
 	t.Run("join reads a slice from the general bank", func(t *testing.T) {
 		t.Parallel()
 
-		registers := runPathB(t, asmCallHandleStrJoin, 0, 1, 2, func(r *Registers) {
+		registers := runPathB(t, asmCallHandleStringsJoin, 0, 1, 2, func(r *Registers) {
 			r.General[1] = reflect.ValueOf([]string{"a", "b"})
 			r.Strings[2] = "-"
 		})
@@ -351,35 +351,35 @@ func TestPathBTypedSliceAccessReadsAndWritesElements(t *testing.T) {
 			inspect    func(*testing.T, *Registers)
 		}{
 			{
-				name: "an int element", trampoline: asmCallHandleSliceGetInt, collection: []int{4, 5},
+				name: "an int element", trampoline: asmCallHandleGetElementInt64, collection: []int{4, 5},
 				inspect: func(t *testing.T, r *Registers) {
 					t.Helper()
 					require.Equal(t, int64(5), r.Ints[0])
 				},
 			},
 			{
-				name: "a float element", trampoline: asmCallHandleSliceGetFloat, collection: []float64{1.5, 2.5},
+				name: "a float element", trampoline: asmCallHandleGetElementFloat64, collection: []float64{1.5, 2.5},
 				inspect: func(t *testing.T, r *Registers) {
 					t.Helper()
 					require.InDelta(t, 2.5, r.Floats[0], 0)
 				},
 			},
 			{
-				name: "a string element", trampoline: asmCallHandleSliceGetString, collection: []string{"a", "b"},
+				name: "a string element", trampoline: asmCallHandleGetElementString, collection: []string{"a", "b"},
 				inspect: func(t *testing.T, r *Registers) {
 					t.Helper()
 					require.Equal(t, "b", r.Strings[0])
 				},
 			},
 			{
-				name: "a bool element", trampoline: asmCallHandleSliceGetBool, collection: []bool{false, true},
+				name: "a bool element", trampoline: asmCallHandleGetElementBool, collection: []bool{false, true},
 				inspect: func(t *testing.T, r *Registers) {
 					t.Helper()
 					require.True(t, r.Bools[0])
 				},
 			},
 			{
-				name: "a uint element", trampoline: asmCallHandleSliceGetUint, collection: []uint64{4, 5},
+				name: "a uint element", trampoline: asmCallHandleGetElementUint64, collection: []uint64{4, 5},
 				inspect: func(t *testing.T, r *Registers) {
 					t.Helper()
 					require.Equal(t, uint64(5), r.Uints[0])
@@ -404,7 +404,7 @@ func TestPathBTypedSliceAccessReadsAndWritesElements(t *testing.T) {
 		t.Parallel()
 
 		collection := []int{4, 5}
-		runPathB(t, asmCallHandleSliceSetInt, 0, 1, 2, func(r *Registers) {
+		runPathB(t, asmCallHandleSetElementInt64, 0, 1, 2, func(r *Registers) {
 			r.General[0] = reflect.ValueOf(collection)
 			r.Ints[1] = 1
 			r.Ints[2] = 9
@@ -419,7 +419,7 @@ func TestPathBIndexTrampolinesReachTheGeneralBank(t *testing.T) {
 	t.Run("a read boxes the element", func(t *testing.T) {
 		t.Parallel()
 
-		registers := runPathB(t, asmCallHandleIndex, 0, 1, 2, func(r *Registers) {
+		registers := runPathB(t, asmCallHandleGetElement, 0, 1, 2, func(r *Registers) {
 			r.General[1] = reflect.ValueOf([]string{"a", "b"})
 			r.Ints[2] = 1
 		})
@@ -430,7 +430,7 @@ func TestPathBIndexTrampolinesReachTheGeneralBank(t *testing.T) {
 		t.Parallel()
 
 		collection := []string{"a", "b"}
-		runPathB(t, asmCallHandleIndexSet, 0, 1, 2, func(r *Registers) {
+		runPathB(t, asmCallHandleSetElement, 0, 1, 2, func(r *Registers) {
 			r.General[0] = reflect.ValueOf(collection)
 			r.Ints[1] = 0
 			r.General[2] = reflect.ValueOf("z")
@@ -442,7 +442,7 @@ func TestPathBIndexTrampolinesReachTheGeneralBank(t *testing.T) {
 		t.Parallel()
 
 		destination := []int{0, 0, 0}
-		registers := runPathB(t, asmCallHandleCopy, 0, 1, 2, func(r *Registers) {
+		registers := runPathB(t, asmCallHandleCopyGeneral, 0, 1, 2, func(r *Registers) {
 			r.General[1] = reflect.ValueOf(destination)
 			r.General[2] = reflect.ValueOf([]int{7, 8})
 		})
@@ -451,7 +451,7 @@ func TestPathBIndexTrampolinesReachTheGeneralBank(t *testing.T) {
 	})
 }
 
-func TestPathBPackInterfaceBoxesTheNamedBank(t *testing.T) {
+func TestPathBBoxAsInterfaceBoxesTheNamedBank(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -460,8 +460,8 @@ func TestPathBPackInterfaceBoxesTheNamedBank(t *testing.T) {
 		load func(*Registers)
 		want any
 	}{
-		{name: "the int bank", kind: isa.RegisterInt, load: func(r *Registers) { r.Ints[1] = 4 }, want: 4},
-		{name: "the float bank", kind: isa.RegisterFloat, load: func(r *Registers) { r.Floats[1] = 1.5 }, want: 1.5},
+		{name: "the int bank", kind: isa.RegisterInt64, load: func(r *Registers) { r.Ints[1] = 4 }, want: 4},
+		{name: "the float bank", kind: isa.RegisterFloat64, load: func(r *Registers) { r.Floats[1] = 1.5 }, want: 1.5},
 		{name: "the string bank", kind: isa.RegisterString, load: func(r *Registers) { r.Strings[1] = "s" }, want: "s"},
 		{name: "the bool bank", kind: isa.RegisterBool, load: func(r *Registers) { r.Bools[1] = true }, want: true},
 	}
@@ -470,7 +470,7 @@ func TestPathBPackInterfaceBoxesTheNamedBank(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			registers := runPathB(t, asmCallHandlePackInterface, 0, 1, uint8(tt.kind), tt.load)
+			registers := runPathB(t, asmCallHandleBoxAsInterface, 0, 1, uint8(tt.kind), tt.load)
 			require.Equal(t, tt.want, registers.General[0].Interface())
 		})
 	}

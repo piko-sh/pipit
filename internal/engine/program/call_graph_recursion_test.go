@@ -160,7 +160,7 @@ func TestMayCreateSharedCellsLooksForAClosure(t *testing.T) {
 		t.Parallel()
 
 		function := NewNamedFunction("f")
-		Emit(function, isa.OpAddInt, 0, 1, 2)
+		Emit(function, isa.OpAddInt64, 0, 1, 2)
 
 		require.False(t, MayCreateSharedCells(function))
 	})
@@ -169,7 +169,7 @@ func TestMayCreateSharedCellsLooksForAClosure(t *testing.T) {
 		t.Parallel()
 
 		function := NewNamedFunction("f")
-		Emit(function, isa.OpAddInt, 0, 1, 2)
+		Emit(function, isa.OpAddInt64, 0, 1, 2)
 		Emit(function, isa.OpMakeClosure, 0, 0, 0)
 
 		require.True(t, MayCreateSharedCells(function))

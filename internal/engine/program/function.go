@@ -28,6 +28,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
+	"weak"
 
 	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
@@ -79,7 +80,7 @@ const (
 	// methodICSlotCount - 1.
 	MethodICVictimMask = methodICSlotCount - 1
 
-	// RangeCheckWindowSize is the instruction count of the fuseRangeCheckUintJumpFalse
+	// RangeCheckWindowSize is the instruction count of the fuseInRangeUint64ThenJumpIfFalse
 	// window.
 	RangeCheckWindowSize = 8
 
@@ -91,7 +92,7 @@ const (
 	// relative to the window start.
 	RangeCheckSecondLoadOffset = 4
 
-	// RangeCheckSecondMoveOffset is the position of the second MoveInt sub-op relative to
+	// RangeCheckSecondMoveOffset is the position of the second MoveInt64 sub-op relative to
 	// the window start.
 	RangeCheckSecondMoveOffset = 6
 
@@ -99,16 +100,17 @@ const (
 	// window start.
 	RangeCheckSecondJumpOffset = 7
 
-	// RangeCheckFirstNopOffset is the starting slot from which nop padding replaces consumed
-	// instructions inside the window.
-	RangeCheckFirstNopOffset = 3
+	// RangeCheckFirstNoOperationOffset is the starting slot from which nop padding replaces
+	// consumed instructions inside the window.
+	RangeCheckFirstNoOperationOffset = 3
 
 	// RangeCheckFirstJumpDelta is the expected signed offset on the first JumpIfFalse
 	// chaining into the second jump.
 	RangeCheckFirstJumpDelta = 3
 
 	// ThreeInstructionWindow is the minimum body remaining required to match any of the
-	// load+compare+jump triples (e.g. fuseEqUintConstJumpFalse, fuseMapIndexOkJumpFalse).
+	// load+compare+jump triples (e.g. fuseEqualUint64ImmediateThenJumpIfFalse,
+	// fuseGetMapOkThenJumpIfFalse).
 	ThreeInstructionWindow = 3
 
 	// interfaceMethodRequirementSeparator separates the name and arity fields of an encoded
@@ -214,7 +216,7 @@ type CompiledFunction struct {
 	// arena-allocated, sole-referenced and frame-confined. nil means no store qualified.
 	FieldStoreArenaSafePCs map[int]bool
 
-	// ArenaSafeAllocPCs lists opAllocIndirect PCs whose target local provably does not
+	// ArenaSafeAllocPCs lists opAllocateIndirect PCs whose target local provably does not
 	// escape the call frame. MUST be populated only by the escape analysis, because
 	// speculative entries cause use-after-free on arena Reset.
 	ArenaSafeAllocPCs map[int]bool
@@ -242,10 +244,10 @@ type CompiledFunction struct {
 	// compile time.
 	methodTable map[string]uint16
 
-	// GetMethodReceiverTypeNames carries the source-level type name the Compiler resolved at
-	// each isa.SubOpGetMethod site, keyed by PC, needed for named non-struct receivers whose
-	// type cannot be recovered from reflect at runtime. nil in the common case.
-	GetMethodReceiverTypeNames map[uint32]string
+	// BindMethodByNameReceiverTypeNames carries the source-level type name the Compiler
+	// resolved at each isa.SubOpBindMethodByName site, keyed by PC, needed for named
+	// non-struct receivers whose type cannot be recovered from reflect at runtime.
+	BindMethodByNameReceiverTypeNames map[uint32]string
 
 	// SpecialisationOrigin points back at the generic CompiledFunction that produced this
 	// specialised body. nil for non-specialised functions.
@@ -264,7 +266,9 @@ type CompiledFunction struct {
 	LayoutTypeWords atomic.Pointer[LayoutTypeWordSlice]
 
 	// MarshalShadowMemo memoises whether a reflect.Type can hold a leaf whose type declares
-	// MarshalJSON in this program's method tables.
+	// MarshalJSON in this program's method tables, and which script method an any-typed
+	// native sink refuses. Fill it through StoreMarshalShadow, which holds it to
+	// boundedMemoLimit entries, since guest code can make types without limit.
 	MarshalShadowMemo sync.Map
 
 	// InPlaceHeaderReusePCs lists append PCs whose source register provably holds the only
@@ -297,19 +301,19 @@ type CompiledFunction struct {
 	// so heap promotions and closure captures are reflected.
 	NamedResultNames []string
 
-	// StringConstants holds string constants referenced by opLoadStringConst.
+	// StringConstants holds string constants referenced by opLoadStringConstant.
 	StringConstants []string
 
 	// Functions holds nested function literals (closures) defined within the enclosing
 	// function. Referenced by opMakeClosure via index.
 	Functions []*CompiledFunction
 
-	// GeneralConstants holds reflect.Value constants referenced by opLoadGeneralConst. These
-	// include type values, function values, and complex constants.
+	// GeneralConstants holds reflect.Value constants referenced by opLoadGeneralConstant.
+	// These include type values, function values, and complex constants.
 	GeneralConstants []reflect.Value
 
 	// TypeTable holds reflect.Type values referenced by type operation instructions
-	// (opTypeAssert, opConvert, opMakeSlice, etc.).
+	// (opTypeAssert, opConvertGeneral, opMakeSlice, etc.).
 	TypeTable []reflect.Type
 
 	// GeneralConstantDescriptors records how each GeneralConstants entry was created so it
@@ -327,11 +331,11 @@ type CompiledFunction struct {
 	// (reflect has no InterfaceOf). nil or empty means the genuine empty interface.
 	TypeTableInterfaceMethods [][]string
 
-	// BoolConstants holds bool constants referenced by opLoadBoolConst.
+	// BoolConstants holds bool constants referenced by isa.SubOpLoadBoolConstant.
 	BoolConstants []bool
 
-	// CallSites describes each function call in the bytecode. opCall references call sites
-	// by index.
+	// CallSites describes each function call in the bytecode. isa.SubOpCall references call
+	// sites by index.
 	CallSites []CallSite
 
 	// ParameterEscapes records, per parameter, whether it escapes the owning function's
@@ -339,16 +343,16 @@ type CompiledFunction struct {
 	// caller-side escape analysis consults this to decide whether passing &local escapes.
 	ParameterEscapes []bool
 
-	// ComplexConstants holds complex128 constants referenced by opLoadComplexConst.
+	// ComplexConstants holds complex128 constants referenced by opLoadComplex128Constant.
 	ComplexConstants []complex128
 
-	// UintConstants holds uint64 constants referenced by opLoadUintConst.
+	// UintConstants holds uint64 constants referenced by opLoadUint64Constant.
 	UintConstants []uint64
 
-	// IntConstants holds int64 constants referenced by opLoadIntConst.
+	// IntConstants holds int64 constants referenced by opLoadInt64Constant.
 	IntConstants []int64
 
-	// FloatConstants holds float64 constants referenced by opLoadFloatConst.
+	// FloatConstants holds float64 constants referenced by opLoadFloat64Constant.
 	FloatConstants []float64
 
 	// ParameterTypeRefs records each parameter's declared types.Type, used by
@@ -565,6 +569,10 @@ type CompiledFunction struct {
 	// and never inlines a caller of it. Compile-time only.
 	InspectsCallStack bool
 
+	// CannotObserveCallers is true when neither the function nor anything it calls can
+	// inspect the call stack.
+	CannotObserveCallers bool
+
 	// MethodReceiverReflectType is the receiver's exact reflect type for a method. nil for
 	// functions and loaded bundles.
 	MethodReceiverReflectType reflect.Type
@@ -572,6 +580,376 @@ type CompiledFunction struct {
 	// RuntimeName is the name runtime.FuncForPC and stack dumps report. Empty for loaded
 	// bundles.
 	RuntimeName string
+
+	// optimisticMakePlaced is set on a root once a run placed a heap-flagged make in the
+	// arena (optimistic placement).
+	optimisticMakePlaced atomic.Bool
+
+	// optimisticMakeVetoed is set on a root once, after optimisticMakePlaced, a callback VM
+	// running this root cloned a string of another arena; later runs then keep such makes on
+	// the heap (engine.optimisticMake).
+	optimisticMakeVetoed atomic.Bool
+
+	// hostTopLevelCalls is set on a root once the host declared that it calls the functions
+	// the program hands it only at top level (DeclareHostTopLevelCalls).
+	hostTopLevelCalls atomic.Bool
+
+	// licenceRejected is set on every function of a program the licence checker rejected for
+	// a defect, so its VMs abandon their arenas (MarkLicenceRejected).
+	licenceRejected atomic.Bool
+
+	// finaliserUse caches, on a root, whether its program calls runtime.SetFinalizer
+	// (RecordFinaliserUse). It is zero until recorded, then finaliserUseSets for a program
+	// that does, or the number of functions in the table it scanned, plus one, shifted past
+	// that bit.
+	finaliserUse atomic.Uint64
+
+	// conversionArenaVetoes holds the PCs of []byte(s) conversions and strings.Split
+	// intrinsics whose result was placed in the arena in an epoch whose release found the
+	// slab holding it revoked.
+	conversionArenaVetoes atomic.Pointer[map[int]bool]
+
+	// receiverMethods maps generic methods and runtime receiver types to specialised body
+	// indices.
+	receiverMethods map[ReceiverMethodKey]uint16
+
+	// receiverBodies is receiverMethods resolved to the functions themselves, for dispatch.
+	receiverBodies map[receiverBodyKey]*CompiledFunction
+
+	// receiverMethodOwners records each method that has entries in receiverMethods.
+	receiverMethodOwners map[*CompiledFunction]struct{}
+
+	// marshalShadowCount counts keys in MarshalShadowMemo.
+	//
+	// This and later fields must stay last to preserve offsets read by assembly.
+	marshalShadowCount atomic.Int64
+
+	// LocalContainerAllocPCs lists map allocation PCs used by LocalContainerStorePCs.
+	//
+	// The licence checker infers both tables from the final body. Body rewrites invalidate
+	// them.
+	LocalContainerAllocPCs PCSet
+
+	// LocalContainerStorePCs lists the PCs of map stores whose receiver is, on every path, a
+	// map from LocalContainerAllocPCs that nothing has handed off.
+	LocalContainerStorePCs PCSet
+}
+
+// MonomorphicCacheEntry is an immutable atomic snapshot of a call site's resolved
+// monomorphic dispatch. Once published, an entry is never mutated.
+type MonomorphicCacheEntry struct {
+	// ReceiverType is the dereferenced concrete receiver type the cache observed. nil when
+	// the entry is the disabled sentinel.
+	ReceiverType reflect.Type
+
+	// Callee caches the resolved *CompiledFunction so the hot path skips the function-table
+	// indirection. Atomically published as part of the entry.
+	Callee *CompiledFunction
+
+	// ReceiverTypeWord is ReceiverType's *abi.Type data word, letting the dispatch hot path
+	// compare a single machine word instead of a reflect.Type interface equality.
+	ReceiverTypeWord uintptr
+
+	// FunctionIndex is the methodTable-resolved FunctionIndex for ReceiverType. Only valid
+	// when ReceiverType is non-nil.
+	FunctionIndex uint16
+}
+
+// InnerCalleeCacheEntry is an immutable atomic snapshot of an inner-Eval callee
+// resolution within an InlineDescriptor. Once published, never mutated.
+type InnerCalleeCacheEntry struct {
+	// ReceiverType is the dereferenced concrete receiver type this entry was resolved for.
+	// nil entries are never published.
+	ReceiverType reflect.Type
+
+	// Callee is the resolved *CompiledFunction for the inner Eval dispatch on ReceiverType.
+	Callee *CompiledFunction
+}
+
+// InlineShape selects the runtime inlining path for a call site. InlineShapeNone is the
+// default.
+type InlineShape uint8
+
+// InlineDescriptor caches the classification of a call-site receiver pair. Atomically
+// published; tearing only costs a re-classification, never correctness.
+type InlineDescriptor struct {
+	// RecvType is the concrete receiver type this descriptor was classified against. nil
+	// entries are never published.
+	RecvType reflect.Type
+
+	// Callee is the resolved compiled function for this (site, type). Always populated - the
+	// fallback path needs it even when the inline shape is none.
+	Callee *CompiledFunction
+
+	// InnerCalleeSlots memoises inner Eval callee resolutions, using atomic load/store so
+	// entries cannot tear with round-robin eviction via InnerCalleeVictim.
+	InnerCalleeSlots [InnerCalleeSlotCount]unsafe.Pointer
+
+	// MaskValue captures the trailing `& const` mask in the binop body.
+	MaskValue uint64
+
+	// LeftLayout is the field-read layout for the binop method's left operand access. Valid
+	// only when shape == InlineShapeBinopUint.
+	LeftLayout StructFieldLayout
+
+	// RightLayout is the field-read layout for the binop method's right operand access.
+	// Valid only when shape == InlineShapeBinopUint.
+	RightLayout StructFieldLayout
+
+	// InnerCalleeVictim is the round-robin eviction counter for InnerCalleeSlots. Not
+	// atomically updated; tearing only costs a sub-optimal eviction, never correctness.
+	InnerCalleeVictim uint32
+
+	// BinopOpcode encodes which arithmetic op the binop body applies (opAddUint64,
+	// opSubtractUint64, opMultiplyUint64, isa.OpRemainderUint64). Valid only when shape ==
+	// InlineShapeBinopUint.
+	BinopOpcode isa.Opcode
+
+	// Shape selects the inlined runtime path. InlineShapeNone means "fall back to standard
+	// pushCompiledFrame or runTinyLeafInline".
+	Shape InlineShape
+
+	// MaskApplies is true when the binop body has a trailing `& MaskValue` masking step.
+	MaskApplies bool
+}
+
+// SpecialisationKey is a fixed-size tuple of reflect.Type used as a generic instantiation
+// key, with the Names field disambiguating distinct named types that erase to the same
+// reflect.Type (such as `Celsius` vs `Fahrenheit`, both float64).
+type SpecialisationKey struct {
+	// Types holds the reflect.Type of each generic type-argument in instantiation order.
+	Types [MaxSpecialisationTypeArgs]reflect.Type
+
+	// Names holds the fully-qualified source type string per type-argument, disambiguating
+	// named types that erase to the same reflect.Type.
+	Names [MaxSpecialisationTypeArgs]string
+}
+
+// UpvalueDescriptor describes a single captured variable in a closure.
+type UpvalueDescriptor struct {
+	// Index is the register index in the enclosing scope, or the upvalue index if IsLocal is
+	// false (transitive capture).
+	Index uint8
+
+	// Kind is the register bank of the captured variable. When the variable is heap-promoted
+	// (IsIndirect is true) this is registerGeneral because the parent's register holds the
+	// *T pointer to the heap cell.
+	Kind isa.RegisterKind
+
+	// IsLocal is true when the upvalue captures a register directly from the immediately
+	// enclosing function. When false, the upvalue is captured transitively from the
+	// enclosing function's own upvalue table.
+	IsLocal bool
+
+	// IsIndirect is true when the captured variable is heap-promoted in the enclosing scope.
+	// The closure reads and writes through the *T pointer rather than per-kind snapshots.
+	IsIndirect bool
+
+	// OriginalKind names the register bank the variable had before heap promotion.
+	// Meaningful only when IsIndirect is true.
+	OriginalKind isa.RegisterKind
+}
+
+// CallSite describes a function call in the compiled bytecode. It stores all the
+// information the VM needs to set up arguments and retrieve return values without
+// additional opcodes.
+//
+//exhaustruct:ignore
+type CallSite struct {
+	// MethodICSlots is the polymorphic inline cache for isa.SubOpCallMethod dispatch, read
+	// and published via atomic load/store so concurrent goroutines cannot tear an entry and
+	// wrong-eviction only costs a re-resolve, never correctness. Runtime-only.
+	MethodICSlots [methodICSlotCount]unsafe.Pointer
+
+	// InlineDescriptorSlots caches per-receiver-type InlineDescriptor classifications for
+	// the inlineable method-call fast path. Atomic load/store, round-robin eviction.
+	InlineDescriptorSlots [inlineDescriptorSlotCount]unsafe.Pointer
+
+	// RuntimeVariadicSliceType is the reflect.Type of the variadic parameter's slice (such
+	// as []int for ...int). nil for non-variadic sites and spread-slice sites.
+	RuntimeVariadicSliceType reflect.Type
+
+	// nativeParams caches the callee's parameter types and variadic flag for native calls as
+	// a raw unsafe.Pointer (not atomic.Pointer) because CallSite values are copied and
+	// atomic.Pointer embeds noCopy. Use NativeParamCacheLoad / NativeParamCacheStore.
+	nativeParams unsafe.Pointer
+
+	// NativeFastPath publishes the fast-path classification for native call sites, with nil
+	// meaning unprobed. Read and written atomically because call sites are shared across
+	// per-goroutine VMs.
+	NativeFastPath unsafe.Pointer
+
+	// CachedClosureRoot is the root *CompiledFunction extracted from the last-seen closure,
+	// paired with CachedClosure.
+	CachedClosureRoot *CompiledFunction
+
+	// LastReceiverCallee partners with LastReceiverTypeWord; the pair is written together on
+	// every IC resolve. Tearing safety: see LastReceiverTypeWord below.
+	LastReceiverCallee *CompiledFunction
+
+	// CachedCallee is the pre-bound *CompiledFunction for the FunctionIndex, avoiding the
+	// function-table lookup on the hot path. nil for closure calls and unresolved callees.
+	CachedCallee *CompiledFunction
+
+	// CachedClosure weakly names the last-seen *RuntimeClosure at a closure call site, as a
+	// pointer to its first byte.
+	CachedClosure weak.Pointer[byte]
+
+	// CachedClosureCallee is the *CompiledFunction extracted from the last-seen closure
+	// value, paired with CachedClosure.
+	CachedClosureCallee *CompiledFunction
+
+	// ParameterInterfaceFlags marks each fixed parameter that has interface kind, with nil
+	// when no interface parameters exist. Index 0 is the first fixed parameter (after the
+	// receiver for methods).
+	ParameterInterfaceFlags []bool
+
+	// ArgCopyProgram is the pre-computed per-argument copy plan for this call site. nil for
+	// sites where the callee was not resolved at compile time.
+	ArgCopyProgram []CallArgCopy
+
+	// ArgumentStaticTypeNames holds each argument's bare source-level named type (such as
+	// "Colour"), with an empty string for unnamed types. Populated only for native call
+	// sites.
+	ArgumentStaticTypeNames []string
+
+	// ArgumentStaticTypeStrings holds each argument's Go-syntax type representation (such as
+	// "int", "*main.Bomb"), used by the %T fmt interceptor.
+	ArgumentStaticTypeStrings []string
+
+	// Arguments records where each argument lives in the CALLER's frame.
+	Arguments []VarLocation
+
+	// LinkedTypeArgs holds the instantiated type arguments for a //piko:link-routed generic
+	// call, resolved at compile time from types.Info.Instances. When non-empty the native
+	// call handler prepends one reflect.Type value per element before the regular arguments
+	// and skips the NativeFastPath / nativeParams caches.
+	LinkedTypeArgs []reflect.Type
+
+	// Returns records where to put each return value in the CALLER's frame after the call
+	// completes.
+	Returns []VarLocation
+
+	// AsmMethodRejectedTypeWords is a small negative cache of rejected receiver type words
+	// at this call site.
+	AsmMethodRejectedTypeWords [AsmMethodRejectedCacheSize]uintptr
+
+	// LastReceiverTypeWord is the raw *abi.Type word of the most recently seen receiver for
+	// the single-compare hot path.
+	LastReceiverTypeWord uintptr
+
+	// InlineDescriptorVictim is the round-robin eviction counter for InlineDescriptorSlots.
+	// Not atomically updated; tearing only costs a sub-optimal eviction, never correctness.
+	InlineDescriptorVictim uint32
+
+	// MethodICVictim is the round-robin eviction counter for MethodICSlots. Incremented
+	// atomically on every cache miss.
+	MethodICVictim uint32
+
+	// FunctionIndex is the index into the enclosing function's functions slice for the
+	// callee. Ignored when IsClosure is true.
+	FunctionIndex uint16
+
+	// ClosureRegister is the general register holding the closure value. Only used when
+	// IsClosure is true.
+	ClosureRegister uint8
+
+	// NativeRegister is the general register holding the native function value. Only used
+	// when IsNative is true.
+	NativeRegister uint8
+
+	// IsClosure is true when the callee is a closure stored in a general register rather
+	// than a static function reference.
+	IsClosure bool
+
+	// IsNative is true when the callee is a native Go function stored in a general register
+	// (not a compiled function).
+	IsNative bool
+
+	// IsMethod is true when the callee is a bound method obtained via
+	// isa.SubOpBindMethodByName, where handleCallNative validates the cached fast path
+	// against the current receiver address before reuse.
+	IsMethod bool
+
+	// MethodReceiverRegister is the general register holding the receiver for method calls
+	// (only valid when IsMethod is true). Used to validate the cached fast path by comparing
+	// the receiver address across invocations.
+	MethodReceiverRegister uint8
+
+	// RuntimeVariadicNumFixed counts the fixed (non-variadic) parameters that precede the
+	// variadic slice parameter in the callee signature. Only meaningful when
+	// RuntimeVariadicSliceType is non-nil.
+	RuntimeVariadicNumFixed uint8
+
+	// IsEllipsisSpread is true when the source call used the `...` ellipsis spread on the
+	// final argument, requiring dispatch via reflect.Value.CallSlice instead of Call (so the
+	// trailing slice is passed as the variadic parameter rather than spread into individual
+	// values). Only meaningful for native calls.
+	IsEllipsisSpread bool
+
+	// BlocksHostGoroutine marks a native call that parks the host goroutine (such as
+	// sync.WaitGroup.Wait, sync.Mutex.Lock). In safe mode the family lock must be released
+	// around such a call to avoid deadlock.
+	BlocksHostGoroutine bool
+
+	// TailReuseFrameInPlace marks a tail-call site that can reuse the caller's register file
+	// in place because the callee's register counts match in every bank.
+	TailReuseFrameInPlace bool
+
+	// TailArgsAlias marks a tail-call site whose argument copy needs a snapshot to avoid
+	// source-destination aliasing. Only meaningful when TailReuseFrameInPlace is true.
+	TailArgsAlias bool
+
+	// RecursionUnrolled marks a self-recursive call site already spliced once, preventing
+	// infinite expansion.
+	RecursionUnrolled bool
+
+	// ByteViewArguments marks, one bit per argument index below 64, the arguments of a
+	// native call that are a []byte(s) conversion the compiler emitted immediately before
+	// the call, into a temporary only the call reads.
+	ByteViewArguments uint64
+}
+
+// NativeParamCache is a call site's resolved native-call parameter information. Immutable
+// once stored.
+type NativeParamCache struct {
+	// Types are the callee's declared parameter types, in declaration order.
+	Types []reflect.Type
+
+	// IsVariadic is the callee's reflect.Type.IsVariadic result.
+	IsVariadic bool
+
+	// Sleep is true for time.Sleep (or the wall clock's Sleep the service installs in its
+	// place), which the VM runs as an interruptible wait so a deadline can end it.
+	Sleep bool
+
+	// FmtArguments is true for a variadic ...any function of package fmt: its operands are
+	// formatted, so synthesised struct values are wrapped to hide the sentinel field.
+	FmtArguments bool
+
+	// FmtScan is true for the scanning functions of package fmt (Scan, Sscanf, Fscanln,
+	// ...): their operands are pointers to fill, which take the ordinary interface adapters
+	// (a script Scan method) rather than the per-verb printing wrappers.
+	FmtScan bool
+
+	// AnySink is the engine's classification of what the callee does with its `any`
+	// operands.
+	AnySink uint8
+}
+
+// InterfaceMethodRequirement is a decoded interface method requirement.
+type InterfaceMethodRequirement struct {
+	// Name is the method name.
+	Name string
+
+	// Shape is the SignatureShapeString of the required method, or "" when unrecorded.
+	Shape string
+
+	// Params is the required parameter count, or -1 when unrecorded.
+	Params int
+
+	// Results is the required result count, or -1 when unrecorded.
+	Results int
 }
 
 // NewNamedFunction returns an empty compiled function carrying only a name.
@@ -747,11 +1125,11 @@ func (compiledFunction *CompiledFunction) ReflectMethodExprType() (reflect.Type,
 		return precise, true
 	}
 	inTypes := make([]reflect.Type, len(compiledFunction.ParameterKinds))
-	for i, k := range compiledFunction.ParameterKinds {
-		if k == isa.RegisterGeneral {
+	for i, kind := range compiledFunction.ParameterKinds {
+		if kind == isa.RegisterGeneral {
 			inTypes[i] = reflect.TypeFor[any]()
 		} else {
-			inTypes[i] = KindDefaultReflectType(k)
+			inTypes[i] = KindDefaultReflectType(kind)
 		}
 	}
 	outTypes := make([]reflect.Type, len(compiledFunction.ResultKinds))
@@ -775,6 +1153,61 @@ func (compiledFunction *CompiledFunction) ResultReflectType(index int, kind isa.
 		return compiledFunction.ResultReflectTypes[index]
 	}
 	return KindDefaultReflectType(kind)
+}
+
+// ConversionArenaVetoed reports whether the arena-placed result of the conversion or
+// split at pc was found to escape.
+//
+// Takes pc (int) which is the instruction's program counter.
+//
+// Returns bool which is true when the site builds its result on the heap.
+func (compiledFunction *CompiledFunction) ConversionArenaVetoed(pc int) bool {
+	vetoes := compiledFunction.conversionArenaVetoes.Load()
+	return vetoes != nil && (*vetoes)[pc]
+}
+
+// VetoConversionArena records that the arena-placed result of the conversion or split at
+// programCounter escaped.
+//
+// Takes programCounter (int) which is the instruction's program counter.
+func (compiledFunction *CompiledFunction) VetoConversionArena(programCounter int) {
+	for {
+		previous := compiledFunction.conversionArenaVetoes.Load()
+		if previous != nil && (*previous)[programCounter] {
+			return
+		}
+		next := make(map[int]bool, 1)
+		if previous != nil {
+			for key := range *previous {
+				next[key] = true
+			}
+		}
+		next[programCounter] = true
+		if compiledFunction.conversionArenaVetoes.CompareAndSwap(previous, &next) {
+			return
+		}
+	}
+}
+
+// ArenaPlacementVetoed reports whether the allocation at pc was found to escape after an
+// arena placement (a pointee in a KRef chunk, or a closure or cell in a closure chunk),
+// so it allocates on the heap.
+//
+// The vetoes share the conversions' table. A program counter names one instruction, so
+// the conversion and allocation sites never collide.
+//
+// Takes pc (int) which is the allocation's program counter.
+//
+// Returns bool which is true when the site allocates on the heap.
+func (compiledFunction *CompiledFunction) ArenaPlacementVetoed(pc int) bool {
+	return compiledFunction.ConversionArenaVetoed(pc)
+}
+
+// VetoArenaPlacement records that the allocation at pc escaped after an arena placement.
+//
+// Takes pc (int) which is the allocation's program counter.
+func (compiledFunction *CompiledFunction) VetoArenaPlacement(pc int) {
+	compiledFunction.VetoConversionArena(pc)
 }
 
 // preciseMethodExprType builds a method expression's type from the recorded receiver type
@@ -801,285 +1234,6 @@ func (compiledFunction *CompiledFunction) preciseMethodExprType() (reflect.Type,
 	return reflect.FuncOf(inTypes, outTypes, signature.IsVariadic()), true
 }
 
-// MonomorphicCacheEntry is an immutable atomic snapshot of a call site's resolved
-// monomorphic dispatch. Once published, an entry is never mutated.
-type MonomorphicCacheEntry struct {
-	// ReceiverType is the dereferenced concrete receiver type the cache observed. nil when
-	// the entry is the disabled sentinel.
-	ReceiverType reflect.Type
-
-	// Callee caches the resolved *CompiledFunction so the hot path skips the function-table
-	// indirection. Atomically published as part of the entry.
-	Callee *CompiledFunction
-
-	// ReceiverTypeWord is ReceiverType's *abi.Type data word, letting the dispatch hot path
-	// compare a single machine word instead of a reflect.Type interface equality.
-	ReceiverTypeWord uintptr
-
-	// FunctionIndex is the methodTable-resolved FunctionIndex for ReceiverType. Only valid
-	// when ReceiverType is non-nil.
-	FunctionIndex uint16
-}
-
-// InnerCalleeCacheEntry is an immutable atomic snapshot of an inner-Eval callee
-// resolution within an InlineDescriptor. Once published, never mutated.
-type InnerCalleeCacheEntry struct {
-	// ReceiverType is the dereferenced concrete receiver type this entry was resolved for.
-	// nil entries are never published.
-	ReceiverType reflect.Type
-
-	// Callee is the resolved *CompiledFunction for the inner Eval dispatch on ReceiverType.
-	Callee *CompiledFunction
-}
-
-// InlineShape selects the runtime inlining path for a call site. InlineShapeNone is the
-// default.
-type InlineShape uint8
-
-// InlineDescriptor caches the classification of a call-site receiver pair. Atomically
-// published; tearing only costs a re-classification, never correctness.
-type InlineDescriptor struct {
-	// RecvType is the concrete receiver type this descriptor was classified against. nil
-	// entries are never published.
-	RecvType reflect.Type
-
-	// Callee is the resolved compiled function for this (site, type). Always populated - the
-	// fallback path needs it even when the inline shape is none.
-	Callee *CompiledFunction
-
-	// InnerCalleeSlots memoises inner Eval callee resolutions, using atomic load/store so
-	// entries cannot tear with round-robin eviction via InnerCalleeVictim.
-	InnerCalleeSlots [InnerCalleeSlotCount]unsafe.Pointer
-
-	// MaskValue captures the trailing `& const` mask in the binop body.
-	MaskValue uint64
-
-	// LeftLayout is the field-read layout for the binop method's left operand access. Valid
-	// only when shape == InlineShapeBinopUint.
-	LeftLayout StructFieldLayout
-
-	// RightLayout is the field-read layout for the binop method's right operand access.
-	// Valid only when shape == InlineShapeBinopUint.
-	RightLayout StructFieldLayout
-
-	// InnerCalleeVictim is the round-robin eviction counter for InnerCalleeSlots. Not
-	// atomically updated; tearing only costs a sub-optimal eviction, never correctness.
-	InnerCalleeVictim uint32
-
-	// BinopOpcode encodes which arithmetic op the binop body applies (opAddUint, opSubUint,
-	// opMulUint, opModUint). Valid only when shape == InlineShapeBinopUint.
-	BinopOpcode isa.Opcode
-
-	// Shape selects the inlined runtime path. InlineShapeNone means "fall back to standard
-	// pushCompiledFrame or runTinyLeafInline".
-	Shape InlineShape
-
-	// MaskApplies is true when the binop body has a trailing `& MaskValue` masking step.
-	MaskApplies bool
-}
-
-// SpecialisationKey is a fixed-size tuple of reflect.Type used as a generic instantiation
-// key, with the Names field disambiguating distinct named types that erase to the same
-// reflect.Type (such as `Celsius` vs `Fahrenheit`, both float64).
-type SpecialisationKey struct {
-	// Types holds the reflect.Type of each generic type-argument in instantiation order.
-	Types [MaxSpecialisationTypeArgs]reflect.Type
-
-	// Names holds the fully-qualified source type string per type-argument, disambiguating
-	// named types that erase to the same reflect.Type.
-	Names [MaxSpecialisationTypeArgs]string
-}
-
-// UpvalueDescriptor describes a single captured variable in a closure.
-type UpvalueDescriptor struct {
-	// Index is the register index in the enclosing scope, or the upvalue index if IsLocal is
-	// false (transitive capture).
-	Index uint8
-
-	// Kind is the register bank of the captured variable. When the variable is heap-promoted
-	// (IsIndirect is true) this is registerGeneral because the parent's register holds the
-	// *T pointer to the heap cell.
-	Kind isa.RegisterKind
-
-	// IsLocal is true when the upvalue captures a register directly from the immediately
-	// enclosing function. When false, the upvalue is captured transitively from the
-	// enclosing function's own upvalue table.
-	IsLocal bool
-
-	// IsIndirect is true when the captured variable is heap-promoted in the enclosing scope.
-	// The closure reads and writes through the *T pointer rather than per-kind snapshots.
-	IsIndirect bool
-
-	// OriginalKind names the register bank the variable had before heap promotion.
-	// Meaningful only when IsIndirect is true.
-	OriginalKind isa.RegisterKind
-}
-
-// CallSite describes a function call in the compiled bytecode. It stores all the
-// information the VM needs to set up arguments and retrieve return values without
-// additional opcodes.
-//
-//exhaustruct:ignore
-type CallSite struct {
-	// MethodICSlots is the polymorphic inline cache for opCallMethod dispatch, read and
-	// published via atomic load/store so concurrent goroutines cannot tear an entry and
-	// wrong-eviction only costs a re-resolve, never correctness. Runtime-only.
-	MethodICSlots [methodICSlotCount]unsafe.Pointer
-
-	// InlineDescriptorSlots caches per-receiver-type InlineDescriptor classifications for
-	// the inlineable method-call fast path. Atomic load/store, round-robin eviction.
-	InlineDescriptorSlots [inlineDescriptorSlotCount]unsafe.Pointer
-
-	// RuntimeVariadicSliceType is the reflect.Type of the variadic parameter's slice (such
-	// as []int for ...int). nil for non-variadic sites and spread-slice sites.
-	RuntimeVariadicSliceType reflect.Type
-
-	// nativeParams caches the callee's parameter types and variadic flag for native calls as
-	// a raw unsafe.Pointer (not atomic.Pointer) because CallSite values are copied and
-	// atomic.Pointer embeds noCopy. Use NativeParamCacheLoad / NativeParamCacheStore.
-	nativeParams unsafe.Pointer
-
-	// NativeFastPath publishes the fast-path classification for native call sites, with nil
-	// meaning unprobed. Read and written atomically because call sites are shared across
-	// per-goroutine VMs.
-	NativeFastPath unsafe.Pointer
-
-	// CachedClosureRoot is the root *CompiledFunction extracted from the last-seen closure,
-	// paired with CachedClosurePtr.
-	CachedClosureRoot *CompiledFunction
-
-	// LastReceiverCallee partners with LastReceiverTypeWord; the pair is written together on
-	// every IC resolve. Tearing safety: see LastReceiverTypeWord below.
-	LastReceiverCallee *CompiledFunction
-
-	// CachedCallee is the pre-bound *CompiledFunction for the FunctionIndex, avoiding the
-	// function-table lookup on the hot path. nil for closure calls and unresolved callees.
-	CachedCallee *CompiledFunction
-
-	// CachedClosurePtr caches the last-seen *RuntimeClosure raw pointer at a closure call
-	// site. Only read and written when the family has no goroutines, because CallSites are
-	// shared and a concurrent multi-word update would tear.
-	CachedClosurePtr unsafe.Pointer
-
-	// CachedClosureCallee is the *CompiledFunction extracted from the last-seen closure
-	// value, paired with CachedClosurePtr.
-	CachedClosureCallee *CompiledFunction
-
-	// NativeFunctionPath caches the dotted symbol identifier (such as "net/http.Get") for
-	// CapabilityHook consultation, resolved lazily via runtime.FuncForPC. Runtime-only.
-	NativeFunctionPath string
-
-	// ParameterInterfaceFlags marks each fixed parameter that has interface kind, with nil
-	// when no interface parameters exist. Index 0 is the first fixed parameter (after the
-	// receiver for methods).
-	ParameterInterfaceFlags []bool
-
-	// CachedClosureUpvalues holds the upvalue cells extracted from the last-seen closure,
-	// paired with CachedClosurePtr.
-	CachedClosureUpvalues []*UpvalueCell
-
-	// ArgCopyProgram is the pre-computed per-argument copy plan for this call site. nil for
-	// sites where the callee was not resolved at compile time.
-	ArgCopyProgram []CallArgCopy
-
-	// ArgumentStaticTypeNames holds each argument's bare source-level named type (such as
-	// "Colour"), with an empty string for unnamed types. Populated only for native call
-	// sites.
-	ArgumentStaticTypeNames []string
-
-	// ArgumentStaticTypeStrings holds each argument's Go-syntax type representation (such as
-	// "int", "*main.Bomb"), used by the %T fmt interceptor.
-	ArgumentStaticTypeStrings []string
-
-	// Arguments records where each argument lives in the CALLER's frame.
-	Arguments []VarLocation
-
-	// LinkedTypeArgs holds the instantiated type arguments for a //piko:link-routed generic
-	// call, resolved at compile time from types.Info.Instances. When non-empty the native
-	// call handler prepends one reflect.Type value per element before the regular arguments
-	// and skips the NativeFastPath / nativeParams caches.
-	LinkedTypeArgs []reflect.Type
-
-	// Returns records where to put each return value in the CALLER's frame after the call
-	// completes.
-	Returns []VarLocation
-
-	// AsmMethodRejectedTypeWords is a small negative cache of rejected receiver type words
-	// at this call site.
-	AsmMethodRejectedTypeWords [AsmMethodRejectedCacheSize]uintptr
-
-	// LastReceiverTypeWord is the raw *abi.Type word of the most recently seen receiver for
-	// the single-compare hot path.
-	LastReceiverTypeWord uintptr
-
-	// InlineDescriptorVictim is the round-robin eviction counter for InlineDescriptorSlots.
-	// Not atomically updated; tearing only costs a sub-optimal eviction, never correctness.
-	InlineDescriptorVictim uint32
-
-	// MethodICVictim is the round-robin eviction counter for MethodICSlots. Incremented
-	// atomically on every cache miss.
-	MethodICVictim uint32
-
-	// FunctionIndex is the index into the enclosing function's functions slice for the
-	// callee. Ignored when IsClosure is true.
-	FunctionIndex uint16
-
-	// ClosureRegister is the general register holding the closure value. Only used when
-	// IsClosure is true.
-	ClosureRegister uint8
-
-	// NativeRegister is the general register holding the native function value. Only used
-	// when IsNative is true.
-	NativeRegister uint8
-
-	// IsClosure is true when the callee is a closure stored in a general register rather
-	// than a static function reference.
-	IsClosure bool
-
-	// IsNative is true when the callee is a native Go function stored in a general register
-	// (not a compiled function).
-	IsNative bool
-
-	// IsMethod is true when the callee is a bound method obtained via isa.SubOpGetMethod,
-	// where handleCallNative validates the cached fast path against the current receiver
-	// address before reuse.
-	IsMethod bool
-
-	// MethodReceiverRegister is the general register holding the receiver for method calls
-	// (only valid when IsMethod is true). Used to validate the cached fast path by comparing
-	// the receiver address across invocations.
-	MethodReceiverRegister uint8
-
-	// RuntimeVariadicNumFixed counts the fixed (non-variadic) parameters that precede the
-	// variadic slice parameter in the callee signature. Only meaningful when
-	// RuntimeVariadicSliceType is non-nil.
-	RuntimeVariadicNumFixed uint8
-
-	// IsEllipsisSpread is true when the source call used the `...` ellipsis spread on the
-	// final argument, requiring dispatch via reflect.Value.CallSlice instead of Call (so the
-	// trailing slice is passed as the variadic parameter rather than spread into individual
-	// values). Only meaningful for native calls.
-	IsEllipsisSpread bool
-
-	// BlocksHostGoroutine marks a native call that parks the host goroutine (such as
-	// sync.WaitGroup.Wait, sync.Mutex.Lock). In safe mode the family lock must be released
-	// around such a call to avoid deadlock.
-	BlocksHostGoroutine bool
-
-	// TailReuseFrameInPlace marks a tail-call site that can reuse the caller's register file
-	// in place because the callee's register counts match in every bank. Only meaningful for
-	// opTailCall sites.
-	TailReuseFrameInPlace bool
-
-	// TailArgsAlias marks a tail-call site whose argument copy needs a snapshot to avoid
-	// source-destination aliasing. Only meaningful when TailReuseFrameInPlace is true.
-	TailArgsAlias bool
-
-	// RecursionUnrolled marks a self-recursive call site already spliced once, preventing
-	// infinite expansion.
-	RecursionUnrolled bool
-}
-
 // NativeParamCacheLoad returns the site's published native parameter cache.
 //
 // Returns nil until cacheParamTypes has published one.
@@ -1103,49 +1257,6 @@ func (site *CallSite) NativeParamTypes() []reflect.Type {
 		return cache.Types
 	}
 	return nil
-}
-
-// NativeParamCache is a call site's resolved native-call parameter information. Immutable
-// once stored.
-type NativeParamCache struct {
-	// Types are the callee's declared parameter types, in declaration order.
-	Types []reflect.Type
-
-	// IsVariadic is the callee's reflect.Type.IsVariadic result.
-	IsVariadic bool
-
-	// Sleep is true for time.Sleep (or the wall clock's Sleep the service installs in its
-	// place), which the VM runs as an interruptible wait so a deadline can end it.
-	Sleep bool
-
-	// FmtArguments is true for a variadic ...any function of package fmt: its operands are
-	// formatted, so synthesised struct values are wrapped to hide the sentinel field.
-	FmtArguments bool
-
-	// FmtScan is true for the scanning functions of package fmt (Scan, Sscanf, Fscanln,
-	// ...): their operands are pointers to fill, which take the ordinary interface adapters
-	// (a script Scan method) rather than the per-verb printing wrappers.
-	FmtScan bool
-
-	// EncodingArguments is true for an encoding marshaller (json.Marshal, xml.Marshal and
-	// their Indent and Encoder forms). Their `any` arguments are rebuilt so nested script
-	// values with a MarshalJSON method reach the encoder as marshalers.
-	EncodingArguments bool
-}
-
-// InterfaceMethodRequirement is a decoded interface method requirement.
-type InterfaceMethodRequirement struct {
-	// Name is the method name.
-	Name string
-
-	// Shape is the SignatureShapeString of the required method, or "" when unrecorded.
-	Shape string
-
-	// Params is the required parameter count, or -1 when unrecorded.
-	Params int
-
-	// Results is the required result count, or -1 when unrecorded.
-	Results int
 }
 
 // HeldKindIsDirectPointer reports whether a reflect.Kind held in an interface value's
@@ -1190,6 +1301,19 @@ func EncodeInterfaceMethodRequirement(name string, signature *types.Signature) s
 func EncodeInterfaceMethodRequirementArity(name string, signature *types.Signature) string {
 	return name + interfaceMethodRequirementSeparator + strconv.Itoa(signature.Params().Len()) +
 		interfaceMethodRequirementSeparator + strconv.Itoa(signature.Results().Len())
+}
+
+// EncodeInterfaceMethodRequirementCounts renders a requirement from a method's name and
+// arity alone, for an interface known only by its reflect type.
+//
+// Takes name (string) which is the method name.
+// Takes params (int) which is the parameter count.
+// Takes results (int) which is the result count.
+//
+// Returns string which is the encoded requirement.
+func EncodeInterfaceMethodRequirementCounts(name string, params, results int) string {
+	return name + interfaceMethodRequirementSeparator + strconv.Itoa(params) +
+		interfaceMethodRequirementSeparator + strconv.Itoa(results)
 }
 
 // DecodeInterfaceMethodRequirement splits an encoded requirement into its parts. A bare

@@ -198,7 +198,7 @@ func TestMaterialiseArenaValueDetachesStringBox(t *testing.T) {
 func TestMaterialiseStringForSliceStoreSkipsArenaBacking(t *testing.T) {
 	t.Parallel()
 	arena := engine.NewRegisterArena()
-	arenaString := engine.ArenaConcatString(arena, "abcd", "efgh")
+	arenaString := engine.ArenaConcatenateString(arena, "abcd", "efgh")
 	require.True(t, arena.OwnsString(arenaString))
 	arenaBacking := arena.AllocStringBacking(2)
 	heapBacking := make([]string, 2)
@@ -216,7 +216,7 @@ func TestMaterialiseStringForSliceStoreSkipsArenaBacking(t *testing.T) {
 func TestMaterialiseStringForFieldStoreSkipsArenaStruct(t *testing.T) {
 	t.Parallel()
 	arena := engine.NewRegisterArena()
-	arenaString := engine.ArenaConcatString(arena, "abcd", "efgh")
+	arenaString := engine.ArenaConcatenateString(arena, "abcd", "efgh")
 	arenaStruct := arena.AllocBytes(16, 8)
 	heapStruct := new([1]string)
 
@@ -229,7 +229,7 @@ func TestMaterialiseStringForFieldStoreSkipsArenaStruct(t *testing.T) {
 func TestMaterialiseArenaMapEntriesDetachesInPlace(t *testing.T) {
 	t.Parallel()
 	arena := engine.NewRegisterArena()
-	arenaString := engine.ArenaConcatString(arena, "abcd", "efgh")
+	arenaString := engine.ArenaConcatenateString(arena, "abcd", "efgh")
 	values := map[string]string{"k": arenaString}
 	original := reflect.ValueOf(values)
 	out := engine.MaterialiseArenaValue(arena, original)
@@ -249,7 +249,7 @@ func TestMaterialiseArenaMapEntriesDetachesInPlace(t *testing.T) {
 func TestMaterialiseArenaSliceUnconditionalDecidesByBacking(t *testing.T) {
 	t.Parallel()
 	arena := engine.NewRegisterArena()
-	arenaString := engine.ArenaConcatString(arena, "abcd", "efgh")
+	arenaString := engine.ArenaConcatenateString(arena, "abcd", "efgh")
 
 	heapBacking := []string{"heap", "clean"}
 	heapValue := reflect.ValueOf(heapBacking)
@@ -276,12 +276,12 @@ const (
 	fillStringSliceSource = `func fill(s []string) { for i := range s { s[i] = "val-" + string(rune('0'+i)) + "-suffix" } }`
 )
 
-func TestSliceSetStringDirectStoreSurvivesArenaChurn(t *testing.T) {
+func TestSetSliceStringElementStoreSurvivesArenaChurn(t *testing.T) {
 	t.Parallel()
 	compiledFunction, err := NewService().Compile(t.Context(), fillStringSliceSource+"\nfill(make([]string, 1))")
 	require.NoError(t, err)
 	require.NotEmpty(t, program.ExportFunctions(compiledFunction))
-	requireContainsTier1SubOp(t, program.ExportFunctions(compiledFunction)[0], isa.SubOpSliceSetStringDirect)
+	requireContainsTier1SubOp(t, program.ExportFunctions(compiledFunction)[0], isa.SubOpSetSliceStringElement)
 
 	session := NewService().NewSession()
 	submitForArenaEscape(t, session, fillStringSliceSource)

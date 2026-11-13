@@ -21,7 +21,6 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
 	"unsafe"
 
@@ -40,9 +39,9 @@ func TestArenaParanoid_RestorePoisonsReleasedPrimitiveRanges(t *testing.T) {
 	arena.SaveInto(&save)
 
 	var counts [isa.NumRegisterKinds]uint32
-	counts[isa.RegisterInt] = 4
-	counts[isa.RegisterFloat] = 2
-	counts[isa.RegisterUint] = 2
+	counts[isa.RegisterInt64] = 4
+	counts[isa.RegisterFloat64] = 2
+	counts[isa.RegisterUint64] = 2
 	counts[isa.RegisterBool] = 2
 	registers := arena.AllocRegisters(counts)
 	for i := range registers.Ints {
@@ -96,13 +95,13 @@ func run() int {
 		return a
 	}
 	expected := 0
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		expected += referenceFib(i % 12)
 	}
 	expected += 5 + referenceFib(10)
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 
 	require.Equal(t, expected, result, "poisoned-arena run must match the reference result")

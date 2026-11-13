@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerSubOpMathSin sets floats[B] = math.Sin(floats[C]) via asmCallMathSin.
-TEXT ·handlerSubOpMathSin(SB), NOSPLIT, $32-0
+// handlerMathSin sets floats[B] = math.Sin(floats[C]) via asmCallMathSin.
+TEXT ·handlerMathSin(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -48,8 +48,8 @@ TEXT ·handlerSubOpMathSin(SB), NOSPLIT, $32-0
 	ADD  $48, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpMathCos sets floats[B] = math.Cos(floats[C]) via asmCallMathCos.
-TEXT ·handlerSubOpMathCos(SB), NOSPLIT, $32-0
+// handlerMathCos sets floats[B] = math.Cos(floats[C]) via asmCallMathCos.
+TEXT ·handlerMathCos(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -71,8 +71,8 @@ TEXT ·handlerSubOpMathCos(SB), NOSPLIT, $32-0
 	ADD  $48, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpMathExp sets floats[B] = math.Exp(floats[C]) via asmCallMathExp.
-TEXT ·handlerSubOpMathExp(SB), NOSPLIT, $32-0
+// handlerMathExp sets floats[B] = math.Exp(floats[C]) via asmCallMathExp.
+TEXT ·handlerMathExp(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -94,8 +94,8 @@ TEXT ·handlerSubOpMathExp(SB), NOSPLIT, $32-0
 	ADD  $48, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpMathTan sets floats[B] = math.Tan(floats[C]) via asmCallMathTan.
-TEXT ·handlerSubOpMathTan(SB), NOSPLIT, $32-0
+// handlerMathTan sets floats[B] = math.Tan(floats[C]) via asmCallMathTan.
+TEXT ·handlerMathTan(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -117,8 +117,8 @@ TEXT ·handlerSubOpMathTan(SB), NOSPLIT, $32-0
 	ADD  $48, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpMathMod sets floats[B] = math.Mod(floats[C], floats[ext.A]) via asmCallMathMod.
-TEXT ·handlerSubOpMathMod(SB), NOSPLIT, $48-0
+// handlerMathMod sets floats[B] = math.Mod(floats[C], floats[ext.A]) via asmCallMathMod.
+TEXT ·handlerMathMod(SB), NOSPLIT, $48-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1

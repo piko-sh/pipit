@@ -19,6 +19,7 @@
 package sandboxworker
 
 import (
+	"context"
 	"slices"
 
 	"pipit.sh/pipit/internal/app"
@@ -51,7 +52,7 @@ type FilesystemConfiguration struct {
 // Takes message (sandboxwire.Message) which holds the immutable configuration.
 //
 // Returns error for invalid policy, protocol or source execution framing.
-func (session *connection) serveFilesystem(stream transport, message sandboxwire.Message) error {
+func (session *connection) serveFilesystem(ctx context.Context, stream transport, message sandboxwire.Message) error {
 	var config FilesystemConfiguration
 	if err := message.DecodePayload(&config); err != nil {
 		return err
@@ -79,7 +80,7 @@ func (session *connection) serveFilesystem(stream transport, message sandboxwire
 	if message.Kind == sandboxwire.Close {
 		return message.DecodePayload(&struct{}{})
 	}
-	return session.serveSubmission(stream, interpreter, message)
+	return session.serveSubmission(ctx, stream, interpreter, message)
 }
 
 // newFilesystemInterpreter builds the filesystem interpreter over the injected provider

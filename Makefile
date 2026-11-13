@@ -111,6 +111,38 @@ test-gotoolchain-update: ## Re-record the passing Go toolchain set
 test-all: ## Run the default, pure-Go and golden lanes
 	@$(HACK_DIR)/test/test.sh all
 
+.PHONY: test-reuse-audit
+test-reuse-audit: ## Run the reuse audit over the interpreter and the bytecode suite
+	@$(HACK_DIR)/test/test.sh reuse-audit
+
+.PHONY: test-hazards
+test-hazards: ## Run the bytecode suite and the reuse-hazard tests in five builds
+	@$(HACK_DIR)/test/test.sh hazards
+
+.PHONY: test-census
+test-census: ## Run the bytecode suite under the store census (about 10 GB)
+	@$(HACK_DIR)/test/test.sh census
+
+.PHONY: test-abort-inject
+test-abort-inject: ## Run the engine, abort cases and sweep with abort injection
+	@$(HACK_DIR)/test/test.sh abort-inject
+
+.PHONY: test-reuse-all
+test-reuse-all: ## Run the interpreter, the integration suites, every licensed-reuse gate and the licence checker
+	@$(HACK_DIR)/test/test.sh reuse-all
+
+.PHONY: test-wasm
+test-wasm: ## Run the js/wasm lane under node
+	@$(HACK_DIR)/test/test.sh wasm
+
+.PHONY: test-inline-audit
+test-inline-audit: ## Check which dispatch handlers the js/wasm loop inlines
+	@$(HACK_DIR)/test/test.sh inline-audit
+
+.PHONY: test-inline-audit-update
+test-inline-audit-update: ## Re-record the handlers the js/wasm loop inlines
+	@$(HACK_DIR)/test/test.sh inline-audit-update
+
 .PHONY: test-coverage-total
 test-coverage-total: ## Report library statement coverage
 	@$(HACK_DIR)/test/coverage.sh total
@@ -146,6 +178,10 @@ lint-go: ## Lint every Go module with golangci-lint (includes the layering rules
 lint-scripts: ## Lint every hack/ script with shellcheck
 	@$(HACK_DIR)/lint/scripts.sh
 
+.PHONY: test-accounting
+test-accounting: ## Check that every hack/test/test.sh lane fails when one of its suites fails
+	@$(HACK_DIR)/test/test-accounting.sh
+
 .PHONY: lint-vet
 lint-vet: ## Run go vet over the default build configuration
 	@$(HACK_DIR)/lint/vet.sh default
@@ -153,6 +189,10 @@ lint-vet: ## Run go vet over the default build configuration
 .PHONY: lint-vet-tags
 lint-vet-tags: ## Vet every build tag and cross-compile target
 	@$(HACK_DIR)/lint/vet.sh tags
+
+.PHONY: lint-licence
+lint-licence: ## Run the licensed-reuse checker (hack/licencecheck) over every build
+	@$(HACK_DIR)/lint/vet.sh licence
 
 ##@ Go
 
@@ -229,7 +269,7 @@ generate-selfhost-symbols-validate: ## Check the self-hosting symbol tables are 
 ##@ Pre-submit
 
 .PHONY: check
-check: lint-vet lint-vet-tags lint-go lint-scripts go-mod-verify generate-all-validate ## Every gate that does not run a test suite
+check: lint-vet lint-vet-tags lint-go lint-scripts test-accounting go-mod-verify generate-all-validate ## Every gate that does not run a test suite
 
 .PHONY: check-all
 check-all: check test test-golden ## check plus the test suites and goldens

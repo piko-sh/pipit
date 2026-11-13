@@ -106,6 +106,7 @@ func (c *Compiler) literalKeyType(lit *ast.CompositeLit) types.Type {
 //
 // Returns VarLocation holding the compiled literal value and any compilation error.
 func (c *Compiler) compileCompositeLit(ctx context.Context, lit *ast.CompositeLit) (program.VarLocation, error) {
+	c.noteNamedRetypes(lit)
 	tv := c.Info.Types[lit]
 	reflectType := c.TypeToReflect(ctx, c.substitutedType(tv.Type))
 
@@ -143,7 +144,7 @@ func (c *Compiler) compileArrayLiteral(ctx context.Context, lit *ast.CompositeLi
 		return program.VarLocation{}, err
 	}
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.EmitWide(c.Function, isa.OpLoadGeneralConst, dest, constIndex)
+	program.EmitWide(c.Function, isa.OpLoadGeneralConstant, dest, constIndex)
 
 	elementType := c.literalElementType(lit)
 	cursor := 0
@@ -164,19 +165,19 @@ func (c *Compiler) compileArrayLiteral(ctx context.Context, lit *ast.CompositeLi
 		if idxErr != nil {
 			return program.VarLocation{}, idxErr
 		}
-		indexRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-		program.EmitWide(c.Function, isa.OpLoadIntConst, indexRegister, idxConst)
+		indexRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+		program.EmitWide(c.Function, isa.OpLoadInt64Constant, indexRegister, idxConst)
 
 		if elementLocation.Kind != isa.RegisterGeneral {
 			generalRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
 			c.emitBoxElementToGeneral(ctx, generalRegister, elementLocation)
-			program.Emit(c.Function, isa.OpIndexSet, dest, indexRegister, generalRegister)
+			program.Emit(c.Function, isa.OpSetElement, dest, indexRegister, generalRegister)
 			c.Scopes.Alloc.FreeTemp(isa.RegisterGeneral, generalRegister)
 		} else {
-			program.Emit(c.Function, isa.OpIndexSet, dest, indexRegister, elementLocation.Register)
+			program.Emit(c.Function, isa.OpSetElement, dest, indexRegister, elementLocation.Register)
 		}
 
-		c.Scopes.Alloc.FreeTemp(isa.RegisterInt, indexRegister)
+		c.Scopes.Alloc.FreeTemp(isa.RegisterInt64, indexRegister)
 		c.Scopes.RestoreWatermark(watermark)
 	}
 
@@ -199,12 +200,12 @@ func (c *Compiler) emitSliceLiteralMake(lit *ast.CompositeLit, typeIndex uint16)
 	if err != nil {
 		return 0, err
 	}
-	lengthRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-	program.EmitWide(c.Function, isa.OpLoadIntConst, lengthRegister, lenIndex)
+	lengthRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+	program.EmitWide(c.Function, isa.OpLoadInt64Constant, lengthRegister, lenIndex)
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
 	program.Emit(c.Function, isa.OpMakeSlice, dest, lengthRegister, lengthRegister)
 	program.EmitExtension(c.Function, typeIndex, 0)
-	c.Scopes.Alloc.FreeTemp(isa.RegisterInt, lengthRegister)
+	c.Scopes.Alloc.FreeTemp(isa.RegisterInt64, lengthRegister)
 	return dest, nil
 }
 
@@ -299,20 +300,20 @@ func (c *Compiler) compileSliceLiteral(ctx context.Context, lit *ast.CompositeLi
 		if idxErr != nil {
 			return program.VarLocation{}, idxErr
 		}
-		indexRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-		program.EmitWide(c.Function, isa.OpLoadIntConst, indexRegister, idxConst)
+		indexRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+		program.EmitWide(c.Function, isa.OpLoadInt64Constant, indexRegister, idxConst)
 
 		if elementLocation.Kind != isa.RegisterGeneral {
 			generalRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
 			c.emitBoxElementToGeneral(ctx, generalRegister, elementLocation)
 			elementLocation = program.VarLocation{Register: generalRegister, Kind: isa.RegisterGeneral}
-			program.Emit(c.Function, isa.OpIndexSet, dest, indexRegister, elementLocation.Register)
+			program.Emit(c.Function, isa.OpSetElement, dest, indexRegister, elementLocation.Register)
 			c.Scopes.Alloc.FreeTemp(isa.RegisterGeneral, generalRegister)
 		} else {
-			program.Emit(c.Function, isa.OpIndexSet, dest, indexRegister, elementLocation.Register)
+			program.Emit(c.Function, isa.OpSetElement, dest, indexRegister, elementLocation.Register)
 		}
 
-		c.Scopes.Alloc.FreeTemp(isa.RegisterInt, indexRegister)
+		c.Scopes.Alloc.FreeTemp(isa.RegisterInt64, indexRegister)
 		c.Scopes.RestoreWatermark(watermark)
 	}
 
@@ -362,7 +363,7 @@ func (c *Compiler) compileMapLiteral(ctx context.Context, lit *ast.CompositeLit,
 		c.boxElementToGeneralTemp(ctx, &keyLocation)
 		c.boxElementToGeneralTemp(ctx, &valueLocation)
 
-		program.Emit(c.Function, isa.OpMapSet, dest, keyLocation.Register, valueLocation.Register)
+		program.Emit(c.Function, isa.OpSetMap, dest, keyLocation.Register, valueLocation.Register)
 		c.Scopes.RestoreWatermark(watermark)
 	}
 
@@ -399,6 +400,6 @@ func (c *Compiler) compilePointerCompositeLit(ctx context.Context, lit *ast.Comp
 	}
 
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpAddr, dest, elementLocation.Register, 0)
+	program.Emit(c.Function, isa.OpAddress, dest, elementLocation.Register, 0)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, nil
 }

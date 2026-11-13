@@ -37,9 +37,7 @@ const (
 
 var (
 	// intSliceReflectType is the cached reflect.Type of []int, the canonical boxed type of
-	// the int-slice bank (its storage is []int64, which shares the layout). Used by
-	// handlePackInterface's typed-slice-to-general path to avoid the per-call
-	// reflect.TypeFor lookup.
+	// the int-slice bank (its storage is []int64, which shares the layout).
 	intSliceReflectType = reflect.TypeFor[[]int]()
 
 	// floatSliceReflectType is the cached reflect.Type of []float64.
@@ -245,18 +243,14 @@ func sliceDataPtrUintptr(s []uintptr) unsafe.Pointer {
 // Takes element (reflect.Value) which is the element to append.
 //
 // Returns reflect.Value and bool; true if a fast path was taken.
-//
-// []byte is checked first because expr_eval's `*output = append (*output, '(')`
-// byte-builder pattern is the single hottest general-bank append; ordering the byte
-// branch first avoids the TypeAssert misses that would otherwise precede it.
 func appendFastPath(arena *RegisterArena, sliceValue, element reflect.Value) (reflect.Value, bool) {
 	if s, ok := reflect.TypeAssert[[]byte](sliceValue); ok {
 		return appendByteSliceFastPath(arena, s, element)
 	}
-	if result, matched := appendIntSliceFastPath(arena, sliceValue, element); matched {
+	if result, matched := appendInt64SliceFastPath(arena, sliceValue, element); matched {
 		return result, result.IsValid()
 	}
-	if result, matched := appendFloatSliceFastPath(arena, sliceValue, element); matched {
+	if result, matched := appendFloat64SliceFastPath(arena, sliceValue, element); matched {
 		return result, result.IsValid()
 	}
 	if result, matched := appendStringSliceFastPath(arena, sliceValue, element); matched {
@@ -268,7 +262,7 @@ func appendFastPath(arena *RegisterArena, sliceValue, element reflect.Value) (re
 	return reflect.Value{}, false
 }
 
-// appendIntSliceFastPath handles the []int64 and []int element-type branches of
+// appendInt64SliceFastPath handles the []int64 and []int element-type branches of
 // appendFastPath.
 //
 // Takes arena (*RegisterArena) which provides the arena-aware grow helpers.
@@ -278,10 +272,10 @@ func appendFastPath(arena *RegisterArena, sliceValue, element reflect.Value) (re
 // Returns the wrapped result and true when sliceValue had a matching element-typed slice
 // (the result is invalid when the element didn't match the slice's element type).
 // Returns (zero Value, false) when sliceValue did not match either int-typed slice.
-func appendIntSliceFastPath(arena *RegisterArena, sliceValue, element reflect.Value) (reflect.Value, bool) {
+func appendInt64SliceFastPath(arena *RegisterArena, sliceValue, element reflect.Value) (reflect.Value, bool) {
 	if s, ok := reflect.TypeAssert[[]int64](sliceValue); ok {
 		if v, ok := reflect.TypeAssert[int64](element); ok {
-			grown := arenaAppendInt(arena, s, v)
+			grown := arenaAppendInt64(arena, s, v)
 			return arenaWrapTypedSliceFromSource(arena, sliceValue, sliceDataPtrInt64(grown), len(grown), cap(grown)), true
 		}
 		return reflect.Value{}, true
@@ -296,18 +290,18 @@ func appendIntSliceFastPath(arena *RegisterArena, sliceValue, element reflect.Va
 	return reflect.Value{}, false
 }
 
-// appendFloatSliceFastPath handles the []float64 branch of appendFastPath.
+// appendFloat64SliceFastPath handles the []float64 branch of appendFastPath.
 //
 // Takes arena (*RegisterArena) which provides the arena-aware grow helpers.
 // Takes sliceValue (reflect.Value) which is the slice to append to.
 // Takes element (reflect.Value) which is the element to append.
 //
-// Returns the wrapped result and true when sliceValue had a matching element-typed slice;
-// otherwise (zero Value, false).
-func appendFloatSliceFastPath(arena *RegisterArena, sliceValue, element reflect.Value) (reflect.Value, bool) {
+// Returns the wrapped result and true when sliceValue had a matching element-typed slice.
+// Otherwise it returns (zero Value, false).
+func appendFloat64SliceFastPath(arena *RegisterArena, sliceValue, element reflect.Value) (reflect.Value, bool) {
 	if s, ok := reflect.TypeAssert[[]float64](sliceValue); ok {
 		if v, ok := reflect.TypeAssert[float64](element); ok {
-			grown := arenaAppendFloat(arena, s, v)
+			grown := arenaAppendFloat64(arena, s, v)
 			return arenaWrapTypedSliceFromSource(arena, sliceValue, sliceDataPtrFloat64(grown), len(grown), cap(grown)), true
 		}
 		return reflect.Value{}, true
@@ -397,6 +391,9 @@ func appendByteSliceFastPath(arena *RegisterArena, destination []byte, element r
 func handleAppend(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	sliceValue := registers.General[instruction.B]
 	element := registers.General[instruction.C]
+	if vm.Arena.countsHandOffs() {
+		noteAppendIntoBacking(vm.Arena, sliceValue, element, 1, false)
+	}
 	if instruction.A == instruction.B && element.IsValid() {
 		if header := arenaOwnedSliceHeader(vm.Arena, sliceValue); header != nil && tryReuseInPlaceHeader(frame, header, sliceValue, element) {
 			return opContinue
@@ -522,6 +519,9 @@ func handleAppendSpread(vm *VM, _ *CallFrame, registers *Registers, instruction 
 	}
 	if !destinationSlice.IsValid() {
 		destinationSlice = reflect.MakeSlice(sourceSlice.Type(), 0, sourceSlice.Len())
+	}
+	if vm.Arena.countsHandOffs() {
+		noteAppendIntoBacking(vm.Arena, destinationSlice, sourceSlice, sourceSlice.Len(), true)
 	}
 	if vm.Limits.MaxAllocSize > 0 && destinationSlice.Len()+sourceSlice.Len() > vm.Limits.MaxAllocSize {
 		vm.evalError = fmt.Errorf(appendLimitExceededFormat,
@@ -753,15 +753,8 @@ func appendSpreadFastPath(arena *RegisterArena, destination, source reflect.Valu
 	return extended, true
 }
 
-// handleSubOpAppendUint implements the isa.SubOpAppendUint tier-1 sub-op: general[B] :=
-// append(general[C], byte(uints[ext.A])). Eliminates the cascading reflect.TypeAssert
-// chain in appendFastPath for the statically-known uint-element-slice case, which is
-// expr_eval's hot `*output = append(*output, '(')` byte-builder pattern.
-//
-// Encoding:
-//
-// op = isa.OpDrillTier1 a = isa.SubOpAppendUint b = destination register (general bank) c
-// = source slice register (general bank) ext.a = element register (uint bank)
+// handleAppendUint64Wide implements the isa.SubOpAppendUint64Wide tier-1 sub-op, which
+// computes general[B] = append(general[C], byte(uints[ext.A])).
 //
 // Takes vm (*VM) which provides arena, evalError, and allocation limits.
 // Takes frame (*CallFrame) whose programCounter is advanced past the extension word.
@@ -770,7 +763,7 @@ func appendSpreadFastPath(arena *RegisterArena, destination, source reflect.Valu
 // indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleSubOpAppendUint(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+func handleAppendUint64Wide(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	sliceValue := registers.General[instr.C]
@@ -790,7 +783,7 @@ func handleSubOpAppendUint(vm *VM, frame *CallFrame, registers *Registers, instr
 		return opContinue
 	}
 	if s, ok := reflect.TypeAssert[[]uint64](sliceValue); ok {
-		grown := arenaAppendUint(vm.Arena, s, element)
+		grown := arenaAppendUint64(vm.Arena, s, element)
 		registers.General[instr.B] = arenaWrapTypedSliceFromSource(vm.Arena, sliceValue, sliceDataPtrUint64(grown), len(grown), cap(grown))
 		return opContinue
 	}
@@ -819,20 +812,20 @@ func handleSubOpAppendUint(vm *VM, frame *CallFrame, registers *Registers, instr
 	return opContinue
 }
 
-// handleAppendInt handles the isa.SubOpAppendInt instruction by appending an integer
-// value from an int register to a slice in a general register.
+// handleAppendInt64 handles the isa.SubOpAppendInt64Wide instruction by appending an
+// integer value from an int register to a slice in a general register.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which holds the slice and integer element.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleAppendInt(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleAppendInt64(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	sliceValue := registers.General[instruction.B]
 	element := registers.Ints[instruction.C]
 
 	if instruction.A == instruction.B {
-		return appendIntInPlace(vm, registers, instruction.A, sliceValue, element)
+		return appendInt64InPlace(vm, registers, instruction.A, sliceValue, element)
 	}
 
 	if !sliceValue.IsValid() {
@@ -844,7 +837,7 @@ func handleAppendInt(vm *VM, _ *CallFrame, registers *Registers, instruction isa
 	}
 
 	if s, ok := reflect.TypeAssert[[]int64](sliceValue); ok {
-		grown := arenaAppendInt(vm.Arena, s, element)
+		grown := arenaAppendInt64(vm.Arena, s, element)
 		registers.General[instruction.A] = arenaWrapTypedSliceFromSource(vm.Arena, sliceValue, sliceDataPtrInt64(grown), len(grown), cap(grown))
 		return opContinue
 	}
@@ -858,10 +851,8 @@ func handleAppendInt(vm *VM, _ *CallFrame, registers *Registers, instruction isa
 	return opContinue
 }
 
-// appendIntInPlace appends an int element to a slice in-place using
+// appendInt64InPlace appends an int element to a slice in-place using
 // Grow/SetLen/Index.Set, avoiding reflect.ValueOf allocations.
-//
-// The slice value is promoted to addressable on first use.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which holds the register banks.
@@ -870,7 +861,7 @@ func handleAppendInt(vm *VM, _ *CallFrame, registers *Registers, instruction isa
 // Takes element (int64) which is the value to append.
 //
 // Returns OpResult indicating the next execution step.
-func appendIntInPlace(vm *VM, registers *Registers, destination uint8, sliceValue reflect.Value, element int64) OpResult {
+func appendInt64InPlace(vm *VM, registers *Registers, destination uint8, sliceValue reflect.Value, element int64) OpResult {
 	return appendScalarInPlace(vm, registers, destination, sliceValue, reflect.TypeFor[[]int](), func(target reflect.Value) {
 		target.SetInt(element)
 	})
@@ -880,7 +871,7 @@ func appendIntInPlace(vm *VM, registers *Registers, destination uint8, sliceValu
 // concrete-slice fast path before falling back to reflect.Append.
 //
 // Callers that own a *RegisterArena route through the arena-aware fast paths in the typed
-// append handlers (handleAppendInt etc.) so the grow path keeps the new backing inside
+// append handlers (handleAppendInt64 etc.) so the grow path keeps the new backing inside
 // the arena.
 //
 // Takes registers (*Registers) which provides the register file.
@@ -902,8 +893,8 @@ func appendScalar[T comparable](registers *Registers, instruction isa.Instructio
 	return opContinue
 }
 
-// handleAppendString handles the isa.SubOpAppendString instruction by appending a string
-// value from a string register to a slice in a general register.
+// handleAppendString handles the isa.SubOpAppendStringWide instruction by appending a
+// string value from a string register to a slice in a general register.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which holds the slice and string element.
@@ -945,8 +936,8 @@ func appendStringInPlace(vm *VM, registers *Registers, destination uint8, sliceV
 	})
 }
 
-// handleAppendFloat handles the isa.SubOpAppendFloat instruction by appending a float
-// value from a float register to a slice in a general register.
+// handleAppendFloat64 handles the isa.SubOpAppendFloat64Wide instruction by appending a
+// float value from a float register to a slice in a general register.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which holds the slice and float element.
@@ -955,10 +946,10 @@ func appendStringInPlace(vm *VM, registers *Registers, destination uint8, sliceV
 // Returns OpResult indicating the next execution step.
 //
 //nolint:dupl // hot-path twin
-func handleAppendFloat(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleAppendFloat64(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	element := registers.Floats[instruction.C]
 	if instruction.A == instruction.B {
-		return appendFloatInPlace(vm, registers, instruction.A, registers.General[instruction.B], element)
+		return appendFloat64InPlace(vm, registers, instruction.A, registers.General[instruction.B], element)
 	}
 	sliceValue := registers.General[instruction.B]
 	if sliceValue.IsValid() {
@@ -966,7 +957,7 @@ func handleAppendFloat(vm *VM, _ *CallFrame, registers *Registers, instruction i
 			return rc
 		}
 		if s, ok := reflect.TypeAssert[[]float64](sliceValue); ok {
-			grown := arenaAppendFloat(vm.Arena, s, element)
+			grown := arenaAppendFloat64(vm.Arena, s, element)
 			registers.General[instruction.A] = arenaWrapTypedSliceFromSource(vm.Arena, sliceValue, sliceDataPtrFloat64(grown), len(grown), cap(grown))
 			return opContinue
 		}
@@ -974,7 +965,7 @@ func handleAppendFloat(vm *VM, _ *CallFrame, registers *Registers, instruction i
 	return appendScalarChecked(vm, registers, instruction, element)
 }
 
-// appendFloatInPlace appends a float element to an addressable slice using
+// appendFloat64InPlace appends a float element to an addressable slice using
 // Grow/SetLen/SetFloat, avoiding reflect.ValueOf boxing.
 //
 // Takes vm (*VM) which is the virtual machine.
@@ -984,14 +975,14 @@ func handleAppendFloat(vm *VM, _ *CallFrame, registers *Registers, instruction i
 // Takes element (float64) which is the element to append.
 //
 // Returns OpResult indicating the next execution step.
-func appendFloatInPlace(vm *VM, registers *Registers, destination uint8, sliceValue reflect.Value, element float64) OpResult {
+func appendFloat64InPlace(vm *VM, registers *Registers, destination uint8, sliceValue reflect.Value, element float64) OpResult {
 	return appendScalarInPlace(vm, registers, destination, sliceValue, reflect.TypeFor[[]float64](), func(target reflect.Value) {
 		target.SetFloat(element)
 	})
 }
 
-// handleAppendBool handles the isa.SubOpAppendBool instruction by appending a bool value
-// from a bool register to a slice in a general register.
+// handleAppendBoolWideBody handles the isa.SubOpAppendBoolWide instruction by appending a
+// bool value from a bool register to a slice in a general register.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which holds the slice and bool element.
@@ -1000,7 +991,7 @@ func appendFloatInPlace(vm *VM, registers *Registers, destination uint8, sliceVa
 // Returns OpResult indicating the next execution step.
 //
 //nolint:dupl // hot-path twin
-func handleAppendBool(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleAppendBoolWideBody(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	element := registers.Bools[instruction.C]
 	if instruction.A == instruction.B {
 		return appendBoolInPlace(vm, registers, instruction.A, registers.General[instruction.B], element)
@@ -1116,17 +1107,17 @@ func appendScalarInPlace(
 	return opContinue
 }
 
-// handleAppendByteFast is the tier-0 specialised byte-builder append.
+// handleAppendByte is the tier-0 specialised byte-builder append.
 //
-// A=dest general, B=source general ([]byte), C=byte value uint register. A slice of a named
-// byte type takes the reflect path with the element converted to that type.
+// A=dest general, B=source general ([]byte), C=byte value uint register. A slice of a
+// named byte type takes the reflect path with the element converted to that type.
 //
 // Takes vm (*VM) which provides arena, evalError, and allocation limits.
 // Takes registers (*Registers) which holds the general slice and uint element banks.
 // Takes instr (instruction) which encodes A, B, C register indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleAppendByteFast(vm *VM, _ *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+func handleAppendByte(vm *VM, _ *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	sliceValue := registers.General[instr.B]
 	if !sliceValue.IsValid() {
 		registers.General[instr.A] = reflect.ValueOf([]byte{safeconv.Uint64ToUint8(registers.Uints[instr.C])})
@@ -1159,18 +1150,18 @@ func handleAppendByteFast(vm *VM, _ *CallFrame, registers *Registers, instr isa.
 	return opContinue
 }
 
-// handleAppendByteFastInPlace is the unified in-place byte-builder append. Handles both
-// the slice form (mutating an arena-owned header in place) and the pointer form
+// handleAppendByteInPlace is the unified in-place byte-builder append. Handles both the
+// slice form (mutating an arena-owned header in place) and the pointer form
 // (dereferencing through flagIndir and writing via runtimeTypedmemmove).
 //
 // Takes vm (*VM) which provides arena, evalError, and allocation limits.
 // Takes frame (*CallFrame) which the x-form fallback path forwards.
 // Takes registers (*Registers) which holds the slice/pointer and uint banks.
-// Takes instr (instruction) which encodes the A, B, C register indices (A == B; C is the
+// Takes instr (instruction) which encodes the A, B, C register indices (A == B. C is the
 // byte value).
 //
 // Returns OpResult indicating the next execution step.
-func handleAppendByteFastInPlace(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+func handleAppendByteInPlace(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	sliceValue := registers.General[instr.B]
 	if !sliceValue.IsValid() {
 		registers.General[instr.A] = reflect.ValueOf([]byte{safeconv.Uint64ToUint8(registers.Uints[instr.C])})
@@ -1179,23 +1170,23 @@ func handleAppendByteFastInPlace(vm *VM, frame *CallFrame, registers *Registers,
 
 	switch sliceValue.Kind() {
 	case reflect.Slice:
-		return appendByteFastInPlaceSlice(vm, frame, registers, instr, sliceValue)
+		return appendByteInPlaceSlice(vm, frame, registers, instr, sliceValue)
 	case reflect.Pointer:
 		if sliceValue.IsNil() {
 			return raiseNilDereference(vm)
 		}
-		return appendByteFastInPlacePointer(vm, registers, instr, sliceValue)
+		return appendByteInPlacePointer(vm, registers, instr, sliceValue)
 	default:
-		return handleAppendByteFast(vm, frame, registers, instr)
+		return handleAppendByte(vm, frame, registers, instr)
 	}
 }
 
-// appendByteFastInPlaceSlice handles the x = append(x, b) shape.
+// appendByteInPlaceSlice handles the x = append(x, b) shape.
 //
-// Inspects the source reflect.Value's internal ptr field; if it points at an arena-owned
-// arenaSliceHeader slot, mutates Data/Len/Cap on that slot in place. Otherwise routes to
-// handleAppendByteFast which allocates a fresh slot, the defensive path for cases the
-// safety predicate didn't anticipate.
+// Inspects the source reflect.Value's internal ptr field. If it points at an arena-owned
+// arenaSliceHeader slot, the helper mutates Data/Len/Cap on that slot in place. Otherwise
+// routes to handleAppendByte which allocates a fresh slot, the defensive path for cases
+// the safety predicate didn't anticipate.
 //
 // Takes vm (*VM) which provides arena and allocation limits.
 // Takes frame (*CallFrame) which is forwarded to the fallback path.
@@ -1204,7 +1195,7 @@ func handleAppendByteFastInPlace(vm *VM, frame *CallFrame, registers *Registers,
 // Takes sliceValue (reflect.Value) which is the source slice.
 //
 // Returns OpResult indicating the next execution step.
-func appendByteFastInPlaceSlice(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction, sliceValue reflect.Value) OpResult {
+func appendByteInPlaceSlice(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction, sliceValue reflect.Value) OpResult {
 	if vm.Limits.MaxAllocSize > 0 && sliceValue.Len()+1 > vm.Limits.MaxAllocSize {
 		vm.evalError = fmt.Errorf(appendLimitExceededFormat,
 			fault.ErrAllocationLimit, sliceValue.Len()+1, vm.Limits.MaxAllocSize)
@@ -1214,7 +1205,7 @@ func appendByteFastInPlaceSlice(vm *VM, frame *CallFrame, registers *Registers, 
 	sourceShape := (*unsafeReflectValue)(unsafe.Pointer(&sliceValue))
 	headerPtr := (*arenaSliceHeader)(sourceShape.ptr)
 	if headerPtr == nil || !vm.Arena.OwnsSliceHeaderPointer(unsafe.Pointer(headerPtr)) {
-		return handleAppendByteFast(vm, frame, registers, instr)
+		return handleAppendByte(vm, frame, registers, instr)
 	}
 
 	value := safeconv.Uint64ToUint8(registers.Uints[instr.C])
@@ -1230,16 +1221,8 @@ func appendByteFastInPlaceSlice(vm *VM, frame *CallFrame, registers *Registers, 
 	return opContinue
 }
 
-// handleAppendInPlace is the generic in-place append.
-//
-// Handles arbitrary element types via the same kind switch as
-// handleAppendByteFastInPlace; the only difference is the element register lives on the
-// general bank (passed by reflect.Value) so the per-type fast paths route through
-// appendGenericFastPath / appendFastPath helpers. At runtime A == B by construction.
-// Falls back to handleAppend on non-arena slices or non-slice/pointer source kinds.
-//
-// Encoding (mirrors isa.OpAppend): A=dest general, B=source general, C=element general,
-// followed by isa.OpExt.
+// handleAppendInPlace is the generic in-place append. Falls back to handleAppend on
+// non-arena slices or non-slice/pointer source kinds.
 //
 // Takes vm (*VM) which provides arena and allocation limits.
 // Takes frame (*CallFrame) which is forwarded to fallback paths.
@@ -1291,6 +1274,9 @@ func appendInPlaceSlice(vm *VM, frame *CallFrame, registers *Registers, instr is
 	element := registers.General[instr.C]
 	if !element.IsValid() {
 		return handleAppend(vm, frame, registers, instr)
+	}
+	if vm.Arena.countsHandOffs() {
+		noteAppendIntoBacking(vm.Arena, sliceValue, element, 1, false)
 	}
 	if tryReuseInPlaceHeader(frame, headerPtr, sliceValue, element) {
 		return opContinue
@@ -1360,6 +1346,9 @@ func appendInPlacePointer(vm *VM, frame *CallFrame, registers *Registers, instr 
 	}
 	coerced := coerceValue(vm, element, elemType.Elem())
 	extended := reflect.Append(current, coerced)
+	if vm.Arena.countsHandOffs() && !vm.Arena.ownsAnyStorage(headerPtr) {
+		vm.Arena.recordContainerStore(handOffUntracedContainer, extended)
+	}
 
 	current.Set(extended)
 	return opContinue
@@ -1381,16 +1370,17 @@ func handleAppendSpreadInPlace(vm *VM, frame *CallFrame, registers *Registers, i
 // conformSliceWidth converts a slice read from a typed bank to a slot's slice type when
 // the two differ only in element width.
 //
-// The typed banks widen every integer element to eight bytes and box the slice as the
-// bank's canonical type, so a []uint16 value arrives as []uint64 wherever no static type
-// converted it earlier.
+// An element of the same width and signedness ([]int64 for an []int, []uint64 for a
+// []uint) has the slot type's layout already, so the slice is reinterpreted and keeps its
+// backing array, since a copy would lose every write the receiver makes, which Go code
+// such as sort.Ints relies on. Narrower elements are copied.
 //
 // Takes value (reflect.Value) which is the value being stored.
 // Takes targetType (reflect.Type) which is the slot's type.
 //
 // Returns reflect.Value which is the converted slice.
-// Returns bool which is true when a conversion applied; false leaves the caller to its
-// ordinary coercion.
+// Returns bool which is true when a conversion applied. A false result leaves the caller
+// to its ordinary coercion.
 func conformSliceWidth(value reflect.Value, targetType reflect.Type) (reflect.Value, bool) {
 	if !value.IsValid() || value.Kind() != reflect.Slice || targetType.Kind() != reflect.Slice || value.Type() == targetType {
 		return reflect.Value{}, false
@@ -1402,11 +1392,34 @@ func conformSliceWidth(value reflect.Value, targetType reflect.Type) (reflect.Va
 	if value.Type().ConvertibleTo(targetType) {
 		return value.Convert(targetType), true
 	}
+	if sourceElem.Size() == targetElem.Size() && bankScalarClass(sourceElem.Kind()) == bankScalarClass(targetElem.Kind()) {
+		return wrapSliceHeaderAs(nil, value.UnsafePointer(), value.Len(), value.Cap(), targetType), true
+	}
 	converted := reflect.MakeSlice(targetType, value.Len(), value.Len())
 	for i := range value.Len() {
 		converted.Index(i).Set(value.Index(i).Convert(targetElem))
 	}
 	return converted, true
+}
+
+// bankScalarClass groups the scalar kinds a typed bank stores alike, including signed
+// integers, unsigned integers and floating-point numbers.
+//
+// Takes kind (reflect.Kind) which is an element kind.
+//
+// Returns reflect.Kind which is reflect.Int64, reflect.Uint64 or reflect.Float64 for the
+// three classes, and kind itself for any other kind.
+func bankScalarClass(kind reflect.Kind) reflect.Kind {
+	switch kind {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return reflect.Int64
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return reflect.Uint64
+	case reflect.Float32, reflect.Float64:
+		return reflect.Float64
+	default:
+		return kind
+	}
 }
 
 // isBankScalarKind reports whether a kind is one the typed banks widen: the integer,

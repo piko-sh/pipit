@@ -230,14 +230,14 @@ func TestCopyCallArgsWithVariadicPackingFillsTheTrailingSlice(t *testing.T) {
 	t.Parallel()
 
 	callee := program.NewNamedFunction("f")
-	callee.ParameterKinds = []isa.RegisterKind{isa.RegisterInt, isa.RegisterGeneral}
+	callee.ParameterKinds = []isa.RegisterKind{isa.RegisterInt64, isa.RegisterGeneral}
 	callee.NumRegisters = wideRegCounts(8)
 
 	site := &program.CallSite{
 		Arguments: []program.VarLocation{
-			{Kind: isa.RegisterInt, Register: 1},
-			{Kind: isa.RegisterInt, Register: 2},
-			{Kind: isa.RegisterInt, Register: 3},
+			{Kind: isa.RegisterInt64, Register: 1},
+			{Kind: isa.RegisterInt64, Register: 2},
+			{Kind: isa.RegisterInt64, Register: 3},
 		},
 		RuntimeVariadicSliceType: reflect.TypeFor[[]int](),
 		RuntimeVariadicNumFixed:  1,
@@ -260,14 +260,14 @@ func TestCopyCallArgsWithVariadicPackingHonoursAScatteredLayout(t *testing.T) {
 	t.Parallel()
 
 	callee := program.NewNamedFunction("f")
-	callee.ParameterKinds = []isa.RegisterKind{isa.RegisterInt, isa.RegisterGeneral}
+	callee.ParameterKinds = []isa.RegisterKind{isa.RegisterInt64, isa.RegisterGeneral}
 	callee.ParameterRegisters = []uint8{4, 5}
 	callee.NumRegisters = wideRegCounts(8)
 
 	site := &program.CallSite{
 		Arguments: []program.VarLocation{
-			{Kind: isa.RegisterInt, Register: 1},
-			{Kind: isa.RegisterInt, Register: 2},
+			{Kind: isa.RegisterInt64, Register: 1},
+			{Kind: isa.RegisterInt64, Register: 2},
 		},
 		RuntimeVariadicSliceType: reflect.TypeFor[[]int](),
 		RuntimeVariadicNumFixed:  1,

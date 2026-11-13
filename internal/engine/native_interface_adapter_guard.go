@@ -26,8 +26,8 @@ import (
 )
 
 var (
-	// errReadCallLimit reports that a script reader exhausted its call limit. It must
-	// differ from io.EOF to distinguish truncation from complete data.
+	// errReadCallLimit reports that a script reader exhausted its call limit. It must differ
+	// from io.EOF to distinguish truncation from complete data.
 	errReadCallLimit = fmt.Errorf("pipit: a script reader served more than %d Read calls", pipitReaderMaxCalls)
 
 	// errReaderStalled ends a script reader whose last pipitReaderMaxNoProgressCalls reads
@@ -61,8 +61,8 @@ func (g *readGuard) admit() error {
 	return nil
 }
 
-// settle clamps the script's read count to the buffer and reports io.ErrNoProgress when
-// a non-empty read returns neither data nor an error.
+// settle clamps the script's read count to the buffer and reports io.ErrNoProgress when a
+// non-empty read returns neither data nor an error.
 //
 // Takes n (int64) which is the count the script method returned.
 // Takes size (int) which is the buffer's length.

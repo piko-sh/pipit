@@ -36,11 +36,11 @@ func TestFlatDispatchIndexPartitionsTheTiers(t *testing.T) {
 		name        string
 		want        uint
 	}{
-		{name: "a main-tier opcode indexes by its opcode", instruction: isa.NewInstruction(isa.OpAddInt, 1, 2, 3), want: uint(isa.OpAddInt)},
+		{name: "a main-tier opcode indexes by its opcode", instruction: isa.NewInstruction(isa.OpAddInt64, 1, 2, 3), want: uint(isa.OpAddInt64)},
 		{
 			name:        "a first-tier sub-opcode indexes above the first base",
-			instruction: isa.NewTier1Instruction(isa.SubOpNegInt, 1, 2),
-			want:        flatHandlerTier1Base + uint(isa.SubOpNegInt),
+			instruction: isa.NewTier1Instruction(isa.SubOpNegateInt64, 1, 2),
+			want:        flatHandlerTier1Base + uint(isa.SubOpNegateInt64),
 		},
 		{
 			name:        "a second-tier sub-opcode indexes above the second base",
@@ -111,7 +111,7 @@ func TestFlatDispatchRoutesToTheHandlerTheOpcodeNames(t *testing.T) {
 	}{
 		{
 			name:  "integer addition",
-			build: func() isa.Instruction { return isa.NewInstruction(isa.OpAddInt, 0, 1, 2) },
+			build: func() isa.Instruction { return isa.NewInstruction(isa.OpAddInt64, 0, 1, 2) },
 			seed:  func(registers *Registers) { registers.Ints[1], registers.Ints[2] = 10, 32 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -120,7 +120,7 @@ func TestFlatDispatchRoutesToTheHandlerTheOpcodeNames(t *testing.T) {
 		},
 		{
 			name:  "unsigned addition",
-			build: func() isa.Instruction { return isa.NewInstruction(isa.OpAddUint, 0, 1, 2) },
+			build: func() isa.Instruction { return isa.NewInstruction(isa.OpAddUint64, 0, 1, 2) },
 			seed:  func(registers *Registers) { registers.Uints[1], registers.Uints[2] = 10, 32 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -129,7 +129,7 @@ func TestFlatDispatchRoutesToTheHandlerTheOpcodeNames(t *testing.T) {
 		},
 		{
 			name:  "float multiplication",
-			build: func() isa.Instruction { return isa.NewInstruction(isa.OpMulFloat, 0, 1, 2) },
+			build: func() isa.Instruction { return isa.NewInstruction(isa.OpMultiplyFloat64, 0, 1, 2) },
 			seed:  func(registers *Registers) { registers.Floats[1], registers.Floats[2] = 1.5, 4 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -138,7 +138,7 @@ func TestFlatDispatchRoutesToTheHandlerTheOpcodeNames(t *testing.T) {
 		},
 		{
 			name:  "string equality",
-			build: func() isa.Instruction { return isa.NewInstruction(isa.OpEqString, 0, 1, 2) },
+			build: func() isa.Instruction { return isa.NewInstruction(isa.OpEqualString, 0, 1, 2) },
 			seed:  func(registers *Registers) { registers.Strings[1], registers.Strings[2] = "a", "a" },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -147,7 +147,7 @@ func TestFlatDispatchRoutesToTheHandlerTheOpcodeNames(t *testing.T) {
 		},
 		{
 			name:  "integer comparison",
-			build: func() isa.Instruction { return isa.NewInstruction(isa.OpLtInt, 0, 1, 2) },
+			build: func() isa.Instruction { return isa.NewInstruction(isa.OpLessThanInt64, 0, 1, 2) },
 			seed:  func(registers *Registers) { registers.Ints[1], registers.Ints[2] = 1, 2 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -156,7 +156,7 @@ func TestFlatDispatchRoutesToTheHandlerTheOpcodeNames(t *testing.T) {
 		},
 		{
 			name:  "bitwise exclusive or",
-			build: func() isa.Instruction { return isa.NewInstruction(isa.OpBitXor, 0, 1, 2) },
+			build: func() isa.Instruction { return isa.NewInstruction(isa.OpBitXorInt64, 0, 1, 2) },
 			seed:  func(registers *Registers) { registers.Ints[1], registers.Ints[2] = 0b1100, 0b1010 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -165,7 +165,7 @@ func TestFlatDispatchRoutesToTheHandlerTheOpcodeNames(t *testing.T) {
 		},
 		{
 			name:  "a first-tier integer negation",
-			build: func() isa.Instruction { return isa.NewTier1Instruction(isa.SubOpNegInt, 0, 1) },
+			build: func() isa.Instruction { return isa.NewTier1Instruction(isa.SubOpNegateInt64, 0, 1) },
 			seed:  func(registers *Registers) { registers.Ints[1] = 42 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -174,7 +174,7 @@ func TestFlatDispatchRoutesToTheHandlerTheOpcodeNames(t *testing.T) {
 		},
 		{
 			name:  "a first-tier unsigned move",
-			build: func() isa.Instruction { return isa.NewTier1Instruction(isa.SubOpMoveUint, 0, 1) },
+			build: func() isa.Instruction { return isa.NewTier1Instruction(isa.SubOpMoveUint64, 0, 1) },
 			seed:  func(registers *Registers) { registers.Uints[1] = 42 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -183,7 +183,7 @@ func TestFlatDispatchRoutesToTheHandlerTheOpcodeNames(t *testing.T) {
 		},
 		{
 			name:  "a first-tier bitwise complement",
-			build: func() isa.Instruction { return isa.NewTier1Instruction(isa.SubOpBitNotUint, 0, 1) },
+			build: func() isa.Instruction { return isa.NewTier1Instruction(isa.SubOpBitNotUint64, 0, 1) },
 			seed:  func(registers *Registers) { registers.Uints[1] = 0 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -192,7 +192,7 @@ func TestFlatDispatchRoutesToTheHandlerTheOpcodeNames(t *testing.T) {
 		},
 		{
 			name:  "a first-tier string length",
-			build: func() isa.Instruction { return isa.NewTier1Instruction(isa.SubOpLenString, 0, 1) },
+			build: func() isa.Instruction { return isa.NewTier1Instruction(isa.SubOpLengthString, 0, 1) },
 			seed:  func(registers *Registers) { registers.Strings[1] = "pipit" },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -201,7 +201,7 @@ func TestFlatDispatchRoutesToTheHandlerTheOpcodeNames(t *testing.T) {
 		},
 		{
 			name:  "a first-tier logical negation",
-			build: func() isa.Instruction { return isa.NewTier1Instruction(isa.SubOpNot, 0, 1) },
+			build: func() isa.Instruction { return isa.NewTier1Instruction(isa.SubOpNotInt64, 0, 1) },
 			seed:  func(registers *Registers) { registers.Ints[1] = 0 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -210,7 +210,7 @@ func TestFlatDispatchRoutesToTheHandlerTheOpcodeNames(t *testing.T) {
 		},
 		{
 			name:  "an extension word is inert",
-			build: func() isa.Instruction { return isa.NewInstruction(isa.OpExt, 1, 2, 3) },
+			build: func() isa.Instruction { return isa.NewInstruction(isa.OpExtension, 1, 2, 3) },
 			seed:  func(registers *Registers) { registers.Ints[0] = 7 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()

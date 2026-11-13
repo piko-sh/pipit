@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/debug"
+	"pipit.sh/pipit/internal/fault"
 )
 
 // timeout bounds every wait on the debugged execution.
@@ -117,7 +118,7 @@ func (e *Execution) stop(tb testing.TB, dbg *debug.Debugger) {
 // Returns debug.Event which describes the pause.
 func WaitPause(tb testing.TB, dbg *debug.Debugger) debug.Event {
 	tb.Helper()
-	ctx, cancel := context.WithTimeout(tb.Context(), timeout)
+	ctx, cancel := context.WithTimeoutCause(tb.Context(), timeout, fault.ErrDebugNotPaused)
 	defer cancel()
 	event, err := dbg.WaitForPause(ctx)
 	require.NoError(tb, err, "the execution pauses")

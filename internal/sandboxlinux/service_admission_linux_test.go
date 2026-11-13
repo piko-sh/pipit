@@ -32,7 +32,7 @@ import (
 func TestServiceAdmissionRejectsOrdinaryDirectory(t *testing.T) {
 	t.Parallel()
 	parent := t.TempDir()
-	group, err := newServiceGroup(parent, Limits{}, testTenant)
+	group, err := newServiceGroup(t.Context(), parent, Limits{}, testTenant)
 	if group != nil || !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("accepted non-cgroup parent: %v", err)
 	}
@@ -43,11 +43,11 @@ func TestServiceAdmissionRejectsOrdinaryDirectory(t *testing.T) {
 
 func TestNativeServiceAdmission(t *testing.T) {
 	parent := sandboxtest.CgroupParent(t)
-	group, err := newServiceGroup(parent, Limits{}, testTenant)
+	group, err := newServiceGroup(t.Context(), parent, Limits{}, testTenant)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	defer group.closeGroup(ctx)
 	runServiceAdmissionChild(t, ctx, "busy")
@@ -63,7 +63,7 @@ func TestNativeServiceAdmission(t *testing.T) {
 		}
 	})
 	runServiceAdmissionChild(t, ctx, "busy")
-	if owner, err := newServiceGroup(parent, Limits{}, testTenant); owner != nil || !errors.Is(err, ErrServiceBusy) {
+	if owner, err := newServiceGroup(t.Context(), parent, Limits{}, testTenant); owner != nil || !errors.Is(err, ErrServiceBusy) {
 		t.Fatalf("adopted an abandoned reservation: %v", err)
 	}
 }
@@ -73,7 +73,7 @@ func TestNativeServiceAdmissionChild(t *testing.T) {
 	if mode == "" {
 		return
 	}
-	group, err := newServiceGroup(os.Getenv("PIPIT_TEST_CGROUP_PARENT"), Limits{}, testTenant)
+	group, err := newServiceGroup(t.Context(), os.Getenv("PIPIT_TEST_CGROUP_PARENT"), Limits{}, testTenant)
 	if mode == "busy" {
 		if group != nil || !errors.Is(err, ErrServiceBusy) {
 			t.Fatalf("occupied slot admitted another host: %v", err)
@@ -86,7 +86,7 @@ func TestNativeServiceAdmissionChild(t *testing.T) {
 	if mode == "abandon" {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	if err := group.closeGroup(ctx); err != nil {
 		t.Fatal(err)
@@ -103,19 +103,19 @@ func runServiceAdmissionChild(t *testing.T, ctx context.Context, mode string) {
 
 func TestNativeServiceGroupsPerTenant(t *testing.T) {
 	parent := sandboxtest.CgroupParent(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	first, err := newServiceGroup(parent, Limits{}, "tenant-a")
+	first, err := newServiceGroup(t.Context(), parent, Limits{}, "tenant-a")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = first.closeGroup(ctx) }()
-	second, err := newServiceGroup(parent, Limits{}, "tenant-b")
+	second, err := newServiceGroup(t.Context(), parent, Limits{}, "tenant-b")
 	if err != nil {
 		t.Fatalf("second tenant blocked by the first tenant's reservation: %v", err)
 	}
 	defer func() { _ = second.closeGroup(ctx) }()
-	if duplicate, err := newServiceGroup(parent, Limits{}, "tenant-a"); duplicate != nil || !errors.Is(err, ErrServiceBusy) {
+	if duplicate, err := newServiceGroup(t.Context(), parent, Limits{}, "tenant-a"); duplicate != nil || !errors.Is(err, ErrServiceBusy) {
 		t.Fatalf("a tenant's reservation admitted a second owner: %v", err)
 	}
 	if err := second.closeGroup(ctx); err != nil {

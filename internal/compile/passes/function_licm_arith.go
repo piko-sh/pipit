@@ -28,7 +28,7 @@ import (
 
 // maxLicmArithmeticHoistsPerFunction bounds the arithmetic hoists, and the renames that
 // enable them, in one function.
-const maxLicmArithmeticHoistsPerFunction = 16
+const maxLicmArithmeticHoistsPerFunction = 64
 
 // hoistLoopInvariantArithmetic moves integer arithmetic whose inputs do not change in a
 // loop to the loop's pre-header, one instruction at a time so that a chain of invariant
@@ -43,11 +43,12 @@ func hoistLoopInvariantArithmetic(ctx context.Context, compiledFunction *program
 	if analysis == nil {
 		analysis = newFunctionAnalysis(compiledFunction)
 	}
+	var visits loopVisits
 	for range maxLicmArithmeticHoistsPerFunction {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("hoistLoopInvariantArithmetic cancelled: %w", err)
 		}
-		if !tryOneArithmeticHoist(compiledFunction, analysis) {
+		if !tryOneArithmeticHoist(compiledFunction, analysis, &visits) {
 			return nil
 		}
 	}
@@ -58,27 +59,45 @@ func hoistLoopInvariantArithmetic(ctx context.Context, compiledFunction *program
 //
 // Takes compiledFunction (*program.CompiledFunction) which holds the loops.
 // Takes analysis (*functionAnalysis) which caches control-flow facts.
+// Takes visits (*loopVisits) which holds the loops already searched to the end.
 //
 // Returns true when the body changed.
-func tryOneArithmeticHoist(compiledFunction *program.CompiledFunction, analysis *functionAnalysis) bool {
+func tryOneArithmeticHoist(compiledFunction *program.CompiledFunction, analysis *functionAnalysis, visits *loopVisits) bool {
 	body := compiledFunction.Body
 	for _, loop := range mergeLoopsSharingHeader(loopsFor(analysis, body)) {
-		if !loopHeaderReachableByFallThrough(body, loop) {
+		if visits.finished(loop) || !loopOpenToHoisting(body, loop) {
 			continue
 		}
-		facts := newLoopFacts(analysis, loop)
-		for pc := loop.header; pc <= loop.latch; pc++ {
-			kind, reg, ok := hoistableArithmeticDestination(body[pc])
-			if !ok {
-				continue
-			}
-			members := facts.loopMembers()
-			if len(members) == 0 {
-				break
-			}
-			if changed, stop := tryHoistArithmeticAt(compiledFunction, facts, members, pc, kind, reg); changed || stop {
-				return changed
-			}
+		if tryOneArithmeticHoistInLoop(compiledFunction, newLoopFacts(analysis, loop), visits) {
+			return true
+		}
+		visits.finish(loop)
+	}
+	return false
+}
+
+// tryOneArithmeticHoistInLoop hoists, or renames to make hoistable, the first invariant
+// operation of one loop.
+//
+// Takes compiledFunction (*program.CompiledFunction) which holds the loop.
+// Takes facts (*loopFacts) which supplies the loop, its members and its dominators.
+// Takes visits (*loopVisits) which follows the words a hoist moves.
+//
+// Returns bool which is true when the body changed.
+func tryOneArithmeticHoistInLoop(compiledFunction *program.CompiledFunction, facts *loopFacts, visits *loopVisits) bool {
+	body := compiledFunction.Body
+	loop := facts.loop
+	for pc := loop.header; pc <= loop.latch; pc++ {
+		kind, reg, ok := hoistableArithmeticDestination(body[pc])
+		if !ok {
+			continue
+		}
+		members := facts.loopMembers()
+		if len(members) == 0 {
+			return false
+		}
+		if tryHoistArithmeticAt(compiledFunction, facts, members, pc, kind, reg, visits) {
+			return true
 		}
 	}
 	return false
@@ -93,22 +112,32 @@ func tryOneArithmeticHoist(compiledFunction *program.CompiledFunction, analysis 
 // Takes pc (int) which is the candidate.
 // Takes kind (isa.RegisterKind) which is the destination bank.
 // Takes reg (uint8) which is the destination.
+// Takes visits (*loopVisits) which follows the words a hoist moves.
 //
-// Returns whether the body changed, and whether the search must stop because dominance is
-// unknown.
-func tryHoistArithmeticAt(compiledFunction *program.CompiledFunction, facts *loopFacts, members []int, pc int, kind isa.RegisterKind, reg uint8) (changed, stop bool) {
-	if !arithmeticInputsInvariant(compiledFunction, members, pc, kind, reg) || !facts.dominatesLatch(pc) {
-		return false, facts.dominators() == nil
+// Returns bool which is true when the body changed.
+func tryHoistArithmeticAt(
+	compiledFunction *program.CompiledFunction, facts *loopFacts, members []int, pc int, kind isa.RegisterKind, reg uint8, visits *loopVisits,
+) bool {
+	if !facts.isMember(pc) || !arithmeticInputsInvariant(compiledFunction, members, pc, kind, reg) {
+		return false
+	}
+	if isa.InstrIsTier1SubOp(compiledFunction.Body[pc], isa.SubOpLengthGeneral) && !loopKeepsSliceLength(compiledFunction, members, pc) {
+		return false
 	}
 	width := arithmeticUnitWidth(compiledFunction.Body, facts.analysis.JumpTargets(), pc, kind, reg)
 	if loopWritesRegisterOutside(compiledFunction, members, pc, pc+width, kind, reg) {
-		return renameDefinition(compiledFunction, facts.analysis, pc, width, kind, reg), false
+		return renameDefinition(compiledFunction, facts.analysis, pc, width, kind, reg)
 	}
-	if !constantHoistSafeAcrossLoopEntry(compiledFunction, facts.loop, pc, kind, reg) {
-		return false, false
+	if !definitionHoistsUnobserved(compiledFunction, facts, pc, kind, reg) {
+		return false
+	}
+	if arithmeticCanFault(compiledFunction.Body[pc]) &&
+		(!facts.dominatesLatch(pc) || !prefixCannotFault(compiledFunction.Body, facts.loop.header, pc)) {
+		return false
 	}
 	applyLoopHoistWords(compiledFunction, facts.analysis, facts.loop.header, pc, width)
-	return true, false
+	visits.lifted(facts.loop.header, pc, width)
+	return true
 }
 
 // arithmeticUnitWidth returns 2 when the operation at pc is followed by a truncation of
@@ -124,42 +153,142 @@ func tryHoistArithmeticAt(compiledFunction *program.CompiledFunction, facts *loo
 // Returns the unit's word count.
 func arithmeticUnitWidth(body []isa.Instruction, jumpTargets map[int]bool, pc int, kind isa.RegisterKind, reg uint8) int {
 	next := pc + 1
-	if body[pc].Op == isa.OpTruncateNarrow || next >= len(body) || jumpTargets[next] {
+	if body[pc].Op == isa.OpTruncateToWidth || next >= len(body) || jumpTargets[next] {
 		return 1
 	}
-	if truncation := body[next]; truncation.Op == isa.OpTruncateNarrow && truncation.A == reg && isa.RegisterKind(truncation.C) == kind {
+	if truncation := body[next]; truncation.Op == isa.OpTruncateToWidth && truncation.A == reg && isa.RegisterKind(truncation.C) == kind {
 		return 2
 	}
 	return 1
 }
 
-// hoistableArithmeticDestination accepts the single-word integer operations that cannot
-// fault, and names the register they write. Truncation is accepted though it reads its
-// destination, because applying it again to its own result changes nothing.
+// hoistableArithmeticDestination identifies the destination of an operation that cannot
+// fault.
+//
+// Truncation is accepted because applying it again to its own result changes nothing.
 //
 // Takes inst (isa.Instruction) which is the candidate.
 //
-// Returns the destination bank and register, and whether inst qualifies.
+// Returns isa.RegisterKind which is the destination bank.
+// Returns uint8 which is the destination register.
+// Returns bool which is true when the instruction qualifies.
 func hoistableArithmeticDestination(inst isa.Instruction) (isa.RegisterKind, uint8, bool) {
 	switch inst.Op {
-	case isa.OpAddInt, isa.OpSubInt, isa.OpMulInt, isa.OpAddIntConst, isa.OpSubIntConst, isa.OpMulIntConst,
-		isa.OpBitAnd, isa.OpBitOr, isa.OpBitXor:
-		return isa.RegisterInt, inst.A, true
-	case isa.OpAddUint, isa.OpSubUint, isa.OpMulUint, isa.OpBitAndUint, isa.OpBitOrUint, isa.OpBitXorUint,
-		isa.OpShiftLeftUint, isa.OpShiftRightUint:
-		return isa.RegisterUint, inst.A, true
-	case isa.OpTruncateNarrow:
+	case isa.OpAddInt64, isa.OpSubtractInt64, isa.OpMultiplyInt64, isa.OpAddInt64Constant, isa.OpSubtractInt64Constant, isa.OpMultiplyInt64Constant,
+		isa.OpBitAndInt64, isa.OpBitOrInt64, isa.OpBitXorInt64:
+		return isa.RegisterInt64, inst.A, true
+	case isa.OpAddUint64, isa.OpSubtractUint64, isa.OpMultiplyUint64, isa.OpBitAndUint64, isa.OpBitOrUint64, isa.OpBitXorUint64,
+		isa.OpShiftLeftUint64, isa.OpShiftRightUint64:
+		return isa.RegisterUint64, inst.A, true
+	case isa.OpTruncateToWidth:
 		kind := isa.RegisterKind(inst.C)
-		return kind, inst.A, kind == isa.RegisterInt || kind == isa.RegisterUint
+		return kind, inst.A, kind == isa.RegisterInt64 || kind == isa.RegisterUint64
 	case isa.OpDrillTier1:
 		switch {
-		case isa.InstrIsTier1SubOp(inst, isa.SubOpUintToInt):
-			return isa.RegisterInt, inst.B, true
-		case isa.InstrIsTier1SubOp(inst, isa.SubOpIntToUint):
-			return isa.RegisterUint, inst.B, true
+		case isa.InstrIsTier1SubOp(inst, isa.SubOpConvertUint64ToInt64):
+			return isa.RegisterInt64, inst.B, true
+		case isa.InstrIsTier1SubOp(inst, isa.SubOpConvertInt64ToUint64):
+			return isa.RegisterUint64, inst.B, true
+		case isa.InstrIsTier1SubOp(inst, isa.SubOpUnboxSliceByte):
+			return isa.RegisterSliceByte, inst.B, true
+		case readsLengthOfItsRegister(isa.SubOpcode(inst.A)), isa.InstrIsTier1SubOp(inst, isa.SubOpLengthGeneral):
+			return isa.RegisterInt64, inst.B, true
 		}
 	}
-	return isa.RegisterInt, 0, false
+	return isa.RegisterInt64, 0, false
+}
+
+// readsLengthOfItsRegister reports whether a tier-1 operation sets ints[B] to the length
+// of the string or the typed slice held in register C.
+//
+// The length of a general register is not among them. Such a register can hold a view of
+// a slice variable, whose length a store elsewhere changes, so it is hoisted only out of
+// a loop loopKeepsSliceLength accepts.
+//
+// Takes sub (isa.SubOpcode) which is the tier-1 operation.
+//
+// Returns bool which is true for a length that depends on the register alone.
+func readsLengthOfItsRegister(sub isa.SubOpcode) bool {
+	switch sub {
+	case isa.SubOpLengthString, isa.SubOpLengthSliceInt64, isa.SubOpLengthSliceFloat64, isa.SubOpLengthSliceString,
+		isa.SubOpLengthSliceBool, isa.SubOpLengthSliceUint64, isa.SubOpLengthSliceByte:
+		return true
+	default:
+		return false
+	}
+}
+
+// arithmeticCanFault reports whether a hoistable operation can raise a panic.
+//
+// Takes inst (isa.Instruction) which is the operation.
+//
+// Returns bool which is true for an operation that can fault.
+func arithmeticCanFault(inst isa.Instruction) bool {
+	return isa.InstrIsTier1SubOp(inst, isa.SubOpUnboxSliceByte)
+}
+
+// loopKeepsSliceLength reports whether the general register whose length the instruction
+// at pc reads holds a slice or an array whose length nothing in the loop can change.
+//
+// The register may hold a view of a slice variable, so the loop must store to no memory
+// and make no call that could, and must not wait on another goroutine, whose stores it
+// would then be entitled to see. It must also index the register as a slice or an array
+// somewhere. The length of a channel changes under another goroutine with no store in
+// this one, and nothing else tells the two apart here.
+//
+// Takes compiledFunction (*program.CompiledFunction) which holds the loop.
+// Takes members ([]int) which lists the loop's instructions.
+// Takes pc (int) which is the length read.
+//
+// Returns bool which is true when the length read before the loop is the length every
+// iteration would read.
+func loopKeepsSliceLength(compiledFunction *program.CompiledFunction, members []int, pc int) bool {
+	collection := compiledFunction.Body[pc].C
+	indexed := false
+	for _, member := range members {
+		inst := compiledFunction.Body[member]
+		if member == pc || inst.Op == isa.OpExtension {
+			continue
+		}
+		if InstructionDirectlyMutatesHeap(inst) || meetsAnotherGoroutine(inst) {
+			return false
+		}
+		if IsCallInstruction(inst) && CallInvalidatesPurity(compiledFunction, inst) {
+			return false
+		}
+		indexed = indexed || indexesGeneralRegister(inst, collection)
+	}
+	return indexed
+}
+
+// meetsAnotherGoroutine reports whether an instruction starts or can wait for a
+// goroutine.
+//
+// Takes inst (isa.Instruction) which is the instruction.
+//
+// Returns bool which is true for those three.
+func meetsAnotherGoroutine(inst isa.Instruction) bool {
+	return inst.Op == isa.OpGo || isa.InstrIsTier1SubOp(inst, isa.SubOpSelect) || isa.InstrIsTier1SubOp(inst, isa.SubOpRangeNext)
+}
+
+// indexesGeneralRegister reports whether an instruction reads an element of the slice or
+// array held in a general register by an integer index.
+//
+// Takes inst (isa.Instruction) which is the instruction.
+// Takes collection (uint8) which is the general register.
+//
+// Returns bool which is true for the element reads that accept nothing but a slice, an
+// array or a pointer to an array.
+func indexesGeneralRegister(inst isa.Instruction, collection uint8) bool {
+	switch inst.Op {
+	case isa.OpGetElement, isa.OpGetElementInt64, isa.OpGetElementUint64, isa.OpGetElementFloat64,
+		isa.OpGetElementBool, isa.OpGetElementString,
+		isa.OpGetElementFieldInt64, isa.OpGetElementFieldUint64, isa.OpGetElementFieldFloat64,
+		isa.OpGetElementFieldBool, isa.OpGetElementFieldString:
+		return inst.B == collection
+	default:
+		return false
+	}
 }
 
 // arithmeticInputsInvariant reports whether no loop instruction other than the candidate
@@ -189,7 +318,7 @@ func arithmeticInputsInvariant(compiledFunction *program.CompiledFunction, membe
 		if !ok || loopWritesRegisterElsewhere(compiledFunction, members, pc, kind, operands[position]) {
 			return false
 		}
-		if kind == destKind && operands[position] == dest && inst.Op != isa.OpTruncateNarrow {
+		if kind == destKind && operands[position] == dest && inst.Op != isa.OpTruncateToWidth {
 			return false
 		}
 	}
@@ -224,7 +353,7 @@ func loopWritesRegisterElsewhere(compiledFunction *program.CompiledFunction, mem
 func loopWritesRegisterOutside(compiledFunction *program.CompiledFunction, members []int, from, to int, kind isa.RegisterKind, reg uint8) bool {
 	for _, member := range members {
 		inst := compiledFunction.Body[member]
-		if (member < from || member >= to) && inst.Op != isa.OpExt && instructionMayWriteRegister(compiledFunction, inst, kind, reg) {
+		if (member < from || member >= to) && inst.Op != isa.OpExtension && instructionMayWriteRegister(compiledFunction, inst, kind, reg) {
 			return true
 		}
 	}

@@ -61,7 +61,7 @@ func TestGuardChannelOpConvertsAPanicIntoAReturnedValue(t *testing.T) {
 	})
 }
 
-func TestChannelCloseReportsASecondClose(t *testing.T) {
+func TestCloseChannelReportsASecondClose(t *testing.T) {
 	t.Parallel()
 
 	t.Run("closing an open channel succeeds", func(t *testing.T) {
@@ -70,7 +70,7 @@ func TestChannelCloseReportsASecondClose(t *testing.T) {
 		channel := make(chan int, 1)
 		registers.General[0] = reflect.ValueOf(channel)
 
-		require.Equal(t, opContinue, handleChannelClose(vm, frame, registers, op(0, 0, 0)))
+		require.Equal(t, opContinue, handleCloseChannelBody(vm, frame, registers, op(0, 0, 0)))
 
 		_, open := <-channel
 		require.False(t, open, "the channel must actually be closed")
@@ -83,7 +83,7 @@ func TestChannelCloseReportsASecondClose(t *testing.T) {
 		close(channel)
 		registers.General[0] = reflect.ValueOf(channel)
 
-		got := handleChannelClose(vm, frame, registers, op(0, 0, 0))
+		got := handleCloseChannelBody(vm, frame, registers, op(0, 0, 0))
 
 		require.NotEqual(t, opContinue, got, "a second close must surface as an interpreted fault")
 		require.Error(t, vm.evalError)
@@ -100,7 +100,7 @@ func TestReadIndirectCellValueUnboxesIntoTheNamedBank(t *testing.T) {
 		kind  isa.RegisterKind
 	}{
 		{
-			name: "an integer cell", kind: isa.RegisterInt,
+			name: "an integer cell", kind: isa.RegisterInt64,
 			build: func() reflect.Value { value := int64(42); return reflect.ValueOf(&value) },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -108,7 +108,7 @@ func TestReadIndirectCellValueUnboxesIntoTheNamedBank(t *testing.T) {
 			},
 		},
 		{
-			name: "a float cell", kind: isa.RegisterFloat,
+			name: "a float cell", kind: isa.RegisterFloat64,
 			build: func() reflect.Value { value := 1.5; return reflect.ValueOf(&value) },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -132,7 +132,7 @@ func TestReadIndirectCellValueUnboxesIntoTheNamedBank(t *testing.T) {
 			},
 		},
 		{
-			name: "an unsigned cell", kind: isa.RegisterUint,
+			name: "an unsigned cell", kind: isa.RegisterUint64,
 			build: func() reflect.Value { value := uint64(42); return reflect.ValueOf(&value) },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -140,7 +140,7 @@ func TestReadIndirectCellValueUnboxesIntoTheNamedBank(t *testing.T) {
 			},
 		},
 		{
-			name: "a complex cell", kind: isa.RegisterComplex,
+			name: "a complex cell", kind: isa.RegisterComplex128,
 			build: func() reflect.Value { value := 1 + 2i; return reflect.ValueOf(&value) },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -188,22 +188,22 @@ func TestReadIndirectCellValueUnboxesIntoTheNamedBank(t *testing.T) {
 		registers.Ints[0] = -1
 		cell := &program.UpvalueCell{IsIndirect: true}
 
-		readIndirectCellValue(&registers, cell, 0, isa.RegisterInt)
+		readIndirectCellValue(&registers, cell, 0, isa.RegisterInt64)
 
 		require.Equal(t, int64(-1), registers.Ints[0])
 	})
 }
 
-func TestGetUpvalueReadsThroughTheFrameCellTable(t *testing.T) {
+func TestGetCapturedVariableReadsThroughTheFrameCellTable(t *testing.T) {
 	t.Parallel()
 
 	t.Run("a direct cell is copied into its bank", func(t *testing.T) {
 		t.Parallel()
 		_, frame, registers := newStandardVM(t)
-		cell := &program.UpvalueCell{IntValue: 42, Kind: isa.RegisterInt}
+		cell := &program.UpvalueCell{IntValue: 42, Kind: isa.RegisterInt64}
 		frame.upvalues = []upvalue{{Value: cell}}
 
-		require.Equal(t, opContinue, handleGetUpvalue(nil, frame, registers, op(0, 0, uint8(isa.RegisterInt))))
+		require.Equal(t, opContinue, handleGetCapturedVariable(nil, frame, registers, op(0, 0, uint8(isa.RegisterInt64))))
 		require.Equal(t, int64(42), registers.Ints[0])
 	})
 
@@ -211,10 +211,35 @@ func TestGetUpvalueReadsThroughTheFrameCellTable(t *testing.T) {
 		t.Parallel()
 		_, frame, registers := newStandardVM(t)
 		value := int64(42)
-		cell := &program.UpvalueCell{GeneralValue: reflect.ValueOf(&value), IsIndirect: true, Kind: isa.RegisterInt}
+		cell := &program.UpvalueCell{GeneralValue: reflect.ValueOf(&value), IsIndirect: true, Kind: isa.RegisterInt64}
 		frame.upvalues = []upvalue{{Value: cell}}
 
-		require.Equal(t, opContinue, handleGetUpvalue(nil, frame, registers, op(0, 0, uint8(isa.RegisterInt))))
+		require.Equal(t, opContinue, handleGetCapturedVariable(nil, frame, registers, op(0, 0, uint8(isa.RegisterInt64))))
 		require.Equal(t, int64(42), registers.Ints[0])
 	})
+}
+
+func TestTheRangeFunctionStateCheckRaisesGosMessageForEachState(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		message string
+		state   int64
+		stopped bool
+	}{
+		{name: "a running loop", state: 0, stopped: false},
+		{name: "a body that returned false", state: 3, stopped: true, message: "runtime error: range function continued iteration after function for loop body returned false"},
+		{name: "a finished range statement", state: isa.RangeFunctionStateExited, stopped: true, message: "runtime error: range function continued iteration after whole loop exit"},
+		{name: "a body call that panicked", state: isa.RangeFunctionStatePanicked, stopped: true, message: "runtime error: range function continued iteration after loop body panic"},
+		{name: "an iterator that recovered the body's panic", state: isa.RangeFunctionStateRecovered, stopped: true, message: "runtime error: range function recovered a loop body panic and did not resume panicking"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			message, stopped := rangeFunctionStateMessage(tt.state)
+			require.Equal(t, tt.stopped, stopped)
+			require.Equal(t, tt.message, message)
+		})
+	}
 }

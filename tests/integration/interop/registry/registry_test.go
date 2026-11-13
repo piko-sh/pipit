@@ -1,5 +1,3 @@
-//go:build integration
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build integration
 
 // Package registry_test proves the engine's interface-adapter registration seam on a
 // standard-library interface the closed set does not cover, in its own package so the
@@ -62,15 +62,6 @@ func (a *visitorAdapter) Visit(depth int) int {
 	return int(results[0].Int())
 }
 
-func init() {
-	engine.RegisterInterfaceAdapter(reflect.TypeFor[io.Seeker](), func(core *engine.AdapterCore) reflect.Value {
-		return reflect.ValueOf(&seekerAdapter{AdapterCore: core})
-	})
-	engine.RegisterInterfaceAdapter(reflect.TypeFor[Visitor](), func(core *engine.AdapterCore) reflect.Value {
-		return reflect.ValueOf(&visitorAdapter{AdapterCore: core})
-	})
-}
-
 func newRegistryService(t *testing.T) *app.Service {
 	t.Helper()
 	service := app.NewService()
@@ -89,6 +80,15 @@ func newRegistryService(t *testing.T) *app.Service {
 		}),
 	})
 	return service
+}
+
+func init() {
+	engine.RegisterInterfaceAdapter(reflect.TypeFor[io.Seeker](), func(core *engine.AdapterCore) reflect.Value {
+		return reflect.ValueOf(&seekerAdapter{AdapterCore: core})
+	})
+	engine.RegisterInterfaceAdapter(reflect.TypeFor[Visitor](), func(core *engine.AdapterCore) reflect.Value {
+		return reflect.ValueOf(&visitorAdapter{AdapterCore: core})
+	})
 }
 
 func TestRegisteredSeekerAdapter(t *testing.T) {

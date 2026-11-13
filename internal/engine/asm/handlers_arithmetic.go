@@ -41,53 +41,53 @@ const (
 // and data-movement opcodes.
 func arithmeticHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		handlerLoadUintConst(),
-		handlerSubOpLoadUintConstSmall(),
-		handlerSubOpAddUintConst(),
-		handlerSubOpSubUintConst(),
-		handlerSubOpBitAndUintConst(),
-		handlerDivUint(),
-		handlerRemUint(),
-		handlerLoadIntConst(),
-		handlerLoadFloatConst(),
-		handlerLoadStringConst(),
-		handlerLoadBoolConst(),
-		handlerLoadBool(),
-		handlerLoadIntConstSmall(),
-		handlerAddInt(),
-		handlerSubInt(),
-		handlerMulInt(),
-		handlerDivInt(),
-		handlerRemInt(),
-		handlerBitAnd(),
-		handlerBitOr(),
-		handlerBitXor(),
-		handlerBitAndNot(),
-		handlerShiftLeft(),
-		handlerShiftRight(),
-		handlerAddFloat(),
-		handlerSubFloat(),
-		handlerMulFloat(),
-		handlerDivFloat(),
-		handlerAddUint(),
-		handlerSubUint(),
-		handlerMulUint(),
-		handlerBitAndUint(),
-		handlerBitOrUint(),
-		handlerBitXorUint(),
-		handlerBitAndNotUint(),
-		handlerShiftLeftUint(),
-		handlerShiftRightUint(),
+		handlerLoadUint64Constant(),
+		handlerLoadUint64Immediate(),
+		handlerAddUint64Constant(),
+		handlerSubtractUint64Constant(),
+		handlerBitAndUint64Constant(),
+		handlerDivideUint64(),
+		handlerRemainderUint64(),
+		handlerLoadInt64Constant(),
+		handlerLoadFloat64Constant(),
+		handlerLoadStringConstant(),
+		handlerLoadBoolConstant(),
+		handlerLoadBoolImmediateAsInt64(),
+		handlerLoadInt64Immediate(),
+		handlerAddInt64(),
+		handlerSubtractInt64(),
+		handlerMultiplyInt64(),
+		handlerDivideInt64(),
+		handlerRemainderInt64(),
+		handlerBitAndInt64(),
+		handlerBitOrInt64(),
+		handlerBitXorInt64(),
+		handlerBitAndNotInt64(),
+		handlerShiftLeftInt64(),
+		handlerShiftRightInt64(),
+		handlerAddFloat64(),
+		handlerSubtractFloat64(),
+		handlerMultiplyFloat64(),
+		handlerDivideFloat64(),
+		handlerAddUint64(),
+		handlerSubtractUint64(),
+		handlerMultiplyUint64(),
+		handlerBitAndUint64(),
+		handlerBitOrUint64(),
+		handlerBitXorUint64(),
+		handlerBitAndNotUint64(),
+		handlerShiftLeftUint64(),
+		handlerShiftRightUint64(),
 	}
 }
 
-// handlerLoadIntConst builds the LoadIntConst handler, loading intConstants[B|(C<<8)]
-// into ints[A].
+// handlerLoadInt64Constant builds the LoadInt64Constant handler, loading
+// intConstants[B|(C<<8)] into ints[A].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerLoadIntConst() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerLoadInt64Constant() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerLoadIntConst", Comment: "handlerLoadIntConst loads intConstants[B|(C<<8)] into ints[A].",
+		Name: "handlerLoadInt64Constant", Comment: "handlerLoadInt64Constant loads intConstants[B|(C<<8)] into ints[A].",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
@@ -101,13 +101,13 @@ func handlerLoadIntConst() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// handlerLoadFloatConst builds the LoadFloatConst handler, loading
+// handlerLoadFloat64Constant builds the LoadFloat64Constant handler, loading
 // floatConstants[B|(C<<8)] into floats[A].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerLoadFloatConst() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerLoadFloat64Constant() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerLoadFloatConst", Comment: "handlerLoadFloatConst loads floatConstants[B|(C<<8)] into floats[A].",
+		Name: "handlerLoadFloat64Constant", Comment: "handlerLoadFloat64Constant loads floatConstants[B|(C<<8)] into floats[A].",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
@@ -119,41 +119,41 @@ func handlerLoadFloatConst() asmgen.HandlerDefinition[BytecodeArchitecturePort] 
 	}
 }
 
-// handlerLoadUintConst builds the handler definition for the tier-0 LoadUintConst opcode:
-// uints[A] = uintConstants[B|(C<<8)].
+// handlerLoadUint64Constant builds the handler definition for the tier-0
+// LoadUint64Constant opcode, which computes uints[A] = uintConstants[B|(C<<8)].
 //
 // Returns the handler definition.
-func handlerLoadUintConst() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerLoadUint64Constant() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerLoadUintConst", Comment: "handlerLoadUintConst loads uintConstants[B|(C<<8)] into uints[A].",
+		Name: "handlerLoadUint64Constant", Comment: "handlerLoadUint64Constant loads uintConstants[B|(C<<8)] into uints[A].",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitLoadUintConst(emitter)
+			architecture.EmitLoadUint64Constant(emitter)
 		},
 	}
 }
 
-// handlerSubOpLoadUintConstSmall builds the handler definition for the tier-1
-// small-constant loader: uints[B] = uint64(C).
+// handlerLoadUint64Immediate builds the handler definition for the tier-1 small-constant
+// loader.
 //
 // Returns the handler definition.
-func handlerSubOpLoadUintConstSmall() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerLoadUint64Immediate() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerSubOpLoadUintConstSmall", Comment: "handlerSubOpLoadUintConstSmall sets uints[B] = uint64(C).",
+		Name: "handlerLoadUint64Immediate", Comment: "handlerLoadUint64Immediate sets uints[B] = uint64(C).",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitLoadUintConstSmall(emitter)
+			architecture.EmitLoadUint64Immediate(emitter)
 		},
 	}
 }
 
-// handlerSubOpAddUintConst builds the handler definition for the tier-1 sub-op uints[B] =
+// handlerAddUint64Constant builds the handler definition for the tier-1 sub-op uints[B] =
 // uints[C] + uintConstants[ext], consuming the extension word.
 //
 // Returns the handler definition.
-func handlerSubOpAddUintConst() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerAddUint64Constant() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerSubOpAddUintConst", Comment: "handlerSubOpAddUintConst sets uints[B] = uints[C] + uintConstants[ext wide index].",
+		Name: "handlerAddUint64Constant", Comment: "handlerAddUint64Constant sets uints[B] = uints[C] + uintConstants[ext wide index].",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.EmitUintConstArith(emitter, "add")
@@ -161,13 +161,13 @@ func handlerSubOpAddUintConst() asmgen.HandlerDefinition[BytecodeArchitecturePor
 	}
 }
 
-// handlerSubOpSubUintConst builds the handler definition for the tier-1 sub-op uints[B] =
-// uints[C] - uintConstants[ext], consuming the extension word.
+// handlerSubtractUint64Constant builds the handler definition for the tier-1 sub-op
+// uints[B] = uints[C] - uintConstants[ext], consuming the extension word.
 //
 // Returns the handler definition.
-func handlerSubOpSubUintConst() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerSubtractUint64Constant() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerSubOpSubUintConst", Comment: "handlerSubOpSubUintConst sets uints[B] = uints[C] - uintConstants[ext wide index].",
+		Name: "handlerSubtractUint64Constant", Comment: "handlerSubtractUint64Constant sets uints[B] = uints[C] - uintConstants[ext wide index].",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.EmitUintConstArith(emitter, "sub")
@@ -175,13 +175,13 @@ func handlerSubOpSubUintConst() asmgen.HandlerDefinition[BytecodeArchitecturePor
 	}
 }
 
-// handlerSubOpBitAndUintConst builds the handler definition for the tier-1 sub-op
+// handlerBitAndUint64Constant builds the handler definition for the tier-1 sub-op
 // uints[B] = uints[C] & uintConstants[ext], consuming the extension word.
 //
 // Returns the handler definition.
-func handlerSubOpBitAndUintConst() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerBitAndUint64Constant() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerSubOpBitAndUintConst", Comment: "handlerSubOpBitAndUintConst sets uints[B] = uints[C] & uintConstants[ext wide index].",
+		Name: "handlerBitAndUint64Constant", Comment: "handlerBitAndUint64Constant sets uints[B] = uints[C] & uintConstants[ext wide index].",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.EmitUintConstArith(emitter, "and")
@@ -189,13 +189,13 @@ func handlerSubOpBitAndUintConst() asmgen.HandlerDefinition[BytecodeArchitecture
 	}
 }
 
-// handlerDivUint builds the handler definition for the tier-0 DivUint opcode with a
-// zero-divisor guard.
+// handlerDivideUint64 builds the handler definition for the tier-0 DivideUint64 opcode
+// with a zero-divisor guard.
 //
 // Returns the handler definition.
-func handlerDivUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerDivideUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerDivUint", Comment: "handlerDivUint sets uints[A] = uints[B] / uints[C].",
+		Name: "handlerDivideUint64", Comment: "handlerDivideUint64 sets uints[A] = uints[B] / uints[C].",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.EmitUintDivide(emitter)
@@ -203,13 +203,13 @@ func handlerDivUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// handlerRemUint builds the handler definition for the tier-0 RemUint opcode with a
-// zero-divisor guard.
+// handlerRemainderUint64 builds the handler definition for the tier-0 RemainderUint64
+// opcode with a zero-divisor guard.
 //
 // Returns the handler definition.
-func handlerRemUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerRemainderUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerRemUint", Comment: "handlerRemUint sets uints[A] = uints[B] % uints[C].",
+		Name: "handlerRemainderUint64", Comment: "handlerRemainderUint64 sets uints[A] = uints[B] % uints[C].",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.EmitUintRemainder(emitter)
@@ -217,13 +217,13 @@ func handlerRemUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// handlerLoadStringConst builds the LoadStringConst handler, loading
+// handlerLoadStringConstant builds the LoadStringConstant handler, loading
 // stringConstants[B|(C<<8)] into strings[A].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerLoadStringConst() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerLoadStringConstant() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return guardPointerBankWriter(asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerLoadStringConst", Comment: "handlerLoadStringConst loads stringConstants[B|(C<<8)] into strings[A].",
+		Name: "handlerLoadStringConstant", Comment: "handlerLoadStringConstant loads stringConstants[B|(C<<8)] into strings[A].",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
@@ -235,13 +235,13 @@ func handlerLoadStringConst() asmgen.HandlerDefinition[BytecodeArchitecturePort]
 	})
 }
 
-// handlerLoadBoolConst builds the LoadBoolConst handler, loading boolConstants[C] into
-// bools[B].
+// handlerLoadBoolConstant builds the LoadBoolConstant handler, loading boolConstants[C]
+// into bools[B].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerLoadBoolConst() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerLoadBoolConstant() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerLoadBoolConst", Comment: "handlerLoadBoolConst loads boolConstants[C] into bools[B].",
+		Name: "handlerLoadBoolConstant", Comment: "handlerLoadBoolConstant loads boolConstants[C] into bools[B].",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
@@ -253,12 +253,13 @@ func handlerLoadBoolConst() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// handlerLoadBool builds the LoadBool handler, setting ints[B] = C (0 or 1).
+// handlerLoadBoolImmediateAsInt64 builds the LoadBool handler, setting ints[B] = C (0 or
+// 1).
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerLoadBool() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerLoadBoolImmediateAsInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerLoadBool", Comment: "handlerLoadBool sets ints[B] = C (0 or 1) in tier-1 form (subOpLoadBool).",
+		Name: "handlerLoadBoolImmediateAsInt64", Comment: "handlerLoadBoolImmediateAsInt64 sets ints[B] = C (0 or 1) in tier-1 form (subOpLoadBoolImmediateAsInt64).",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
@@ -270,13 +271,13 @@ func handlerLoadBool() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// handlerLoadIntConstSmall builds the LoadIntConstSmall handler, setting ints[B] =
+// handlerLoadInt64Immediate builds the LoadIntConstSmall handler, setting ints[B] =
 // int64(C) directly from the instruction word without a constant pool lookup.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerLoadIntConstSmall() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerLoadInt64Immediate() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerLoadIntConstSmall", Comment: "handlerLoadIntConstSmall sets ints[B] = int64(C) in tier-1 form (subOpLoadIntConstSmall).",
+		Name: "handlerLoadInt64Immediate", Comment: "handlerLoadInt64Immediate sets ints[B] = int64(C) in tier-1 form (subOpLoadInt64Immediate).",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
@@ -310,20 +311,20 @@ func integerBinaryHandler(name, comment, operation string) asmgen.HandlerDefinit
 	}
 }
 
-// handlerAddInt builds the handler definition for the AddInt opcode: ints[A] = ints[B] +
-// ints[C].
+// handlerAddInt64 builds the handler definition for the AddInt64 opcode, which computes
+// ints[A] = ints[B] + ints[C].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerAddInt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return integerBinaryHandler("handlerAddInt", "handlerAddInt sets ints[A] = ints[B] + ints[C].", "ADD")
+func handlerAddInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return integerBinaryHandler("handlerAddInt64", "handlerAddInt64 sets ints[A] = ints[B] + ints[C].", "ADD")
 }
 
-// handlerSubInt builds the handler definition for the SubInt opcode: ints[A] = ints[B] -
-// ints[C].
+// handlerSubtractInt64 builds the handler definition for the SubtractInt64 opcode, which
+// computes ints[A] = ints[B] - ints[C].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerSubInt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return integerBinaryHandler("handlerSubInt", "handlerSubInt sets ints[A] = ints[B] - ints[C].", "SUB")
+func handlerSubtractInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return integerBinaryHandler("handlerSubtractInt64", "handlerSubtractInt64 sets ints[A] = ints[B] - ints[C].", "SUB")
 }
 
 // uintBinaryHandler builds a handler for uints[A] = uints[B] <op> uints[C].
@@ -348,68 +349,68 @@ func uintBinaryHandler(name, comment, operation string) asmgen.HandlerDefinition
 	}
 }
 
-// handlerAddUint builds the AddUint handler, computing uints[A] = uints[B] + uints[C].
+// handlerAddUint64 builds the AddUint64 handler, computing uints[A] = uints[B] +
+// uints[C].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerAddUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return uintBinaryHandler("handlerAddUint", "handlerAddUint sets uints[A] = uints[B] + uints[C].", "ADD")
+func handlerAddUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return uintBinaryHandler("handlerAddUint64", "handlerAddUint64 sets uints[A] = uints[B] + uints[C].", "ADD")
 }
 
-// handlerSubUint builds the handler definition for the SubUint opcode, which performs
-// unsigned 64-bit integer subtraction: uints[A] = uints[B] - uints[C].
+// handlerSubtractUint64 builds the handler definition for the SubtractUint64 opcode,
+// which performs unsigned 64-bit integer subtraction, computing uints[A] = uints[B] -
+// uints[C].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerSubUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return uintBinaryHandler("handlerSubUint", "handlerSubUint sets uints[A] = uints[B] - uints[C].", "SUB")
+func handlerSubtractUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return uintBinaryHandler("handlerSubtractUint64", "handlerSubtractUint64 sets uints[A] = uints[B] - uints[C].", "SUB")
 }
 
-// handlerMulUint builds the MulUint handler, computing uints[A] = uints[B] * uints[C].
+// handlerMultiplyUint64 builds the MultiplyUint64 handler, computing uints[A] = uints[B]
+// * uints[C].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerMulUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return uintBinaryHandler("handlerMulUint", "handlerMulUint sets uints[A] = uints[B] * uints[C].", "MUL")
+func handlerMultiplyUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return uintBinaryHandler("handlerMultiplyUint64", "handlerMultiplyUint64 sets uints[A] = uints[B] * uints[C].", "MUL")
 }
 
-// handlerBitAndUint builds the handler definition for the BitAndUint opcode: uints[A] =
-// uints[B] & uints[C].
+// handlerBitAndUint64 builds the handler definition for the BitAndUint64 opcode, which
+// computes uints[A] = uints[B] & uints[C].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerBitAndUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return uintBinaryHandler("handlerBitAndUint", "handlerBitAndUint sets uints[A] = uints[B] & uints[C].", "AND")
+func handlerBitAndUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return uintBinaryHandler("handlerBitAndUint64", "handlerBitAndUint64 sets uints[A] = uints[B] & uints[C].", "AND")
 }
 
-// handlerBitOrUint builds the handler definition for the BitOrUint opcode: uints[A] =
-// uints[B] | uints[C].
+// handlerBitOrUint64 builds the handler definition for the BitOrUint64 opcode, which
+// computes uints[A] = uints[B] | uints[C].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerBitOrUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return uintBinaryHandler("handlerBitOrUint", "handlerBitOrUint sets uints[A] = uints[B] | uints[C].", "OR")
+func handlerBitOrUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return uintBinaryHandler("handlerBitOrUint64", "handlerBitOrUint64 sets uints[A] = uints[B] | uints[C].", "OR")
 }
 
-// handlerBitXorUint builds the handler definition for the BitXorUint opcode: uints[A] =
-// uints[B] ^ uints[C].
+// handlerBitXorUint64 builds the handler definition for the BitXorUint64 opcode, which
+// computes uints[A] = uints[B] ^ uints[C].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerBitXorUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return uintBinaryHandler("handlerBitXorUint", "handlerBitXorUint sets uints[A] = uints[B] ^ uints[C].", "XOR")
+func handlerBitXorUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return uintBinaryHandler("handlerBitXorUint64", "handlerBitXorUint64 sets uints[A] = uints[B] ^ uints[C].", "XOR")
 }
 
-// handlerBitAndNotUint builds the handler definition for the BitAndNotUint opcode:
-// uints[A] = uints[B] &^ uints[C].
+// handlerBitAndNotUint64 builds the handler definition for the BitAndNotUint64 opcode.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerBitAndNotUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return uintBinaryHandler("handlerBitAndNotUint", "handlerBitAndNotUint sets uints[A] = uints[B] &^ uints[C].", "ANDNOT")
+func handlerBitAndNotUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return uintBinaryHandler("handlerBitAndNotUint64", "handlerBitAndNotUint64 sets uints[A] = uints[B] &^ uints[C].", "ANDNOT")
 }
 
-// handlerShiftLeftUint builds the handler definition for the ShiftLeftUint opcode:
-// uints[A] = uints[B] << uint(ints[C]). The shift amount is read from the int bank
-// (mirrors the int variant).
+// handlerShiftLeftUint64 builds the handler definition for the ShiftLeftUint64 opcode.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerShiftLeftUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerShiftLeftUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerShiftLeftUint", Comment: "handlerShiftLeftUint sets uints[A] = uints[B] << uint(ints[C]).",
+		Name: "handlerShiftLeftUint64", Comment: "handlerShiftLeftUint64 sets uints[A] = uints[B] << uint(ints[C]).",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
@@ -422,14 +423,12 @@ func handlerShiftLeftUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// handlerShiftRightUint builds the handler definition for the ShiftRightUint opcode:
-// uints[A] = uints[B] >> uint(ints[C]). The right shift is logical (zero-fill), distinct
-// from the int variant's arithmetic shift (sign-fill).
+// handlerShiftRightUint64 builds the handler definition for the ShiftRightUint64 opcode.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerShiftRightUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerShiftRightUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerShiftRightUint", Comment: "handlerShiftRightUint sets uints[A] = uints[B] >> uint(ints[C]).",
+		Name: "handlerShiftRightUint64", Comment: "handlerShiftRightUint64 sets uints[A] = uints[B] >> uint(ints[C]).",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
@@ -442,21 +441,22 @@ func handlerShiftRightUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] 
 	}
 }
 
-// handlerMulInt builds the handler definition for the MulInt opcode: ints[A] = ints[B] *
-// ints[C].
+// handlerMultiplyInt64 builds the handler definition for the MultiplyInt64 opcode, which
+// computes ints[A] = ints[B] * ints[C].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerMulInt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return integerBinaryHandler("handlerMulInt", "handlerMulInt sets ints[A] = ints[B] * ints[C].", "MUL")
+func handlerMultiplyInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return integerBinaryHandler("handlerMultiplyInt64", "handlerMultiplyInt64 sets ints[A] = ints[B] * ints[C].", "MUL")
 }
 
-// handlerDivInt builds the handler definition for the DivInt opcode: ints[A] = ints[B] /
-// ints[C], with a zero-divisor guard that exits to Go via DivisionByZeroExit.
+// handlerDivideInt64 builds the handler definition for the DivideInt64 opcode, which
+// computes ints[A] = ints[B] / ints[C], with a zero-divisor guard that exits to Go via
+// DivisionByZeroExit.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerDivInt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerDivideInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerDivInt", Comment: "handlerDivInt sets ints[A] = ints[B] / ints[C].",
+		Name: "handlerDivideInt64", Comment: "handlerDivideInt64 sets ints[A] = ints[B] / ints[C].",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
@@ -472,13 +472,14 @@ func handlerDivInt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// handlerRemInt builds the handler definition for the RemInt opcode: ints[A] = ints[B] %
-// ints[C], with a zero-divisor guard that exits to Go via DivisionByZeroExit.
+// handlerRemainderInt64 builds the handler definition for the RemainderInt64 opcode,
+// which computes ints[A] = ints[B] % ints[C], with a zero-divisor guard that exits to Go
+// via DivisionByZeroExit.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerRemInt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerRemainderInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerRemInt", Comment: "handlerRemInt sets ints[A] = ints[B] % ints[C].",
+		Name: "handlerRemainderInt64", Comment: "handlerRemainderInt64 sets ints[A] = ints[B] % ints[C].",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
@@ -494,45 +495,45 @@ func handlerRemInt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// handlerBitAnd builds the handler definition for the BitAnd opcode: ints[A] = ints[B] &
-// ints[C].
+// handlerBitAndInt64 builds the handler definition for the BitAnd opcode, which computes
+// ints[A] = ints[B] & ints[C].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerBitAnd() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return integerBinaryHandler("handlerBitAnd", "handlerBitAnd sets ints[A] = ints[B] & ints[C].", "AND")
+func handlerBitAndInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return integerBinaryHandler("handlerBitAndInt64", "handlerBitAndInt64 sets ints[A] = ints[B] & ints[C].", "AND")
 }
 
-// handlerBitOr builds the handler definition for the BitOr opcode: ints[A] = ints[B] |
-// ints[C].
+// handlerBitOrInt64 builds the handler definition for the BitOr opcode, which computes
+// ints[A] = ints[B] | ints[C].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerBitOr() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return integerBinaryHandler("handlerBitOr", "handlerBitOr sets ints[A] = ints[B] | ints[C].", "OR")
+func handlerBitOrInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return integerBinaryHandler("handlerBitOrInt64", "handlerBitOrInt64 sets ints[A] = ints[B] | ints[C].", "OR")
 }
 
-// handlerBitXor builds the handler definition for the BitXor opcode: ints[A] = ints[B] ^
-// ints[C].
+// handlerBitXorInt64 builds the handler definition for the BitXor opcode, which computes
+// ints[A] = ints[B] ^ ints[C].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerBitXor() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return integerBinaryHandler("handlerBitXor", "handlerBitXor sets ints[A] = ints[B] ^ ints[C].", "XOR")
+func handlerBitXorInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return integerBinaryHandler("handlerBitXorInt64", "handlerBitXorInt64 sets ints[A] = ints[B] ^ ints[C].", "XOR")
 }
 
-// handlerBitAndNot builds the handler definition for the BitAndNot opcode: ints[A] =
-// ints[B] &^ ints[C].
+// handlerBitAndNotInt64 builds the handler definition for the BitAndNot opcode, which
+// computes ints[A] = ints[B] &^ ints[C].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerBitAndNot() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return integerBinaryHandler("handlerBitAndNot", "handlerBitAndNot sets ints[A] = ints[B] &^ ints[C].", "ANDNOT")
+func handlerBitAndNotInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return integerBinaryHandler("handlerBitAndNotInt64", "handlerBitAndNotInt64 sets ints[A] = ints[B] &^ ints[C].", "ANDNOT")
 }
 
-// handlerShiftLeft builds the handler definition for the ShiftLeft opcode: ints[A] =
-// ints[B] << uint(ints[C]).
+// handlerShiftLeftInt64 builds the handler definition for the ShiftLeft opcode, which
+// computes ints[A] = ints[B] << uint(ints[C]).
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerShiftLeft() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerShiftLeftInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerShiftLeft", Comment: "handlerShiftLeft sets ints[A] = ints[B] << uint(ints[C]).",
+		Name: "handlerShiftLeftInt64", Comment: "handlerShiftLeftInt64 sets ints[A] = ints[B] << uint(ints[C]).",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
@@ -545,13 +546,13 @@ func handlerShiftLeft() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// handlerShiftRight builds the handler definition for the ShiftRight opcode: ints[A] =
-// ints[B] >> uint(ints[C]). The shift is arithmetic (sign-fill).
+// handlerShiftRightInt64 builds the handler definition for the ShiftRight opcode, which
+// computes ints[A] = ints[B] >> uint(ints[C]). The shift is arithmetic (sign-fill).
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerShiftRight() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerShiftRightInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerShiftRight", Comment: "handlerShiftRight sets ints[A] = ints[B] >> uint(ints[C]).",
+		Name: "handlerShiftRightInt64", Comment: "handlerShiftRightInt64 sets ints[A] = ints[B] >> uint(ints[C]).",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
@@ -586,35 +587,33 @@ func floatBinaryHandler(name, comment, operation string) asmgen.HandlerDefinitio
 	}
 }
 
-// handlerAddFloat builds the handler definition for the AddFloat opcode: floats[A] =
-// floats[B] + floats[C].
+// handlerAddFloat64 builds the handler definition for the AddFloat64 opcode, which
+// computes floats[A] = floats[B] + floats[C].
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerAddFloat() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return floatBinaryHandler("handlerAddFloat", "handlerAddFloat sets floats[A] = floats[B] + floats[C].", "ADD")
+func handlerAddFloat64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return floatBinaryHandler("handlerAddFloat64", "handlerAddFloat64 sets floats[A] = floats[B] + floats[C].", "ADD")
 }
 
-// handlerSubFloat builds the handler definition for the SubFloat opcode: floats[A] =
-// floats[B] - floats[C].
+// handlerSubtractFloat64 builds the handler definition for the SubtractFloat64 opcode.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerSubFloat() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return floatBinaryHandler("handlerSubFloat", "handlerSubFloat sets floats[A] = floats[B] - floats[C].", "SUB")
+func handlerSubtractFloat64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return floatBinaryHandler("handlerSubtractFloat64", "handlerSubtractFloat64 sets floats[A] = floats[B] - floats[C].", "SUB")
 }
 
-// handlerMulFloat builds the handler definition for the MulFloat opcode: floats[A] =
-// floats[B] * floats[C].
+// handlerMultiplyFloat64 builds the handler definition for the MultiplyFloat64 opcode.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerMulFloat() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return floatBinaryHandler("handlerMulFloat", "handlerMulFloat sets floats[A] = floats[B] * floats[C].", "MUL")
+func handlerMultiplyFloat64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return floatBinaryHandler("handlerMultiplyFloat64", "handlerMultiplyFloat64 sets floats[A] = floats[B] * floats[C].", "MUL")
 }
 
-// handlerDivFloat builds the handler definition for the DivFloat opcode: floats[A] =
-// floats[B] / floats[C]. No zero-divisor guard is needed because IEEE 754 produces +/-Inf
-// or NaN rather than faulting.
+// handlerDivideFloat64 builds the handler definition for the DivideFloat64 opcode, which
+// computes floats[A] = floats[B] / floats[C]. No zero-divisor guard is needed because
+// IEEE 754 produces +/-Inf or NaN rather than faulting.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerDivFloat() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return floatBinaryHandler("handlerDivFloat", "handlerDivFloat sets floats[A] = floats[B] / floats[C].", "DIV")
+func handlerDivideFloat64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return floatBinaryHandler("handlerDivideFloat64", "handlerDivideFloat64 sets floats[A] = floats[B] / floats[C].", "DIV")
 }

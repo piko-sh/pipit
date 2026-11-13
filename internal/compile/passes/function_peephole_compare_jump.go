@@ -23,10 +23,67 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
+// registerCompareJumpFusion names the fusion of a comparison of two registers with the
+// branch that follows it.
+type registerCompareJumpFusion struct {
+	// compare is the tier-0 comparison opcode to match.
+	compare isa.Opcode
+
+	// jump is the tier-0 conditional branch opcode to match.
+	jump isa.Opcode
+
+	// register is the fused tier-1 sub-op for two register operands.
+	register isa.SubOpcode
+}
+
+// compareJumpFusion names a comparison-and-branch fusion that also has a form for a
+// constant right operand.
+type compareJumpFusion struct {
+	registerCompareJumpFusion
+
+	// constant is the fused tier-1 sub-op for a constant right operand.
+	constant isa.SubOpcode
+}
+
+// compareJumpFusions lists the compare-and-branch fusions.
+//
+// An integer comparison negates exactly, so a compare followed by a branch on true is the
+// opposite compare followed by a branch on false. The constant forms have no not-equal
+// sub-op, so they branch on true through the equal one.
+var compareJumpFusions = [...]compareJumpFusion{
+	{registerCompareJumpFusion{isa.OpLessThanInt64, isa.OpJumpIfFalse, isa.SubOpLessThanInt64ThenJumpIfFalse}, isa.SubOpLessThanInt64ConstantThenJumpIfFalse},
+	{registerCompareJumpFusion{isa.OpLessOrEqualInt64, isa.OpJumpIfFalse, isa.SubOpLessOrEqualInt64ThenJumpIfFalse}, isa.SubOpLessOrEqualInt64ConstantThenJumpIfFalse},
+	{registerCompareJumpFusion{isa.OpGreaterThanInt64, isa.OpJumpIfFalse, isa.SubOpGreaterThanInt64ThenJumpIfFalse}, isa.SubOpGreaterThanInt64ConstantThenJumpIfFalse},
+	{registerCompareJumpFusion{isa.OpGreaterOrEqualInt64, isa.OpJumpIfFalse, isa.SubOpGreaterOrEqualInt64ThenJumpIfFalse}, isa.SubOpGreaterOrEqualInt64ConstantThenJumpIfFalse},
+	{registerCompareJumpFusion{isa.OpEqualInt64, isa.OpJumpIfFalse, isa.SubOpEqualInt64ThenJumpIfFalse}, isa.SubOpEqualInt64ConstantThenJumpIfFalse},
+	{registerCompareJumpFusion{isa.OpNotEqualInt64, isa.OpJumpIfFalse, isa.SubOpNotEqualInt64ThenJumpIfFalse}, isa.SubOpEqualInt64ConstantThenJumpIfTrue},
+	{registerCompareJumpFusion{isa.OpLessThanInt64, isa.OpJumpIfTrue, isa.SubOpGreaterOrEqualInt64ThenJumpIfFalse}, isa.SubOpGreaterOrEqualInt64ConstantThenJumpIfFalse},
+	{registerCompareJumpFusion{isa.OpLessOrEqualInt64, isa.OpJumpIfTrue, isa.SubOpGreaterThanInt64ThenJumpIfFalse}, isa.SubOpGreaterThanInt64ConstantThenJumpIfFalse},
+	{registerCompareJumpFusion{isa.OpGreaterThanInt64, isa.OpJumpIfTrue, isa.SubOpLessOrEqualInt64ThenJumpIfFalse}, isa.SubOpLessOrEqualInt64ConstantThenJumpIfFalse},
+	{registerCompareJumpFusion{isa.OpGreaterOrEqualInt64, isa.OpJumpIfTrue, isa.SubOpLessThanInt64ThenJumpIfFalse}, isa.SubOpLessThanInt64ConstantThenJumpIfFalse},
+	{registerCompareJumpFusion{isa.OpEqualInt64, isa.OpJumpIfTrue, isa.SubOpNotEqualInt64ThenJumpIfFalse}, isa.SubOpEqualInt64ConstantThenJumpIfTrue},
+	{registerCompareJumpFusion{isa.OpNotEqualInt64, isa.OpJumpIfTrue, isa.SubOpEqualInt64ThenJumpIfFalse}, isa.SubOpEqualInt64ConstantThenJumpIfFalse},
+}
+
+// uintCompareJumpFusions lists the compare-and-branch fusions of two uint registers.
+var uintCompareJumpFusions = [...]registerCompareJumpFusion{
+	{isa.OpEqualUint64, isa.OpJumpIfFalse, isa.SubOpEqualUint64ThenJumpIfFalse},
+	{isa.OpNotEqualUint64, isa.OpJumpIfFalse, isa.SubOpNotEqualUint64ThenJumpIfFalse},
+	{isa.OpEqualUint64, isa.OpJumpIfTrue, isa.SubOpNotEqualUint64ThenJumpIfFalse},
+	{isa.OpNotEqualUint64, isa.OpJumpIfTrue, isa.SubOpEqualUint64ThenJumpIfFalse},
+}
+
+// incrementLatchFusions pairs register comparisons with their increment-and-branch forms.
+var incrementLatchFusions = map[isa.SubOpcode]isa.SubOpcode{
+	isa.SubOpGreaterOrEqualInt64ThenJumpIfFalse: isa.SubOpIncrementInt64ThenJumpIfLessThan,
+	isa.SubOpGreaterThanInt64ThenJumpIfFalse:    isa.SubOpIncrementInt64ThenJumpIfLessOrEqual,
+}
+
 // FuseCompareRegJump dispatches the register-to-register compare-and-branch fusions.
 //
-// Runs after FuseThreeInstrPatterns so the three-instruction constant form (LoadIntConst
-// + compare + branch) gets first refusal on a sequence that matches both.
+// Runs after FuseThreeInstrPatterns so the three-instruction constant form
+// (LoadInt64Constant + compare + branch) gets first refusal on a sequence that matches
+// both.
 //
 // Takes compiledFunction (*CompiledFunction) whose call sites and result kinds the
 // liveness guard reads.
@@ -38,19 +95,24 @@ import (
 //
 // Returns true if a pattern was matched and applied.
 func FuseCompareRegJump(compiledFunction *program.CompiledFunction, body []isa.Instruction, i, n int, jumpTargets map[int]bool) bool {
-	return fuseCompareRegJump(compiledFunction, body, i, n, jumpTargets, isa.OpLtInt, isa.SubOpLtIntJumpFalse) ||
-		fuseCompareRegJump(compiledFunction, body, i, n, jumpTargets, isa.OpLeInt, isa.SubOpLeIntJumpFalse) ||
-		fuseCompareRegJump(compiledFunction, body, i, n, jumpTargets, isa.OpGtInt, isa.SubOpGtIntJumpFalse) ||
-		fuseCompareRegJump(compiledFunction, body, i, n, jumpTargets, isa.OpGeInt, isa.SubOpGeIntJumpFalse) ||
-		fuseCompareRegJump(compiledFunction, body, i, n, jumpTargets, isa.OpEqInt, isa.SubOpEqIntJumpFalse) ||
-		fuseCompareRegJump(compiledFunction, body, i, n, jumpTargets, isa.OpNeInt, isa.SubOpNeIntJumpFalse)
+	for _, fusion := range compareJumpFusions {
+		if fuseCompareRegJump(compiledFunction, body, i, n, jumpTargets, fusion.registerCompareJumpFusion) {
+			return true
+		}
+	}
+	for _, fusion := range uintCompareJumpFusions {
+		if fuseCompareRegJump(compiledFunction, body, i, n, jumpTargets, fusion) {
+			return true
+		}
+	}
+	return false
 }
 
-// fuseCompareRegJump fuses `cmpOp(dest, x, y)` + `JumpIfFalse(dest, off)` into the tier-1
-// `fusedSubOp(x, y)` + `isa.OpExt(offLo, offHi)`.
+// fuseCompareRegJump fuses `compare(dest, x, y)` + `jump(dest, off)` into the tier-1
+// `fused(x, y)` + `isa.OpExtension(offLo, offHi)`.
 //
-// Two words in, two words out, so no offset adjustment is needed. The fused form no
-// longer writes dest, so the fusion requires dest to be dead on both edges.
+// The fused form no longer writes dest, so the fusion requires dest to be dead on both
+// edges.
 //
 // Takes compiledFunction (*CompiledFunction) whose call sites and result kinds the
 // liveness guard reads.
@@ -59,47 +121,39 @@ func FuseCompareRegJump(compiledFunction *program.CompiledFunction, body []isa.I
 // Takes n (int) which specifies the length.
 // Takes jumpTargets (map[int]bool) which specifies the set of protected jump
 // destinations.
-// Takes cmpOp (opcode) which specifies the comparison opcode.
-// Takes fusedSubOp (isa.SubOpcode) which specifies the fused compare-and-branch sub-op.
+// Takes fusion (registerCompareJumpFusion) which names the compare and branch matched and
+// the fused sub-op that replaces them.
 //
 // Returns true if the pattern matched and was applied.
 func fuseCompareRegJump(
 	compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
-	cmpOp isa.Opcode, fusedSubOp isa.SubOpcode,
+	fusion registerCompareJumpFusion,
 ) bool {
-	if i+1 >= n ||
-		body[i].Op != cmpOp ||
-		body[i+1].Op != isa.OpJumpIfFalse ||
-		body[i].A != body[i+1].A ||
-		jumpTargets[i+1] {
+	if i+1 >= n || body[i].Op != fusion.compare {
 		return false
 	}
-	if !registerDeadAfterBranch(compiledFunction, body, i+1, isa.RegisterInt, body[i].A) {
+	jump := i + 1
+	for jump < n && isCanonicalNoOperation(body[jump]) && !jumpTargets[jump] {
+		jump++
+	}
+	if jump >= n || body[jump].Op != fusion.jump || body[i].A != body[jump].A || jumpTargets[jump] {
 		return false
 	}
-	lo, hi := isa.SplitOffset(body[i+1].SignedOffset())
-	body[i] = isa.NewTier1Instruction(fusedSubOp, body[i].B, body[i].C)
-	body[i+1] = isa.NewInstruction(isa.OpExt, lo, hi, 0)
+	if !registerDeadAfterBranch(compiledFunction, body, jump, isa.RegisterInt64, body[i].A) {
+		return false
+	}
+	lo, hi := isa.SplitOffset(body[jump].SignedOffset())
+	fused := isa.NewTier1Instruction(fusion.register, body[i].B, body[i].C)
+	body[i] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
+	body[jump-1] = fused
+	body[jump] = isa.NewInstruction(isa.OpExtension, lo, hi, 0)
 	return true
 }
 
-// compareConstFusion names one compare-against-constant fusion: the tier-0 compare and
-// jump opcodes it matches and the tier-1 sub-op that replaces them.
-type compareConstFusion struct {
-	// compare is the tier-0 comparison opcode to match.
-	compare isa.Opcode
-
-	// jump is the tier-0 conditional branch opcode to match.
-	jump isa.Opcode
-
-	// fused is the tier-1 sub-op that replaces the pair.
-	fused isa.SubOpcode
-}
-
-// fuseCompareConstJump attempts to fuse a LoadIntConst + cmpOp + jumpOp sequence into a
-// single superinstruction.
+// fuseCompareConstJump attempts to fuse an int constant load + cmpOp + jumpOp sequence
+// into a single superinstruction.
 //
 // The fused form writes neither the loaded constant's register nor the condition
 // register, so the fusion is refused unless both are provably dead on both edges of the
@@ -112,7 +166,7 @@ type compareConstFusion struct {
 // Takes n (int) which specifies the length.
 // Takes jumpTargets (map[int]bool) which specifies the set of protected jump
 // destinations.
-// Takes fusion (compareConstFusion) which names the compare and jump opcodes matched and
+// Takes fusion (compareJumpFusion) which names the compare and jump opcodes matched and
 // the fused sub-op that replaces them.
 //
 // Returns true if the pattern matched and was applied.
@@ -120,36 +174,38 @@ func fuseCompareConstJump(
 	compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
-	fusion compareConstFusion,
+	fusion compareJumpFusion,
 ) bool {
-	if i+2 >= n ||
-		body[i].Op != isa.OpLoadIntConst || body[i+1].Op != fusion.compare ||
-		body[i+2].Op != fusion.jump ||
-		body[i].A != body[i+1].C ||
-		body[i+1].A != body[i+2].A ||
-		body[i].C != 0 ||
-		body[i+1].B == body[i].A ||
-		jumpTargets[i+1] || jumpTargets[i+2] {
+	if i+2 >= n || body[i+1].Op != fusion.compare || body[i+2].Op != fusion.jump || jumpTargets[i+1] || jumpTargets[i+2] {
 		return false
 	}
-	if !registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, body[i+1].A) ||
-		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, body[i].A) {
+	loaded, ok := intConstLoadDestination(body[i])
+	if !ok ||
+		loaded != body[i+1].C ||
+		body[i+1].A != body[i+2].A ||
+		body[i+1].B == loaded {
+		return false
+	}
+	if !registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt64, body[i+1].A) ||
+		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt64, loaded) {
+		return false
+	}
+	index, ok := intConstPoolIndex(compiledFunction, body[i])
+	if !ok {
 		return false
 	}
 	raw := body[i+2].SignedOffset()
 	adj := raw + 1
 	lo, hi := isa.SplitOffset(adj)
-	body[i] = isa.NewTier1Instruction(fusion.fused, body[i+1].B, body[i].B)
-	body[i+1] = isa.NewInstruction(isa.OpExt, lo, hi, 0)
-	body[i+2] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	body[i] = isa.NewTier1Instruction(fusion.constant, body[i+1].B, index)
+	body[i+1] = isa.NewInstruction(isa.OpExtension, lo, hi, 0)
+	body[i+2] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 	return true
 }
 
-// fuseIncIntJumpLt fuses IncInt(R) + LtInt(cmp, R, B) + JumpIfTrue(cmp, off) into
-// isa.SubOpIncIntJumpLt(R, B, 0) + isa.OpExt(lo, hi, 0) + isa.OpNop.
-//
-// Operand layout: isa.SubOpTier2IncInt lives in tier-2 form {isa.OpDrillTier1,
-// isa.SubOpDrillTier2, isa.SubOpTier2IncInt, R=C}.
+// fuseIncrementInt64ThenJumpIfLessThan fuses IncrementInt64(R) + LessThanInt64(cmp, R, B)
+// + JumpIfTrue(cmp, off) into isa.SubOpIncrementInt64ThenJumpIfLessThan(R, B, 0) +
+// isa.OpExtension(lo, hi, 0) + isa.OpNoOperation.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
 // the liveness guard reads.
@@ -160,12 +216,12 @@ func fuseCompareConstJump(
 // destinations.
 //
 // Returns true if a pattern was matched and applied.
-func fuseIncIntJumpLt(compiledFunction *program.CompiledFunction,
+func fuseIncrementInt64ThenJumpIfLessThan(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
 	if i+2 >= n ||
-		!isa.InstrIsTier2SubOp(body[i], isa.SubOpTier2IncInt) || body[i+1].Op != isa.OpLtInt ||
+		!isa.InstrIsTier2SubOp(body[i], isa.SubOpTier2IncrementInt64) || body[i+1].Op != isa.OpLessThanInt64 ||
 		body[i+2].Op != isa.OpJumpIfTrue ||
 		body[i+1].B != body[i].C ||
 		body[i+2].A != body[i+1].A ||
@@ -173,25 +229,54 @@ func fuseIncIntJumpLt(compiledFunction *program.CompiledFunction,
 		jumpTargets[i+1] || jumpTargets[i+2] {
 		return false
 	}
-	if !registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, body[i+1].A) {
+	if !registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt64, body[i+1].A) {
 		return false
 	}
 	raw := body[i+2].SignedOffset()
 	adj := raw + 1
 	lo, hi := isa.SplitOffset(adj)
-	body[i] = isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpIncIntJumpLt), body[i].C, body[i+1].C)
-	body[i+1] = isa.NewInstruction(isa.OpExt, lo, hi, 0)
-	body[i+2] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	body[i] = isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpIncrementInt64ThenJumpIfLessThan), body[i].C, body[i+1].C)
+	body[i+1] = isa.NewInstruction(isa.OpExtension, lo, hi, 0)
+	body[i+2] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 	return true
 }
 
-// fuseLenStringLtJump fuses isa.SubOpLenString + isa.OpLtInt + isa.OpJumpIfFalse into
-// isa.SubOpLenStringLtJumpFalse + isa.OpExt, collapsing the entire for-loop condition `i
-// < len(s)` into a single fused instruction.
+// fuseIncrementThenCompareJump fuses an increment with its following compare-and-branch.
 //
-// The fuser matches {isa.OpDrillTier1, isa.SubOpLenString, R_len, R_str} + LT_INT(R_bool,
-// R_i, R_len) + JUMP_IF_FALSE(R_bool, lo, hi) and rewrites them to
-// LEN_STRING_LT_JUMP_FALSE(R_i, R_str, 0) + EXT(lo, hi, 0) + NOP.
+// Only no-operation words may lie between the two, and no jump may land after the
+// increment, since it would reach the test without incrementing.
+//
+// Takes body ([]isa.Instruction) which is the instruction stream, rewritten in place.
+// Takes i (int) which is the candidate increment.
+// Takes n (int) which is the body's length.
+// Takes jumpTargets (map[int]bool) which marks the protected jump destinations.
+//
+// Returns true when the pair was fused.
+func fuseIncrementThenCompareJump(body []isa.Instruction, i, n int, jumpTargets map[int]bool) bool {
+	if !isa.InstrIsTier2SubOp(body[i], isa.SubOpTier2IncrementInt64) {
+		return false
+	}
+	latch := i + 1
+	for latch < n && isCanonicalNoOperation(body[latch]) && !jumpTargets[latch] {
+		latch++
+	}
+	if latch >= n || jumpTargets[latch] || body[latch].Op != isa.OpDrillTier1 {
+		return false
+	}
+	counter := body[i].C
+	fused, known := incrementLatchFusions[isa.SubOpcode(body[latch].A)]
+	if !known || body[latch].B != counter || body[latch].C == counter {
+		return false
+	}
+	body[latch] = isa.NewTier1Instruction(fused, counter, body[latch].C)
+	body[i] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
+	return true
+}
+
+// fuseLessThanLengthStringThenJumpIfFalse fuses isa.SubOpLengthString +
+// isa.OpLessThanInt64 + isa.OpJumpIfFalse into
+// isa.SubOpLessThanLengthStringThenJumpIfFalse + isa.OpExtension, collapsing the entire
+// for-loop condition `i < len(s)` into a single fused instruction.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
 // the liveness guard reads.
@@ -202,12 +287,12 @@ func fuseIncIntJumpLt(compiledFunction *program.CompiledFunction,
 // destinations.
 //
 // Returns true if a pattern was matched and applied.
-func fuseLenStringLtJump(compiledFunction *program.CompiledFunction,
+func fuseLessThanLengthStringThenJumpIfFalse(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
 	if i+2 >= n ||
-		!isa.InstrIsTier1SubOp(body[i], isa.SubOpLenString) || body[i+1].Op != isa.OpLtInt ||
+		!isa.InstrIsTier1SubOp(body[i], isa.SubOpLengthString) || body[i+1].Op != isa.OpLessThanInt64 ||
 		body[i+2].Op != isa.OpJumpIfFalse ||
 		body[i].B != body[i+1].C ||
 		body[i+1].A != body[i+2].A ||
@@ -215,24 +300,22 @@ func fuseLenStringLtJump(compiledFunction *program.CompiledFunction,
 		jumpTargets[i+1] || jumpTargets[i+2] {
 		return false
 	}
-	if !registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, body[i].B) ||
-		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, body[i+1].A) {
+	if !registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt64, body[i].B) ||
+		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt64, body[i+1].A) {
 		return false
 	}
 	raw := body[i+2].SignedOffset()
 	adj := raw + 1
 	lo, hi := isa.SplitOffset(adj)
-	body[i] = isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpLenStringLtJumpFalse), body[i+1].B, body[i].C)
-	body[i+1] = isa.NewInstruction(isa.OpExt, lo, hi, 0)
-	body[i+2] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	body[i] = isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpLessThanLengthStringThenJumpIfFalse), body[i+1].B, body[i].C)
+	body[i+1] = isa.NewInstruction(isa.OpExtension, lo, hi, 0)
+	body[i+2] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 	return true
 }
 
-// fuseNilTestJump fuses LoadNil(R) + EqGeneral/NeGeneral(C, X, R) + Jump into
-// isa.OpTestNilJumpTrue/False(X, lo, hi) + isa.OpNop + isa.OpNop.
-//
-// Operand layout: isa.SubOpTier2LoadNil lives in tier-2 form {isa.OpDrillTier1,
-// isa.SubOpDrillTier2, isa.SubOpTier2LoadNil, R=C}.
+// fuseNilTestJump fuses LoadNil(R) + EqualGeneral/NotEqualGeneral(C, X, R) + Jump into
+// isa.OpJumpIfNil or isa.OpJumpIfNotNil(X, lo, hi) + isa.OpNoOperation +
+// isa.OpNoOperation.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
 // the liveness guard reads.
@@ -249,7 +332,7 @@ func fuseNilTestJump(compiledFunction *program.CompiledFunction,
 ) bool {
 	if i+2 >= n ||
 		!isa.InstrIsTier2SubOp(body[i], isa.SubOpTier2LoadNil) ||
-		(body[i+1].Op != isa.OpEqGeneral && body[i+1].Op != isa.OpNeGeneral) ||
+		(body[i+1].Op != isa.OpEqualGeneral && body[i+1].Op != isa.OpNotEqualGeneral) ||
 		(body[i+2].Op != isa.OpJumpIfTrue && body[i+2].Op != isa.OpJumpIfFalse) ||
 		body[i+1].A != body[i+2].A ||
 		jumpTargets[i+1] || jumpTargets[i+2] {
@@ -266,29 +349,29 @@ func fuseNilTestJump(compiledFunction *program.CompiledFunction,
 	}
 	if testRegister == nilRegister ||
 		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterGeneral, nilRegister) ||
-		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, body[i+1].A) {
+		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt64, body[i+1].A) {
 		return false
 	}
-	wantNilJump := (body[i+1].Op == isa.OpEqGeneral && body[i+2].Op == isa.OpJumpIfTrue) ||
-		(body[i+1].Op == isa.OpNeGeneral && body[i+2].Op == isa.OpJumpIfFalse)
+	wantNilJump := (body[i+1].Op == isa.OpEqualGeneral && body[i+2].Op == isa.OpJumpIfTrue) ||
+		(body[i+1].Op == isa.OpNotEqualGeneral && body[i+2].Op == isa.OpJumpIfFalse)
 	raw := body[i+2].SignedOffset()
 	adj := raw + 2
 	lo, hi := isa.SplitOffset(adj)
 	var fusedOp isa.Opcode
 	if wantNilJump {
-		fusedOp = isa.OpTestNilJumpTrue
+		fusedOp = isa.OpJumpIfNil
 	} else {
-		fusedOp = isa.OpTestNilJumpFalse
+		fusedOp = isa.OpJumpIfNotNil
 	}
 	body[i] = isa.NewInstruction(fusedOp, testRegister, lo, hi)
-	body[i+1] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
-	body[i+2] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	body[i+1] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
+	body[i+2] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 	return true
 }
 
-// fuseStringConstJump fuses LoadStringConst(R, index) + EqString(C, X, R) +
-// JumpIfFalse(C, off) into isa.OpEqStringConstJumpFalse(X, index, 0) + isa.OpExt(lo, hi,
-// 0) + isa.OpNop.
+// fuseStringConstJump fuses LoadStringConstant(R, index) + EqualString(C, X, R) +
+// JumpIfFalse(C, off) into isa.OpEqualStringConstantThenJumpIfFalse(X, index, 0) +
+// isa.OpExtension(lo, hi, 0) + isa.OpNoOperation.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
 // the liveness guard reads.
@@ -304,7 +387,7 @@ func fuseStringConstJump(compiledFunction *program.CompiledFunction,
 	jumpTargets map[int]bool,
 ) bool {
 	if i+2 >= n ||
-		body[i].Op != isa.OpLoadStringConst || body[i+1].Op != isa.OpEqString ||
+		body[i].Op != isa.OpLoadStringConstant || body[i+1].Op != isa.OpEqualString ||
 		body[i+2].Op != isa.OpJumpIfFalse ||
 		body[i].C != 0 ||
 		body[i].A != body[i+1].C ||
@@ -314,14 +397,14 @@ func fuseStringConstJump(compiledFunction *program.CompiledFunction,
 		return false
 	}
 	if !registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterString, body[i].A) ||
-		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, body[i+1].A) {
+		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt64, body[i+1].A) {
 		return false
 	}
 	raw := body[i+2].SignedOffset()
 	adj := raw + 1
 	lo, hi := isa.SplitOffset(adj)
-	body[i] = isa.NewTier1Instruction(isa.SubOpEqStringConstJumpFalse, body[i+1].B, body[i].B)
-	body[i+1] = isa.NewInstruction(isa.OpExt, lo, hi, 0)
-	body[i+2] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	body[i] = isa.NewTier1Instruction(isa.SubOpEqualStringConstantThenJumpIfFalse, body[i+1].B, body[i].B)
+	body[i+1] = isa.NewInstruction(isa.OpExtension, lo, hi, 0)
+	body[i+2] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 	return true
 }

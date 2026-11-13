@@ -26,6 +26,8 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	engine.SetLicenceCountingForTest(true)
+	SetLicenceCheckerStrictForTest(true)
 	engine.ResetTypeIsPointerFreeCacheForTest()
 	engine.ResetSafeTypeRegistryForTest()
 	leakcheck.VerifyTestMain(m)

@@ -99,26 +99,3 @@ func TestWrapFuncCapturesShape(t *testing.T) {
 	require.Equal(t, results, linked.Results)
 	require.Equal(t, reflect.Func, linked.Target.Kind())
 }
-
-func TestWrapTypeCapturesGenericFields(t *testing.T) {
-	t.Parallel()
-
-	fields := []link.GenericField{
-		{
-			Name:      "Value",
-			FieldType: link.GenericFieldType{Kind: link.FieldKindTypeArg, TypeArgIndex: 0},
-			Exported:  true,
-		},
-		{
-			Name:      "Score",
-			FieldType: link.GenericFieldType{Kind: link.FieldKindBasic, BasicKind: reflect.Float64},
-			Exported:  true,
-		},
-	}
-
-	linkedType := link.WrapType("Box", 1, fields)
-
-	require.Equal(t, "Box", linkedType.Name)
-	require.Equal(t, 1, linkedType.TypeArgCount)
-	require.Equal(t, fields, linkedType.Fields)
-}

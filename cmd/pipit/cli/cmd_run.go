@@ -274,7 +274,6 @@ func runLimits(ctx context.Context, options *runFlags) (runner.Limits, error) {
 		MaxOutputSize: *options.maxOutput,
 		CostBudget:    *options.costBudget,
 		Symbols:       ExtraSymbols(ctx),
-		Logger:        loggerFromContext(ctx),
 		BytecodeStore: nil,
 		MaxCallDepth:  *options.maxCallDepth,
 	}

@@ -21,14 +21,13 @@ package engine
 import (
 	"reflect"
 
-	"pipit.sh/pipit/internal/symtab"
-
 	"pipit.sh/pipit/internal/isa"
 )
 
-// handleMapIndexOkJumpIfFalseIntInt fuses isa.OpMapIndexOkIntInt and isa.OpJumpIfFalse.
+// handleGetMapInt64Int64OkThenJumpIfFalse fuses isa.OpGetMapInt64Int64Ok and
+// isa.OpJumpIfFalse.
 //
-// The handler reads ints[A] = map[int]int (or int64) in general[B] with key ints[C]; the
+// The handler reads ints[A] = map[int]int (or int64) in general[B] with key ints[C]. The
 // extension word carries the ok-register index in ext.a and the signed jump offset packed
 // into ext.b (lo) and ext.c (hi). On !ok programCounter advances by jumpOffset.
 //
@@ -41,10 +40,10 @@ import (
 //
 // Returns opContinue once the extension word is consumed and the program counter is
 // optionally adjusted.
-func handleMapIndexOkJumpIfFalseIntInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapInt64Int64OkThenJumpIfFalse(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapIndexOkJumpIfFalseIntInt", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapInt64Int64OkThenJumpIfFalse", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -62,7 +61,7 @@ func handleMapIndexOkJumpIfFalseIntInt(vm *VM, frame *CallFrame, registers *Regi
 		registers.Ints[instruction.A] = value
 		ok = present
 	} else {
-		keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
+		keyReflectValue := resolveMapAccessCache(vm, m.Type()).keyScratch
 		keyReflectValue.SetInt(key)
 		result := m.MapIndex(keyReflectValue)
 		if result.IsValid() {
@@ -80,9 +79,9 @@ func handleMapIndexOkJumpIfFalseIntInt(vm *VM, frame *CallFrame, registers *Regi
 	return opContinue
 }
 
-// handleMapIndexOkJumpIfFalseStringInt fuses isa.OpMapIndexOkStringInt and
-// isa.OpJumpIfFalse. Same shape as handleMapIndexOkJumpIfFalseIntInt for map[string]int
-// with string keys.
+// handleGetMapStringInt64OkThenJumpIfFalse fuses isa.OpGetMapStringInt64Ok and
+// isa.OpJumpIfFalse. Same shape as handleGetMapInt64Int64OkThenJumpIfFalse for
+// map[string]int with string keys.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which carries the program counter and function body used to
@@ -94,10 +93,10 @@ func handleMapIndexOkJumpIfFalseIntInt(vm *VM, frame *CallFrame, registers *Regi
 //
 // Returns opContinue once dispatch consumes the extension word and optionally adjusts the
 // program counter.
-func handleMapIndexOkJumpIfFalseStringInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapStringInt64OkThenJumpIfFalse(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapIndexOkJumpIfFalseStringInt", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapStringInt64OkThenJumpIfFalse", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -132,7 +131,7 @@ func handleMapIndexOkJumpIfFalseStringInt(vm *VM, frame *CallFrame, registers *R
 	return opContinue
 }
 
-// handleMapIndexOkJumpIfFalseStringString fuses isa.OpMapIndexOkStringString and
+// handleGetMapStringStringOkThenJumpIfFalse fuses isa.OpGetMapStringStringOk and
 // isa.OpJumpIfFalse for map[string]string lookups.
 //
 // Takes vm (*VM) which is the virtual machine.
@@ -145,10 +144,10 @@ func handleMapIndexOkJumpIfFalseStringInt(vm *VM, frame *CallFrame, registers *R
 //
 // Returns opContinue once dispatch consumes the extension word and optionally adjusts the
 // program counter.
-func handleMapIndexOkJumpIfFalseStringString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapStringStringOkThenJumpIfFalse(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapIndexOkJumpIfFalseStringString", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapStringStringOkThenJumpIfFalse", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -179,7 +178,7 @@ func handleMapIndexOkJumpIfFalseStringString(vm *VM, frame *CallFrame, registers
 	return opContinue
 }
 
-// handleMapIndexOkJumpIfFalseIntString fuses isa.OpMapIndexOkIntString and
+// handleGetMapInt64StringOkThenJumpIfFalse fuses isa.OpGetMapInt64StringOk and
 // isa.OpJumpIfFalse for map[int]string / map[int64]string lookups.
 //
 // Takes vm (*VM) which supplies the per-VM scratch key value.
@@ -192,10 +191,10 @@ func handleMapIndexOkJumpIfFalseStringString(vm *VM, frame *CallFrame, registers
 //
 // Returns opContinue once dispatch consumes the extension word and optionally adjusts the
 // program counter.
-func handleMapIndexOkJumpIfFalseIntString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapInt64StringOkThenJumpIfFalse(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapIndexOkJumpIfFalseIntString", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapInt64StringOkThenJumpIfFalse", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -213,7 +212,7 @@ func handleMapIndexOkJumpIfFalseIntString(vm *VM, frame *CallFrame, registers *R
 		registers.Strings[instruction.A] = value
 		ok = present
 	} else {
-		keyScratch := mapKeyScratchFor(vm, m.Type().Key())
+		keyScratch := resolveMapAccessCache(vm, m.Type()).keyScratch
 		keyScratch.SetInt(key)
 		result := m.MapIndex(keyScratch)
 		if result.IsValid() {
@@ -231,11 +230,8 @@ func handleMapIndexOkJumpIfFalseIntString(vm *VM, frame *CallFrame, registers *R
 	return opContinue
 }
 
-// handleMapIndexOkJumpIfFalseIntGeneral fuses isa.OpMapIndexOkIntGeneral and
+// handleGetMapInt64GeneralOkThenJumpIfFalse fuses isa.OpGetMapInt64GeneralOk and
 // isa.OpJumpIfFalse for map[int]V where V is in the general bank.
-//
-// Covers pointers, slices, maps, and interfaces, as well as the `node, ok := m[k]; if !ok
-// { ... }` idiom.
 //
 // Takes vm (*VM) which supplies the per-VM scratch key value.
 // Takes frame (*CallFrame) which carries the program counter and function body used to
@@ -247,10 +243,10 @@ func handleMapIndexOkJumpIfFalseIntString(vm *VM, frame *CallFrame, registers *R
 //
 // Returns opContinue once dispatch consumes the extension word and optionally adjusts the
 // program counter.
-func handleMapIndexOkJumpIfFalseIntGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapInt64GeneralOkThenJumpIfFalse(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapIndexOkJumpIfFalseIntGeneral", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapInt64GeneralOkThenJumpIfFalse", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -258,26 +254,24 @@ func handleMapIndexOkJumpIfFalseIntGeneral(vm *VM, frame *CallFrame, registers *
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	key := registers.Ints[instruction.C]
-	keyType := m.Type().Key()
-	elemType := m.Type().Elem()
+	cacheEntry := resolveMapAccessCache(vm, m.Type())
 	ok := false
-	if useMapFastLinkname() && mapKeyIsFast64Eligible(keyType) && mapElemStoredInline(elemType) {
+	if useMapFastLinkname() && cacheEntry.fast64Eligible && cacheEntry.elemInline {
 		resultPtr, present := mapAccessFast64ToGeneral(m, key)
 		if present {
-			registers.General[instruction.A] = wrapMapElemFast(vm, elemType, resultPtr)
+			registers.General[instruction.A] = wrapMapElemFast(vm, cacheEntry.elemType, resultPtr)
 			ok = true
 		} else {
-			registers.General[instruction.A] = symtab.ZeroValueForType(elemType)
+			registers.General[instruction.A] = cacheEntry.zeroElement
 		}
 	} else {
-		keyScratch := mapKeyScratchFor(vm, keyType)
-		keyScratch.SetInt(key)
-		result := m.MapIndex(keyScratch)
+		cacheEntry.keyScratch.SetInt(key)
+		result := m.MapIndex(cacheEntry.keyScratch)
 		if result.IsValid() {
 			registers.General[instruction.A] = result
 			ok = true
 		} else {
-			registers.General[instruction.A] = symtab.ZeroValueForType(elemType)
+			registers.General[instruction.A] = cacheEntry.zeroElement
 		}
 	}
 	registers.Ints[extensionWord.A] = boolToInt64(ok)
@@ -288,7 +282,7 @@ func handleMapIndexOkJumpIfFalseIntGeneral(vm *VM, frame *CallFrame, registers *
 	return opContinue
 }
 
-// handleMapIndexOkJumpIfFalseStringGeneral fuses isa.OpMapIndexOkStringGeneral and
+// handleGetMapStringGeneralOkThenJumpIfFalse fuses isa.OpGetMapStringGeneralOk and
 // isa.OpJumpIfFalse for map[string]V where V is in the general bank.
 //
 // Takes vm (*VM) which is the virtual machine.
@@ -301,10 +295,10 @@ func handleMapIndexOkJumpIfFalseIntGeneral(vm *VM, frame *CallFrame, registers *
 //
 // Returns opContinue once dispatch consumes the extension word and optionally adjusts the
 // program counter.
-func handleMapIndexOkJumpIfFalseStringGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapStringGeneralOkThenJumpIfFalse(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapIndexOkJumpIfFalseStringGeneral", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapStringGeneralOkThenJumpIfFalse", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError

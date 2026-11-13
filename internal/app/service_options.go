@@ -19,6 +19,8 @@
 package app
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"maps"
@@ -465,6 +467,133 @@ func WithCallbackTimeout(timeout time.Duration) Option {
 	}
 }
 
+// WithFinaliserTimeout bounds each run of a finaliser or cleanup a program registered
+// with runtime.SetFinalizer or runtime.AddCleanup.
+//
+// A run past the bound is stopped and the next finaliser runs. The default is 30 seconds.
+// A shorter WithCallbackTimeout applies instead.
+//
+// Takes timeout (time.Duration) which is the bound. It must be positive.
+//
+// Returns Option which applies the bound, or makes every compile and execution fail with
+// ErrInvalidOption when timeout is not positive.
+func WithFinaliserTimeout(timeout time.Duration) Option {
+	return positiveLimitOption("WithFinaliserTimeout", timeout, func(c *serviceConfig) {
+		c.finaliserTimeout = timeout
+	})
+}
+
+// WithMaxNamedCompositeTypes caps how many new named array, slice, map, channel and
+// function types the programs one interpreter compiles or loads may add.
+//
+// Identical declarations share one type and are charged once. A program that would pass
+// the cap fails with fault.ErrNamedCompositeQuota. The default is 4,096.
+//
+// Takes count (int) which is the cap. It must be positive.
+//
+// Returns Option which applies the cap, or makes every compile and execution fail with
+// ErrInvalidOption when count is not positive.
+func WithMaxNamedCompositeTypes(count int) Option {
+	return positiveLimitOption("WithMaxNamedCompositeTypes", count, func(c *serviceConfig) {
+		c.namedComposites.maxTypes = count
+	})
+}
+
+// WithNamedCompositeProcessLimit sets the cap on named array, slice, map, channel and
+// function types across the whole process.
+//
+// The last interpreter built with this option sets it for all of them. Types already
+// built stay, and a cap below their count refuses every new one. The default is 65,536.
+//
+// Takes count (int) which is the cap. It must be positive.
+//
+// Returns Option which applies the cap when the service is built, or makes every compile
+// and execution fail with ErrInvalidOption when count is not positive.
+func WithNamedCompositeProcessLimit(count int) Option {
+	return positiveLimitOption("WithNamedCompositeProcessLimit", count, func(c *serviceConfig) {
+		c.namedComposites.processLimit = count
+	})
+}
+
+// WithAbortUnwindCost sets the total cost, in cost-table units, that the pending defers
+// of a stopped execution may spend between them while it unwinds. The default is 100,000.
+//
+// Takes cost (int64) which is the allowance; it must be positive.
+//
+// Returns Option which applies the allowance, or makes every compile and execution fail
+// with ErrInvalidOption when cost is not positive.
+func WithAbortUnwindCost(cost int64) Option {
+	return positiveLimitOption("WithAbortUnwindCost", cost, func(c *serviceConfig) { c.abortUnwindCost = cost })
+}
+
+// WithAbortUnwindWall sets the total wall time that the pending defers of a stopped
+// execution may spend waiting while it unwinds. The default is one second.
+//
+// Takes wall (time.Duration) which is the allowance; it must be positive.
+//
+// Returns Option which applies the allowance, or makes every compile and execution fail
+// with ErrInvalidOption when wall is not positive.
+func WithAbortUnwindWall(wall time.Duration) Option {
+	return positiveLimitOption("WithAbortUnwindWall", wall, func(c *serviceConfig) { c.abortUnwindWall = wall })
+}
+
+// WithAbortUnwindDeferWallMax caps the wall time one deferred call may spend while a
+// stopped execution unwinds. The default is 500 ms.
+//
+// Takes wall (time.Duration) which is the cap; it must be positive.
+//
+// Returns Option which applies the cap, or makes every compile and execution fail with
+// ErrInvalidOption when wall is not positive.
+func WithAbortUnwindDeferWallMax(wall time.Duration) Option {
+	return positiveLimitOption("WithAbortUnwindDeferWallMax", wall, func(c *serviceConfig) { c.abortUnwindDeferWallMax = wall })
+}
+
+// WithAbortUnwindNativeGrace sets how long past its wall deadline a deferred call of an
+// unwinding may stay inside a native call before the unwinding is abandoned, leaving its
+// goroutine, VM and arena to the native call. The default is 200 ms.
+//
+// Takes grace (time.Duration) which is the grace; it must be positive.
+//
+// Returns Option which applies the grace, or makes every compile and execution fail with
+// ErrInvalidOption when grace is not positive.
+func WithAbortUnwindNativeGrace(grace time.Duration) Option {
+	return positiveLimitOption("WithAbortUnwindNativeGrace", grace, func(c *serviceConfig) { c.abortUnwindNativeGrace = grace })
+}
+
+// WithGoroutineJoinUnwindCap bounds how long, from its start, the join at the end of an
+// execution keeps waiting for goroutines while VMs of the execution unwind. The default
+// is ten seconds.
+//
+// Takes bound (time.Duration) which is the bound; it must be positive.
+//
+// Returns Option which applies the bound, or makes every compile and execution fail with
+// ErrInvalidOption when bound is not positive.
+func WithGoroutineJoinUnwindCap(bound time.Duration) Option {
+	return positiveLimitOption("WithGoroutineJoinUnwindCap", bound, func(c *serviceConfig) { c.goroutineJoinUnwindCap = bound })
+}
+
+// WithLeakedUnwinderCap sets how many unwindings left blocked in native code the service
+// allows.
+//
+// Takes limit (int64) which is the cap; it must be positive.
+//
+// Returns Option which applies the cap, or makes every compile and execution fail with
+// ErrInvalidOption when limit is not positive.
+func WithLeakedUnwinderCap(limit int64) Option {
+	return positiveLimitOption("WithLeakedUnwinderCap", limit, func(c *serviceConfig) { c.leakedUnwinderCap = limit })
+}
+
+// WithLockWalkMaxValues caps the values the abandoned-lock check visits from the package
+// variables after a stopped execution.
+//
+// Takes values (int) which is the cap; it must be positive.
+//
+// Returns Option which applies the cap, or makes every compile and execution fail with
+// ErrInvalidOption when values is not positive.
+func WithLockWalkMaxValues(values int) Option {
+	return positiveLimitOption("WithLockWalkMaxValues", values, func(c *serviceConfig) { c.lockWalkMaxValues = values })
+}
+
 // WithMaxConstantPoolSize sets the maximum number of entries permitted in each
 // per-function constant pool (int, float, string, bool, uint, complex, general, type,
 // call-site). Zero leaves the package default (defaultMaxConstantPoolSize, 65535) in
@@ -566,8 +695,23 @@ func WithClock(source clock.Clock) Option {
 	}
 }
 
-// WithLogger installs the logger for the interpreter's warnings and errors. Nil selects
-// the process default.
+// withLicenceCheckerStrict makes a compile fail when the licence checker finds an
+// unclassified or ill-formed instruction, a defect of the interpreter, instead of running
+// the program without arena reuse's minor collection and logging a warning.
+//
+// Takes enabled (bool) which is true for a strict checker.
+//
+// Returns Option which applies the setting.
+func withLicenceCheckerStrict(enabled bool) Option {
+	return func(c *serviceConfig) {
+		c.licenceCheckerStrict = enabled
+	}
+}
+
+// WithLogger installs the fallback logger for the interpreter's warnings and errors.
+//
+// A logger already in a call's context wins. Nil leaves the process default as the
+// fallback.
 //
 // Takes logger (*slog.Logger) which receives the interpreter's diagnostics.
 //
@@ -587,6 +731,24 @@ func WithLogger(logger *slog.Logger) Option {
 func WithStderr(writer io.Writer) Option {
 	return func(config *serviceConfig) {
 		config.stderrWriter = writer
+	}
+}
+
+// positiveLimitOption builds an option that applies a limit when it is positive and
+// otherwise records an ErrInvalidOption error naming the option.
+//
+// Takes name (string) which is the option's name for the error.
+// Takes value (T) which is the limit.
+// Takes apply (func(*serviceConfig)) which stores the limit.
+//
+// Returns Option which applies or rejects the limit.
+func positiveLimitOption[T int | int64 | time.Duration](name string, value T, apply func(*serviceConfig)) Option {
+	return func(config *serviceConfig) {
+		if value <= 0 {
+			config.invalidOptions = errors.Join(config.invalidOptions, fmt.Errorf("%w: %s(%v) must be positive", ErrInvalidOption, name, value))
+			return
+		}
+		apply(config)
 	}
 }
 

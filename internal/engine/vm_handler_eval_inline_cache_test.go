@@ -49,7 +49,7 @@ func TestInlineDescriptorCacheServesTheSecondCall(t *testing.T) {
 		t.Parallel()
 
 		site := &program.CallSite{}
-		callee := binopUintCandidate(isa.OpAddUint)
+		callee := binopUintCandidate(isa.OpAddUint64)
 		receiverType := reflect.TypeFor[inlineBinop]()
 
 		updateMethodIC(site, receiverType, 0, callee, false)
@@ -60,7 +60,7 @@ func TestInlineDescriptorCacheServesTheSecondCall(t *testing.T) {
 		descriptor := lookupInlineDescriptor(site, receiverType)
 		require.NotNil(t, descriptor)
 		require.Equal(t, program.InlineShapeBinopUint, descriptor.Shape)
-		require.Equal(t, isa.OpAddUint, descriptor.BinopOpcode)
+		require.Equal(t, isa.OpAddUint64, descriptor.BinopOpcode)
 		require.Same(t, callee, descriptor.Callee)
 	})
 
@@ -96,7 +96,7 @@ func TestInlineDescriptorCacheServesTheSecondCall(t *testing.T) {
 		site := &program.CallSite{}
 		receiverType := reflect.TypeFor[inlineBinop]()
 
-		updateMethodIC(site, receiverType, 0, binopUintCandidate(isa.OpAddUint), false)
+		updateMethodIC(site, receiverType, 0, binopUintCandidate(isa.OpAddUint64), false)
 		classifyAndCacheFromMethodIC(site, receiverType)
 
 		require.Nil(t, lookupInlineDescriptor(site, reflect.TypeFor[recordHolder]()))
@@ -110,9 +110,9 @@ func TestInlineDescriptorCarriesTheMatchedMetadata(t *testing.T) {
 		name       string
 		arithmetic isa.Opcode
 	}{
-		{name: "addition", arithmetic: isa.OpAddUint},
-		{name: "subtraction", arithmetic: isa.OpSubUint},
-		{name: "multiplication", arithmetic: isa.OpMulUint},
+		{name: "addition", arithmetic: isa.OpAddUint64},
+		{name: "subtraction", arithmetic: isa.OpSubtractUint64},
+		{name: "multiplication", arithmetic: isa.OpMultiplyUint64},
 	}
 
 	for _, tt := range tests {
@@ -210,7 +210,7 @@ func TestInlineBinopFallsBackWhenTheSiteShapeDisagrees(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			callee := binopUintCandidate(isa.OpAddUint)
+			callee := binopUintCandidate(isa.OpAddUint64)
 			callee.NumRegisters = wideRegCounts(4)
 			vm, frame, registers := closureHostVM(t, callee)
 			descriptor := &program.InlineDescriptor{Callee: callee}
@@ -237,20 +237,20 @@ func TestReadInlineEnvAsReflectNamesTheSupportedBanks(t *testing.T) {
 			load: func(r *Registers) { r.General[0] = reflect.ValueOf([]uint32{1}) }, wantOK: true, wantValid: true,
 		},
 		{
-			name: "the uint-slice bank", kind: isa.RegisterSliceUint,
+			name: "the uint-slice bank", kind: isa.RegisterSliceUint64,
 			load: func(r *Registers) { r.slicesUint[0] = []uint64{1} }, wantOK: true, wantValid: true,
 		},
 		{
-			name: "an empty uint-slice bank", kind: isa.RegisterSliceUint, load: func(*Registers) {}, wantOK: true,
+			name: "an empty uint-slice bank", kind: isa.RegisterSliceUint64, load: func(*Registers) {}, wantOK: true,
 		},
 		{
-			name: "the int-slice bank", kind: isa.RegisterSliceInt,
+			name: "the int-slice bank", kind: isa.RegisterSliceInt64,
 			load: func(r *Registers) { r.SlicesInt[0] = []int64{1} }, wantOK: true, wantValid: true,
 		},
 		{
-			name: "an empty int-slice bank", kind: isa.RegisterSliceInt, load: func(*Registers) {}, wantOK: true,
+			name: "an empty int-slice bank", kind: isa.RegisterSliceInt64, load: func(*Registers) {}, wantOK: true,
 		},
-		{name: "a bank the inline path cannot read", kind: isa.RegisterInt, load: func(*Registers) {}},
+		{name: "a bank the inline path cannot read", kind: isa.RegisterInt64, load: func(*Registers) {}},
 	}
 
 	for _, tt := range tests {
@@ -285,7 +285,7 @@ func TestPlaceInlineEvalEnvWritesTheCalleeSlot(t *testing.T) {
 
 		registers := standardRegisters()
 
-		require.True(t, placeInlineEvalEnv(&registers, isa.RegisterSliceUint, reflect.ValueOf([]uint64{1, 2}), nil))
+		require.True(t, placeInlineEvalEnv(&registers, isa.RegisterSliceUint64, reflect.ValueOf([]uint64{1, 2}), nil))
 		require.Equal(t, []uint64{1, 2}, registers.slicesUint[0])
 	})
 
@@ -294,7 +294,7 @@ func TestPlaceInlineEvalEnvWritesTheCalleeSlot(t *testing.T) {
 
 		registers := standardRegisters()
 
-		require.True(t, placeInlineEvalEnv(&registers, isa.RegisterSliceUint, reflect.ValueOf([]uint32{1, 2}), nil))
+		require.True(t, placeInlineEvalEnv(&registers, isa.RegisterSliceUint64, reflect.ValueOf([]uint32{1, 2}), nil))
 		require.Equal(t, []uint64{1, 2}, registers.slicesUint[0])
 	})
 
@@ -304,7 +304,7 @@ func TestPlaceInlineEvalEnvWritesTheCalleeSlot(t *testing.T) {
 		registers := standardRegisters()
 		registers.slicesUint[0] = []uint64{9}
 
-		require.True(t, placeInlineEvalEnv(&registers, isa.RegisterSliceUint, reflect.Value{}, nil))
+		require.True(t, placeInlineEvalEnv(&registers, isa.RegisterSliceUint64, reflect.Value{}, nil))
 		require.Nil(t, registers.slicesUint[0])
 	})
 
@@ -313,7 +313,7 @@ func TestPlaceInlineEvalEnvWritesTheCalleeSlot(t *testing.T) {
 
 		registers := standardRegisters()
 
-		require.False(t, placeInlineEvalEnv(&registers, isa.RegisterSliceUint, reflect.ValueOf([]string{"s"}), nil))
+		require.False(t, placeInlineEvalEnv(&registers, isa.RegisterSliceUint64, reflect.ValueOf([]string{"s"}), nil))
 	})
 
 	t.Run("a bank the inline path cannot write is refused", func(t *testing.T) {
@@ -321,7 +321,7 @@ func TestPlaceInlineEvalEnvWritesTheCalleeSlot(t *testing.T) {
 
 		registers := standardRegisters()
 
-		require.False(t, placeInlineEvalEnv(&registers, isa.RegisterInt, reflect.ValueOf(1), nil))
+		require.False(t, placeInlineEvalEnv(&registers, isa.RegisterInt64, reflect.ValueOf(1), nil))
 	})
 }
 

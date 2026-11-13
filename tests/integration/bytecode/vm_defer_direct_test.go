@@ -49,6 +49,7 @@ func entrypoint() int {
 	for i := 0; i < 1000; i++ {
 		work(i)
 	}
+	acc++
 	return acc
 }
 `
@@ -68,11 +69,18 @@ func executeEntrypointAllocs(t *testing.T, source string) (float64, any) {
 }
 
 func TestDeferTrivialScalarArgsZeroAlloc(t *testing.T) {
+	if raceDetectorOn {
+		t.Skip("allocation counts are not stable under the race detector")
+	}
+	if storeCensusOn {
+		t.Skip("the store census allocates for every call instruction it audits")
+	}
+
 	deferAllocs, deferResult := executeEntrypointAllocs(t, fmt.Sprintf(deferAllocationProgram, `defer add(n, 2.5, true, "ab")`))
 	plainAllocs, plainResult := executeEntrypointAllocs(t, fmt.Sprintf(deferAllocationProgram, `add(n, 2.5, true, "ab")`))
 	emptyAllocs, _ := executeEntrypointAllocs(t, fmt.Sprintf(deferAllocationProgram, `defer cleanup()`))
 	require.Equal(t, plainResult, deferResult)
-	require.EqualValues(t, 1000*999/2+1000*2+1000*2, deferResult)
+	require.EqualValues(t, 1000*999/2+1000*2+1000*2+1, deferResult)
 	t.Logf("allocations per execution: defer=%v plain=%v empty defer=%v", deferAllocs, plainAllocs, emptyAllocs)
 	require.Lessf(t, deferAllocs-emptyAllocs, 8.0, "capturing scalar and constant string arguments must add no allocation over an argument-free trivial defer")
 	require.Lessf(t, deferAllocs-plainAllocs, 8.0, "a trivial defer of a compiled closure must not allocate: its frame is pushed by the return handler rather than a nested dispatch")
@@ -128,7 +136,7 @@ func TestDeferTrivialManySameKindUsesReflectPath(t *testing.T) {
 	record := &engine.SimpleDeferRecord{}
 	body := make([]isa.Instruction, 5)
 	for i := range body {
-		body[i] = isa.Instruction{C: uint8(isa.RegisterInt), B: uint8(i)}
+		body[i] = isa.Instruction{C: uint8(isa.RegisterInt64), B: uint8(i)}
 	}
 	frame := &engine.CallFrame{Function: &program.CompiledFunction{Body: body}}
 	registers := &engine.Registers{Ints: []int64{1, 2, 3, 4, 5}}

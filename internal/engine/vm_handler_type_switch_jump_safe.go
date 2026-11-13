@@ -38,7 +38,7 @@ import (
 func typeSwitchCaseIndex(compiledFunction *program.CompiledFunction, rows []isa.Instruction, source reflect.Value) (int, bool) {
 	sourceType := source.Type()
 	if sourceType == runtimeClosureReflectType {
-		sourceType = closureSignatureType(source)
+		sourceType = closureDynamicType(source)
 	}
 	for row, entry := range rows {
 		typeIndex := int(entry.A)

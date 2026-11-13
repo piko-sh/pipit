@@ -47,67 +47,66 @@ const (
 // for this group.
 func tier1MathHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		handlerSubOpMathSin(),
-		handlerSubOpMathCos(),
-		handlerSubOpMathExp(),
-		handlerSubOpMathTan(),
-		handlerSubOpMathMod(),
+		handlerMathSin(),
+		handlerMathCos(),
+		handlerMathExp(),
+		handlerMathTan(),
+		handlerMathMod(),
 	}
 }
 
-// handlerSubOpMathSin builds the SubOpMathSin handler via a single-level inline Go call
-// shim.
+// handlerMathSin builds the SubOpMathSin handler via a single-level inline Go call shim.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMathSin() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerMathSin() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return inlineGoTwoOperandShim(
-		"handlerSubOpMathSin",
-		"handlerSubOpMathSin sets floats[B] = math.Sin(floats[C]) via asmCallMathSin.",
+		"handlerMathSin",
+		"handlerMathSin sets floats[B] = math.Sin(floats[C]) via asmCallMathSin.",
 		goSymbolMathSin,
 	)
 }
 
-// handlerSubOpMathCos builds the SubOpMathCos handler.
+// handlerMathCos builds the SubOpMathCos handler.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMathCos() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerMathCos() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return inlineGoTwoOperandShim(
-		"handlerSubOpMathCos",
-		"handlerSubOpMathCos sets floats[B] = math.Cos(floats[C]) via asmCallMathCos.",
+		"handlerMathCos",
+		"handlerMathCos sets floats[B] = math.Cos(floats[C]) via asmCallMathCos.",
 		goSymbolMathCos,
 	)
 }
 
-// handlerSubOpMathExp builds the SubOpMathExp handler.
+// handlerMathExp builds the SubOpMathExp handler.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMathExp() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerMathExp() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return inlineGoTwoOperandShim(
-		"handlerSubOpMathExp",
-		"handlerSubOpMathExp sets floats[B] = math.Exp(floats[C]) via asmCallMathExp.",
+		"handlerMathExp",
+		"handlerMathExp sets floats[B] = math.Exp(floats[C]) via asmCallMathExp.",
 		goSymbolMathExp,
 	)
 }
 
-// handlerSubOpMathTan builds the SubOpMathTan handler.
+// handlerMathTan builds the SubOpMathTan handler.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMathTan() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerMathTan() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return inlineGoTwoOperandShim(
-		"handlerSubOpMathTan",
-		"handlerSubOpMathTan sets floats[B] = math.Tan(floats[C]) via asmCallMathTan.",
+		"handlerMathTan",
+		"handlerMathTan sets floats[B] = math.Tan(floats[C]) via asmCallMathTan.",
 		goSymbolMathTan,
 	)
 }
 
-// handlerSubOpMathMod builds the SubOpMathMod handler (3-operand: B = math.Mod(C,
+// handlerMathMod builds the SubOpMathMod handler (3-operand, computing B = math.Mod(C,
 // ext.A)).
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMathMod() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerMathMod() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return inlineGoThreeOperandShim(
-		"handlerSubOpMathMod",
-		"handlerSubOpMathMod sets floats[B] = math.Mod(floats[C], floats[ext.A]) via asmCallMathMod.",
+		"handlerMathMod",
+		"handlerMathMod sets floats[B] = math.Mod(floats[C], floats[ext.A]) via asmCallMathMod.",
 		goSymbolMathMod,
 	)
 }

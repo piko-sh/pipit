@@ -18,13 +18,15 @@
 
 package isa
 
+import "math"
+
 const (
-	// OpNop is the alias for the tier-3 no-op encoding {0, 0, 0, 0}.
-	OpNop = OpDrillTier1
+	// OpNoOperation is the alias for the tier-3 no-op encoding {0, 0, 0, 0}.
+	OpNoOperation = OpDrillTier1
 
 	// OpcodeCount is the number of opcodes. It is declared as int so array-sizing compiles
 	// even when the active opcode set fills the uint8 range.
-	OpcodeCount = int(OpAddUint32) + 1
+	OpcodeCount = int(OpSetElementFieldFloat64) + 1
 )
 
 const (
@@ -32,96 +34,97 @@ const (
 	// descends into the tier-1 sub-opcode space using operand A as the discriminator.
 	OpDrillTier1 Opcode = iota
 
-	// OpExt is an extension word carrying a 24-bit payload formed from A|(B<<8)|(C<<16).
-	// Used for wide jump offsets, large constant indices, and multi-word encodings.
-	OpExt
+	// OpExtension is an extension word carrying a 24-bit payload formed from
+	// A|(B<<8)|(C<<16). Used for wide jump offsets, large constant indices, and multi-word
+	// encodings.
+	OpExtension
 
-	// OpLoadIntConst loads intConstants[B|(C<<8)] into ints[A].
-	OpLoadIntConst
+	// OpLoadInt64Constant loads intConstants[B|(C<<8)] into ints[A].
+	OpLoadInt64Constant
 
-	// OpLoadFloatConst loads floatConstants[B|(C<<8)] into floats[A].
-	OpLoadFloatConst
+	// OpLoadFloat64Constant loads floatConstants[B|(C<<8)] into floats[A].
+	OpLoadFloat64Constant
 
-	// OpAddInt sets ints[A] = ints[B] + ints[C].
-	OpAddInt
+	// OpAddInt64 sets ints[A] = ints[B] + ints[C].
+	OpAddInt64
 
-	// OpSubInt sets ints[A] = ints[B] - ints[C].
-	OpSubInt
+	// OpSubtractInt64 sets ints[A] = ints[B] - ints[C].
+	OpSubtractInt64
 
-	// OpMulInt sets ints[A] = ints[B] * ints[C].
-	OpMulInt
+	// OpMultiplyInt64 sets ints[A] = ints[B] * ints[C].
+	OpMultiplyInt64
 
-	// OpDivInt sets ints[A] = ints[B] / ints[C]. Panics on zero divisor.
-	OpDivInt
+	// OpDivideInt64 sets ints[A] = ints[B] / ints[C]. Panics on zero divisor.
+	OpDivideInt64
 
-	// OpRemInt sets ints[A] = ints[B] % ints[C]. Panics on zero divisor.
-	OpRemInt
+	// OpRemainderInt64 sets ints[A] = ints[B] % ints[C]. Panics on zero divisor.
+	OpRemainderInt64
 
-	// OpBitAnd sets ints[A] = ints[B] & ints[C].
-	OpBitAnd
+	// OpBitAndInt64 sets ints[A] = ints[B] & ints[C].
+	OpBitAndInt64
 
-	// OpBitOr sets ints[A] = ints[B] | ints[C].
-	OpBitOr
+	// OpBitOrInt64 sets ints[A] = ints[B] | ints[C].
+	OpBitOrInt64
 
-	// OpBitXor sets ints[A] = ints[B] ^ ints[C].
-	OpBitXor
+	// OpBitXorInt64 sets ints[A] = ints[B] ^ ints[C].
+	OpBitXorInt64
 
-	// OpBitAndNot sets ints[A] = ints[B] &^ ints[C].
-	OpBitAndNot
+	// OpBitAndNotInt64 sets ints[A] = ints[B] &^ ints[C].
+	OpBitAndNotInt64
 
-	// OpShiftLeft sets ints[A] = ints[B] << uint(ints[C]).
-	OpShiftLeft
+	// OpShiftLeftInt64 sets ints[A] = ints[B] << uint(ints[C]).
+	OpShiftLeftInt64
 
-	// OpShiftRight sets ints[A] = ints[B] >> uint(ints[C]).
-	OpShiftRight
+	// OpShiftRightInt64 sets ints[A] = ints[B] >> uint(ints[C]).
+	OpShiftRightInt64
 
-	// OpAddFloat sets floats[A] = floats[B] + floats[C].
-	OpAddFloat
+	// OpAddFloat64 sets floats[A] = floats[B] + floats[C].
+	OpAddFloat64
 
-	// OpSubFloat sets floats[A] = floats[B] - floats[C].
-	OpSubFloat
+	// OpSubtractFloat64 sets floats[A] = floats[B] - floats[C].
+	OpSubtractFloat64
 
-	// OpMulFloat sets floats[A] = floats[B] * floats[C].
-	OpMulFloat
+	// OpMultiplyFloat64 sets floats[A] = floats[B] * floats[C].
+	OpMultiplyFloat64
 
-	// OpDivFloat sets floats[A] = floats[B] / floats[C].
-	OpDivFloat
+	// OpDivideFloat64 sets floats[A] = floats[B] / floats[C].
+	OpDivideFloat64
 
-	// OpEqInt sets ints[A] = (ints[B] == ints[C]) ? 1 : 0.
-	OpEqInt
+	// OpEqualInt64 sets ints[A] = (ints[B] == ints[C]) ? 1 : 0.
+	OpEqualInt64
 
-	// OpNeInt sets ints[A] = (ints[B] != ints[C]) ? 1 : 0.
-	OpNeInt
+	// OpNotEqualInt64 sets ints[A] = (ints[B] != ints[C]) ? 1 : 0.
+	OpNotEqualInt64
 
-	// OpLtInt sets ints[A] = (ints[B] < ints[C]) ? 1 : 0.
-	OpLtInt
+	// OpLessThanInt64 sets ints[A] = (ints[B] < ints[C]) ? 1 : 0.
+	OpLessThanInt64
 
-	// OpLeInt sets ints[A] = (ints[B] <= ints[C]) ? 1 : 0.
-	OpLeInt
+	// OpLessOrEqualInt64 sets ints[A] = (ints[B] <= ints[C]) ? 1 : 0.
+	OpLessOrEqualInt64
 
-	// OpGtInt sets ints[A] = (ints[B] > ints[C]) ? 1 : 0.
-	OpGtInt
+	// OpGreaterThanInt64 sets ints[A] = (ints[B] > ints[C]) ? 1 : 0.
+	OpGreaterThanInt64
 
-	// OpGeInt sets ints[A] = (ints[B] >= ints[C]) ? 1 : 0.
-	OpGeInt
+	// OpGreaterOrEqualInt64 sets ints[A] = (ints[B] >= ints[C]) ? 1 : 0.
+	OpGreaterOrEqualInt64
 
-	// OpEqFloat sets ints[A] = (floats[B] == floats[C]) ? 1 : 0.
-	OpEqFloat
+	// OpEqualFloat64 sets ints[A] = (floats[B] == floats[C]) ? 1 : 0.
+	OpEqualFloat64
 
-	// OpNeFloat sets ints[A] = (floats[B] != floats[C]) ? 1 : 0.
-	OpNeFloat
+	// OpNotEqualFloat64 sets ints[A] = (floats[B] != floats[C]) ? 1 : 0.
+	OpNotEqualFloat64
 
-	// OpLtFloat sets ints[A] = (floats[B] < floats[C]) ? 1 : 0.
-	OpLtFloat
+	// OpLessThanFloat64 sets ints[A] = (floats[B] < floats[C]) ? 1 : 0.
+	OpLessThanFloat64
 
-	// OpLeFloat sets ints[A] = (floats[B] <= floats[C]) ? 1 : 0.
-	OpLeFloat
+	// OpLessOrEqualFloat64 sets ints[A] = (floats[B] <= floats[C]) ? 1 : 0.
+	OpLessOrEqualFloat64
 
-	// OpGtFloat sets ints[A] = (floats[B] > floats[C]) ? 1 : 0.
-	OpGtFloat
+	// OpGreaterThanFloat64 sets ints[A] = (floats[B] > floats[C]) ? 1 : 0.
+	OpGreaterThanFloat64
 
-	// OpGeFloat sets ints[A] = (floats[B] >= floats[C]) ? 1 : 0.
-	OpGeFloat
+	// OpGreaterOrEqualFloat64 sets ints[A] = (floats[B] >= floats[C]) ? 1 : 0.
+	OpGreaterOrEqualFloat64
 
 	// OpJumpIfTrue jumps if ints[A] != 0. Offset in B|(C<<8).
 	OpJumpIfTrue
@@ -129,41 +132,42 @@ const (
 	// OpJumpIfFalse jumps if ints[A] == 0. Offset in B|(C<<8).
 	OpJumpIfFalse
 
-	// OpSubIntConst sets ints[A] = ints[B] - intConstants[C]. Fuses OpLoadIntConst +
-	// OpSubInt when the constant index fits in 8 bits.
-	OpSubIntConst
+	// OpSubtractInt64Constant sets ints[A] = ints[B] - intConstants[C]. Fuses
+	// OpLoadInt64Constant + OpSubtractInt64 when the constant index fits in 8 bits.
+	OpSubtractInt64Constant
 
-	// OpAddIntConst sets ints[A] = ints[B] + intConstants[C]. Fuses OpLoadIntConst +
-	// OpAddInt when the constant index fits in 8 bits.
-	OpAddIntConst
+	// OpAddInt64Constant sets ints[A] = ints[B] + intConstants[C]. Fuses OpLoadInt64Constant
+	// + OpAddInt64 when the constant index fits in 8 bits.
+	OpAddInt64Constant
 
-	// OpMulIntConst sets ints[A] = ints[B] * intConstants[C]. Fuses OpLoadIntConst +
-	// OpMulInt when the constant index fits in 8 bits.
-	OpMulIntConst
+	// OpMultiplyInt64Constant sets ints[A] = ints[B] * intConstants[C]. Fuses
+	// OpLoadInt64Constant + OpMultiplyInt64 when the constant index fits in 8 bits.
+	OpMultiplyInt64Constant
 
-	// OpAddIntJump sets ints[A] = ints[B] + intConstants[C] and unconditionally jumps by
-	// offset in the following OpExt. Fuses OpAddIntConst + (OpDrillTier1, SubOpJump).
-	OpAddIntJump
+	// OpAddInt64ConstantThenJump sets ints[A] = ints[B] + intConstants[C] and
+	// unconditionally jumps by offset in the following OpExtension. Fuses OpAddInt64Constant
+	// + (OpDrillTier1, SubOpJump).
+	OpAddInt64ConstantThenJump
 
-	// OpStringIndex sets uints[A] = uint64(strings[B][ints[C]]). Panics with
+	// OpGetStringByte sets uints[A] = uint64(strings[B][ints[C]]). Panics with
 	// errIndexOutOfRange if index is out of bounds.
-	OpStringIndex
+	OpGetStringByte
 
-	// OpEqString sets ints[A] = (strings[B] == strings[C]) ? 1 : 0.
-	OpEqString
+	// OpEqualString sets ints[A] = (strings[B] == strings[C]) ? 1 : 0.
+	OpEqualString
 
-	// OpNeString sets ints[A] = (strings[B] != strings[C]) ? 1 : 0.
-	OpNeString
+	// OpNotEqualString sets ints[A] = (strings[B] != strings[C]) ? 1 : 0.
+	OpNotEqualString
 
 	// OpSliceString sets strings[A] = strings[B][low:high]. C encodes flags (bit 0 = low
-	// present, bit 1 = high present) and an OpExt follows with A=lowRegister,
+	// present, bit 1 = high present) and an OpExtension follows with A=lowRegister,
 	// B=highRegister.
 	OpSliceString
 
-	// OpStringIndexToInt sets ints[A] = int64(strings[B][ints[C]]). Fuses OpStringIndex +
-	// isa.SubOpUintToInt to avoid the intermediate uint register and one tier-2 trampoline
-	// in string loops.
-	OpStringIndexToInt
+	// OpGetStringByteAsInt64 sets ints[A] = int64(strings[B][ints[C]]). Fuses
+	// OpGetStringByte + isa.SubOpConvertUint64ToInt64 to avoid the intermediate uint
+	// register and one tier-2 trampoline in string loops.
+	OpGetStringByteAsInt64
 
 	// OpMoveGeneral copies general[B] to general[A]. C selects the snapshot mode: 0 =
 	// dynamic (runtime kind switch), 1 = alias (reference-safe type), 2 = snapshot
@@ -171,170 +175,172 @@ const (
 	// snapshot accompanying captured program fields.
 	OpMoveGeneral
 
-	// OpLoadStringConst loads stringConstants[B|(C<<8)] into strings[A].
-	OpLoadStringConst
+	// OpLoadStringConstant loads stringConstants[B|(C<<8)] into strings[A].
+	OpLoadStringConstant
 
-	// OpLoadGeneralConst loads generalConstants[B|(C<<8)] into general[A].
-	OpLoadGeneralConst
+	// OpLoadGeneralConstant loads generalConstants[B|(C<<8)] into general[A].
+	OpLoadGeneralConstant
 
-	// OpLoadUintConst loads UintConstants[B|(C<<8)] into uints[A].
-	OpLoadUintConst
+	// OpLoadUint64Constant loads UintConstants[B|(C<<8)] into uints[A].
+	OpLoadUint64Constant
 
-	// OpLoadComplexConst loads ComplexConstants[B|(C<<8)] into complex[A].
-	OpLoadComplexConst
+	// OpLoadComplex128Constant loads ComplexConstants[B|(C<<8)] into complex[A].
+	OpLoadComplex128Constant
 
-	// OpAddUint sets uints[A] = uints[B] + uints[C].
-	OpAddUint
+	// OpAddUint64 sets uints[A] = uints[B] + uints[C].
+	OpAddUint64
 
-	// OpSubUint sets uints[A] = uints[B] - uints[C].
-	OpSubUint
+	// OpSubtractUint64 sets uints[A] = uints[B] - uints[C].
+	OpSubtractUint64
 
-	// OpMulUint sets uints[A] = uints[B] * uints[C].
-	OpMulUint
+	// OpMultiplyUint64 sets uints[A] = uints[B] * uints[C].
+	OpMultiplyUint64
 
-	// OpDivUint sets uints[A] = uints[B] / uints[C]. Panics on zero divisor.
-	OpDivUint
+	// OpDivideUint64 sets uints[A] = uints[B] / uints[C]. Panics on zero divisor.
+	OpDivideUint64
 
-	// OpRemUint sets uints[A] = uints[B] % uints[C]. Panics on zero divisor.
-	OpRemUint
+	// OpRemainderUint64 sets uints[A] = uints[B] % uints[C]. Panics on zero divisor.
+	OpRemainderUint64
 
-	// OpBitAndUint sets uints[A] = uints[B] & uints[C].
-	OpBitAndUint
+	// OpBitAndUint64 sets uints[A] = uints[B] & uints[C].
+	OpBitAndUint64
 
-	// OpBitOrUint sets uints[A] = uints[B] | uints[C].
-	OpBitOrUint
+	// OpBitOrUint64 sets uints[A] = uints[B] | uints[C].
+	OpBitOrUint64
 
-	// OpBitXorUint sets uints[A] = uints[B] ^ uints[C].
-	OpBitXorUint
+	// OpBitXorUint64 sets uints[A] = uints[B] ^ uints[C].
+	OpBitXorUint64
 
-	// OpBitAndNotUint sets uints[A] = uints[B] &^ uints[C].
-	OpBitAndNotUint
+	// OpBitAndNotUint64 sets uints[A] = uints[B] &^ uints[C].
+	OpBitAndNotUint64
 
-	// OpShiftLeftUint sets uints[A] = uints[B] << uints[C].
-	OpShiftLeftUint
+	// OpShiftLeftUint64 sets uints[A] = uints[B] << uints[C].
+	OpShiftLeftUint64
 
-	// OpShiftRightUint sets uints[A] = uints[B] >> uints[C].
-	OpShiftRightUint
+	// OpShiftRightUint64 sets uints[A] = uints[B] >> uints[C].
+	OpShiftRightUint64
 
-	// OpEqUint sets ints[A] = (uints[B] == uints[C]) ? 1 : 0.
-	OpEqUint
+	// OpEqualUint64 sets ints[A] = (uints[B] == uints[C]) ? 1 : 0.
+	OpEqualUint64
 
-	// OpNeUint sets ints[A] = (uints[B] != uints[C]) ? 1 : 0.
-	OpNeUint
+	// OpNotEqualUint64 sets ints[A] = (uints[B] != uints[C]) ? 1 : 0.
+	OpNotEqualUint64
 
-	// OpLtUint sets ints[A] = (uints[B] < uints[C]) ? 1 : 0.
-	OpLtUint
+	// OpLessThanUint64 sets ints[A] = (uints[B] < uints[C]) ? 1 : 0.
+	OpLessThanUint64
 
-	// OpLeUint sets ints[A] = (uints[B] <= uints[C]) ? 1 : 0.
-	OpLeUint
+	// OpLessOrEqualUint64 sets ints[A] = (uints[B] <= uints[C]) ? 1 : 0.
+	OpLessOrEqualUint64
 
-	// OpGtUint sets ints[A] = (uints[B] > uints[C]) ? 1 : 0.
-	OpGtUint
+	// OpGreaterThanUint64 sets ints[A] = (uints[B] > uints[C]) ? 1 : 0.
+	OpGreaterThanUint64
 
-	// OpGeUint sets ints[A] = (uints[B] >= uints[C]) ? 1 : 0.
-	OpGeUint
+	// OpGreaterOrEqualUint64 sets ints[A] = (uints[B] >= uints[C]) ? 1 : 0.
+	OpGreaterOrEqualUint64
 
-	// OpAddComplex sets complex[A] = complex[B] + complex[C].
-	OpAddComplex
+	// OpAddComplex128 sets complex[A] = complex[B] + complex[C].
+	OpAddComplex128
 
-	// OpSubComplex sets complex[A] = complex[B] - complex[C].
-	OpSubComplex
+	// OpSubtractComplex128 sets complex[A] = complex[B] - complex[C].
+	OpSubtractComplex128
 
-	// OpMulComplex sets complex[A] = complex[B] * complex[C].
-	OpMulComplex
+	// OpMultiplyComplex128 sets complex[A] = complex[B] * complex[C].
+	OpMultiplyComplex128
 
-	// OpDivComplex sets complex[A] = complex[B] / complex[C].
-	OpDivComplex
+	// OpDivideComplex128 sets complex[A] = complex[B] / complex[C].
+	OpDivideComplex128
 
-	// OpEqComplex sets ints[A] = (complex[B] == complex[C]) ? 1 : 0.
-	OpEqComplex
+	// OpEqualComplex128 sets ints[A] = (complex[B] == complex[C]) ? 1 : 0.
+	OpEqualComplex128
 
-	// OpNeComplex sets ints[A] = (complex[B] != complex[C]) ? 1 : 0.
-	OpNeComplex
+	// OpNotEqualComplex128 sets ints[A] = (complex[B] != complex[C]) ? 1 : 0.
+	OpNotEqualComplex128
 
-	// OpBuildComplex sets complex[A] = complex(floats[B], floats[C]).
-	OpBuildComplex
+	// OpMakeComplex128 sets complex[A] = complex(floats[B], floats[C]).
+	OpMakeComplex128
 
-	// OpConcatString sets strings[A] = strings[B] + strings[C].
-	OpConcatString
+	// OpConcatenateString sets strings[A] = strings[B] + strings[C].
+	OpConcatenateString
 
-	// OpConcatRuneString sets strings[A] = strings[B] + string(rune(ints[C])). Fuses
-	// isa.SubOpRuneToString + OpConcatString with in-place arena extension.
-	OpConcatRuneString
+	// OpConcatenateStringRune sets strings[A] = strings[B] + string(rune(ints[C])). Fuses
+	// isa.SubOpConvertRuneToString + OpConcatenateString with in-place arena extension.
+	OpConcatenateStringRune
 
-	// OpLtString sets ints[A] = (strings[B] < strings[C]) ? 1 : 0.
-	OpLtString
+	// OpLessThanString sets ints[A] = (strings[B] < strings[C]) ? 1 : 0.
+	OpLessThanString
 
-	// OpLeString sets ints[A] = (strings[B] <= strings[C]) ? 1 : 0.
-	OpLeString
+	// OpLessOrEqualString sets ints[A] = (strings[B] <= strings[C]) ? 1 : 0.
+	OpLessOrEqualString
 
-	// OpGtString sets ints[A] = (strings[B] > strings[C]) ? 1 : 0.
-	OpGtString
+	// OpGreaterThanString sets ints[A] = (strings[B] > strings[C]) ? 1 : 0.
+	OpGreaterThanString
 
-	// OpGeString sets ints[A] = (strings[B] >= strings[C]) ? 1 : 0.
-	OpGeString
+	// OpGreaterOrEqualString sets ints[A] = (strings[B] >= strings[C]) ? 1 : 0.
+	OpGreaterOrEqualString
 
-	// OpEqGeneral sets ints[A] = (general[B] == general[C]) ? 1 : 0 via reflect.
-	OpEqGeneral
+	// OpEqualGeneral sets ints[A] = (general[B] == general[C]) ? 1 : 0 via reflect.
+	OpEqualGeneral
 
-	// OpNeGeneral sets ints[A] = (general[B] != general[C]) ? 1 : 0 via reflect, using the
-	// same equality logic as OpEqGeneral.
-	OpNeGeneral
+	// OpNotEqualGeneral sets ints[A] = (general[B] != general[C]) ? 1 : 0 via reflect, using
+	// the same equality logic as OpEqualGeneral.
+	OpNotEqualGeneral
 
-	// OpLtGeneral sets ints[A] = (general[B] < general[C]) ? 1 : 0 via reflect.
-	OpLtGeneral
+	// OpLessThanGeneral sets ints[A] = (general[B] < general[C]) ? 1 : 0 via reflect.
+	OpLessThanGeneral
 
-	// OpLeGeneral sets ints[A] = (general[B] <= general[C]) ? 1 : 0 via reflect.
-	OpLeGeneral
+	// OpLessOrEqualGeneral sets ints[A] = (general[B] <= general[C]) ? 1 : 0 via reflect.
+	OpLessOrEqualGeneral
 
-	// OpGtGeneral sets ints[A] = (general[B] > general[C]) ? 1 : 0 via reflect.
-	OpGtGeneral
+	// OpGreaterThanGeneral sets ints[A] = (general[B] > general[C]) ? 1 : 0 via reflect.
+	OpGreaterThanGeneral
 
-	// OpGeGeneral sets ints[A] = (general[B] >= general[C]) ? 1 : 0 via reflect.
-	OpGeGeneral
+	// OpGreaterOrEqualGeneral sets ints[A] = (general[B] >= general[C]) ? 1 : 0 via reflect.
+	OpGreaterOrEqualGeneral
 
-	// OpAdd sets general[A] = general[B] + general[C] via reflect.
-	OpAdd
+	// OpAddGeneral sets general[A] = general[B] + general[C] via reflect.
+	OpAddGeneral
 
-	// OpSub sets general[A] = general[B] - general[C] via reflect.
-	OpSub
+	// OpSubtractGeneral sets general[A] = general[B] - general[C] via reflect.
+	OpSubtractGeneral
 
-	// OpMul sets general[A] = general[B] * general[C] via reflect.
-	OpMul
+	// OpMultiplyGeneral sets general[A] = general[B] * general[C] via reflect.
+	OpMultiplyGeneral
 
-	// OpDiv sets general[A] = general[B] / general[C] via reflect.
-	OpDiv
+	// OpDivideGeneral sets general[A] = general[B] / general[C] via reflect.
+	OpDivideGeneral
 
-	// OpRem sets general[A] = general[B] % general[C] via reflect.
-	OpRem
+	// OpRemainderGeneral sets general[A] = general[B] % general[C] via reflect.
+	OpRemainderGeneral
 
-	// OpTruncateNarrow truncates a narrow integer register in place. B is the bit width (8,
+	// OpTruncateToWidth truncates a narrow integer register in place. B is the bit width (8,
 	// 16, or 32) and C selects uint (0, mask only) or int (1, mask then sign-extend).
-	OpTruncateNarrow
+	OpTruncateToWidth
 
-	// OpPackInterface wraps a typed value into an interface.
-	OpPackInterface
+	// OpBoxAsInterface wraps a typed value into an interface.
+	OpBoxAsInterface
 
-	// OpUnpackInterface extracts the concrete value from an interface.
-	OpUnpackInterface
+	// OpUnboxFromInterface extracts the concrete value from an interface.
+	OpUnboxFromInterface
 
-	// OpTestNilJumpTrue tests if general[A] is nil/invalid and jumps by signed offset
-	// B|(C<<8) if true.
-	OpTestNilJumpTrue
+	// OpJumpIfNil tests if general[A] is nil/invalid and jumps by signed offset B|(C<<8) if
+	// true.
+	OpJumpIfNil
 
-	// OpTestNilJumpFalse tests if general[A] is nil/invalid and jumps by signed offset
-	// B|(C<<8) if false (i.e. not nil).
-	OpTestNilJumpFalse
+	// OpJumpIfNotNil tests if general[A] is nil/invalid and jumps by signed offset B|(C<<8)
+	// if false (i.e. not nil).
+	OpJumpIfNotNil
 
 	// OpMakeClosure creates a closure in general[A] from function index B|(C<<8). Upvalue
 	// descriptors are in the CompiledFunction.
 	OpMakeClosure
 
-	// OpGetUpvalue loads upvalue[B] into the register at A. C encodes the register kind.
-	OpGetUpvalue
+	// OpGetCapturedVariable loads upvalue[B] into the register at A. C encodes the register
+	// kind.
+	OpGetCapturedVariable
 
-	// OpSetUpvalue stores the register at A into upvalue[B]. C encodes the register kind.
-	OpSetUpvalue
+	// OpSetCapturedVariable stores the register at A into upvalue[B]. C encodes the register
+	// kind.
+	OpSetCapturedVariable
 
 	// OpDefer pushes a deferred call. general[A] is the function, B is the number of
 	// arguments.
@@ -348,22 +354,22 @@ const (
 	// carries MakeSliceExtHeapFlag when the backing must live on the Go heap.
 	OpMakeSlice
 
-	// OpIndex reads element: target = general[A][ints[B]]. C encodes the destination
+	// OpGetElement reads an element, target = general[A][ints[B]]. C encodes the destination
 	// register kind and index via extension.
-	OpIndex
+	OpGetElement
 
-	// OpIndexSet writes element: general[A][ints[B]] = source.
-	OpIndexSet
+	// OpSetElement writes an element, general[A][ints[B]] = source.
+	OpSetElement
 
-	// OpMapIndex reads map element: target = general[A][key].
-	OpMapIndex
+	// OpGetMap reads a map element, target = general[A][key].
+	OpGetMap
 
-	// OpMapSet writes map element: general[A][key] = value.
-	OpMapSet
+	// OpSetMap writes a map element, general[A][key] = value.
+	OpSetMap
 
-	// OpMapIndexOk reads map element with ok flag: general[A] = general[B][general[C]],
+	// OpGetMapOk reads a map element with its ok flag, general[A] = general[B][general[C]],
 	// ints[extensionWord.a] = ok (0 or 1).
-	OpMapIndexOk
+	OpGetMapOk
 
 	// OpAppend appends: general[A] = append(general[B], arguments...).
 	OpAppend
@@ -372,135 +378,136 @@ const (
 	// reflect.AppendSlice.
 	OpAppendSpread
 
-	// OpAppendByteFast is the byte-builder append fast path (A=dest general, B=source []byte
+	// OpAppendByte is the byte-builder append fast path (A=dest general, B=source []byte
 	// general, C=byte uint register), emitted only when the element type is statically byte.
-	OpAppendByteFast
+	OpAppendByte
 
-	// OpCopy copies: ints[A] = copy(general[B], general[C]).
-	OpCopy
+	// OpCopyGeneral copies a slice, ints[A] = copy(general[B], general[C]).
+	OpCopyGeneral
 
-	// OpSliceGetInt reads an integer element from a slice/array without reflect boxing.
+	// OpGetElementInt64 reads an integer element from a slice/array without reflect boxing.
 	// ints[A] = general[B].Index(ints[C]).Int() (or .Uint() for unsigned element types).
-	OpSliceGetInt
+	OpGetElementInt64
 
-	// OpSliceSetInt writes an integer value to a slice/array element without reflect boxing.
-	// general[A].Index(ints[B]).SetInt(ints[C]) (or .SetUint() for unsigned element types).
-	OpSliceSetInt
+	// OpSetElementInt64 writes an integer value to a slice/array element without reflect
+	// boxing. general[A].Index(ints[B]).SetInt(ints[C]) (or .SetUint() for unsigned element
+	// types).
+	OpSetElementInt64
 
-	// OpSliceGetFloat reads a float element from a slice/array without reflect boxing.
+	// OpGetElementFloat64 reads a float element from a slice/array without reflect boxing.
 	// floats[A] = general[B].Index(ints[C]).Float().
-	OpSliceGetFloat
+	OpGetElementFloat64
 
-	// OpSliceSetFloat writes a float value to a slice/array element without reflect boxing.
-	// general[A].Index(ints[B]).SetFloat(floats[C]).
-	OpSliceSetFloat
+	// OpSetElementFloat64 writes a float value to a slice/array element without reflect
+	// boxing. general[A].Index(ints[B]).SetFloat(floats[C]).
+	OpSetElementFloat64
 
-	// OpSliceGetString reads a string element from a slice/array. strings[A] =
+	// OpGetElementString reads a string element from a slice/array. strings[A] =
 	// general[B].Index(ints[C]).String().
-	OpSliceGetString
+	OpGetElementString
 
-	// OpSliceSetString writes a string value to a slice/array element.
+	// OpSetElementString writes a string value to a slice/array element.
 	// general[A].Index(ints[B]).SetString(strings[C]).
-	OpSliceSetString
+	OpSetElementString
 
-	// OpSliceGetBool reads a bool element from a slice/array. bools[A] =
+	// OpGetElementBool reads a bool element from a slice/array. bools[A] =
 	// general[B].Index(ints[C]).Bool().
-	OpSliceGetBool
+	OpGetElementBool
 
-	// OpSliceSetBool writes a bool value to a slice/array element.
+	// OpSetElementBool writes a bool value to a slice/array element.
 	// general[A].Index(ints[B]).SetBool(bools[C]).
-	OpSliceSetBool
+	OpSetElementBool
 
-	// OpSliceGetUint reads a uint element from a slice/array. uints[A] =
+	// OpGetElementUint64 reads a uint element from a slice/array. uints[A] =
 	// general[B].Index(ints[C]).Uint().
-	OpSliceGetUint
+	OpGetElementUint64
 
-	// OpSliceSetUint writes a uint value to a slice/array element.
+	// OpSetElementUint64 writes a uint value to a slice/array element.
 	// general[A].Index(ints[B]).SetUint(uints[C]).
-	OpSliceSetUint
+	OpSetElementUint64
 
-	// OpLoadCompositeZeroReuse loads a composite-zero constant, reusing the destination
+	// OpLoadCompositeZeroInPlace loads a composite-zero constant, reusing the destination
 	// register's existing storage when it already holds a value of the same type.
 	// PromoteCompositeZeroReuse emits this only after proving the site is frame-local and
 	// unaliased.
-	OpLoadCompositeZeroReuse
+	OpLoadCompositeZeroInPlace
 
 	// OpRangeNextSliceByte advances a typed range step over a slicesByte entry. A=index int,
 	// B=source slicesByte, C=destination uint.
 	OpRangeNextSliceByte
 
-	// OpMapGetIntInt reads ints[A] = map[int]int in general[B] with key ints[C].
-	OpMapGetIntInt
+	// OpGetMapInt64Int64 reads ints[A] = map[int]int in general[B] with key ints[C].
+	OpGetMapInt64Int64
 
-	// OpMapSetIntInt writes general[A][ints[B]] = ints[C] for map[int]int.
-	OpMapSetIntInt
+	// OpSetMapInt64Int64 writes general[A][ints[B]] = ints[C] for map[int]int.
+	OpSetMapInt64Int64
 
-	// OpMapGetStringInt reads ints[A] = map[string]int in general[B] with key strings[C].
+	// OpGetMapStringInt64 reads ints[A] = map[string]int in general[B] with key strings[C].
 	// Bypasses reflect.MapIndex via the cached typed map handle on vm.typedHandleCache.
-	OpMapGetStringInt
+	OpGetMapStringInt64
 
-	// OpMapSetStringInt writes general[A][strings[B]] = ints[C] for map[string]int. Bypasses
-	// reflect.SetMapIndex via the cached typed map handle.
-	OpMapSetStringInt
+	// OpSetMapStringInt64 writes general[A][strings[B]] = ints[C] for map[string]int.
+	// Bypasses reflect.SetMapIndex via the cached typed map handle.
+	OpSetMapStringInt64
 
-	// OpMapGetStringString reads strings[A] = map[string]string in general[B] with key
+	// OpGetMapStringString reads strings[A] = map[string]string in general[B] with key
 	// strings[C].
-	OpMapGetStringString
+	OpGetMapStringString
 
-	// OpMapSetStringString writes general[A][strings[B]] = strings[C] for map[string]string.
-	OpMapSetStringString
+	// OpSetMapStringString writes general[A][strings[B]] = strings[C] for map[string]string.
+	OpSetMapStringString
 
-	// OpMapGetIntString reads strings[A] = map[int]string in general[B] with key ints[C].
-	OpMapGetIntString
+	// OpGetMapInt64String reads strings[A] = map[int]string in general[B] with key ints[C].
+	OpGetMapInt64String
 
-	// OpMapSetIntString writes general[A][ints[B]] = strings[C] for map[int]string.
-	OpMapSetIntString
+	// OpSetMapInt64String writes general[A][ints[B]] = strings[C] for map[int]string.
+	OpSetMapInt64String
 
-	// OpMapIndexOkIntInt reads ints[A] = map[int]int in general[B] with key ints[C], plus an
-	// extension word whose A field is the int register holding the ok flag.
-	OpMapIndexOkIntInt
+	// OpGetMapInt64Int64Ok reads ints[A] = map[int]int in general[B] with key ints[C], plus
+	// an extension word whose A field is the int register holding the ok flag.
+	OpGetMapInt64Int64Ok
 
-	// OpMapIndexOkStringInt reads ints[A] = map[string]int in general[B] with key
+	// OpGetMapStringInt64Ok reads ints[A] = map[string]int in general[B] with key
 	// strings[C], plus an extension word whose A field is the int register holding the ok
 	// flag.
-	OpMapIndexOkStringInt
+	OpGetMapStringInt64Ok
 
-	// OpMapIndexOkStringString reads strings[A] = map[string]string in general[B] with key
+	// OpGetMapStringStringOk reads strings[A] = map[string]string in general[B] with key
 	// strings[C], plus an extension word whose A field is the int register holding the ok
 	// flag.
-	OpMapIndexOkStringString
+	OpGetMapStringStringOk
 
-	// OpMapIndexOkIntString reads strings[A] = map[int]string in general[B] with key
+	// OpGetMapInt64StringOk reads strings[A] = map[int]string in general[B] with key
 	// ints[C], plus an extension word whose A field is the int register holding the ok flag.
-	OpMapIndexOkIntString
+	OpGetMapInt64StringOk
 
-	// OpMapGetIntGeneral reads general[A] = map[int]V via general[B][ints[C]], where V is
+	// OpGetMapInt64General reads general[A] = map[int]V via general[B][ints[C]], where V is
 	// any general-bank type.
-	OpMapGetIntGeneral
+	OpGetMapInt64General
 
-	// OpMapIndexOkIntGeneral is the comma-ok form of OpMapGetIntGeneral, with the ok flag in
-	// extension word A.
-	OpMapIndexOkIntGeneral
+	// OpGetMapInt64GeneralOk is the comma-ok form of OpGetMapInt64General, with the ok flag
+	// in extension word A.
+	OpGetMapInt64GeneralOk
 
-	// OpMapGetStringGeneral reads general[A] = map[string]V in general[B] with key
+	// OpGetMapStringGeneral reads general[A] = map[string]V in general[B] with key
 	// strings[C], where V is any general-bank type.
-	OpMapGetStringGeneral
+	OpGetMapStringGeneral
 
-	// OpMapIndexOkStringGeneral is the comma-ok form of OpMapGetStringGeneral, with the ok
+	// OpGetMapStringGeneralOk is the comma-ok form of OpGetMapStringGeneral, with the ok
 	// flag in extension word A.
-	OpMapIndexOkStringGeneral
+	OpGetMapStringGeneralOk
 
-	// OpMapSetStringGeneral writes general[A][strings[B]] = general[C] for map[string]V
+	// OpSetMapStringGeneral writes general[A][strings[B]] = general[C] for map[string]V
 	// where V is in the general bank.
-	OpMapSetStringGeneral
+	OpSetMapStringGeneral
 
-	// OpMapAddIntInt fuses get-add-set for map[int]int, performing general[A][ints[B]] +=
-	// ints[C] in one map probe. Absent keys are treated as 0.
-	OpMapAddIntInt
+	// OpAddToMapInt64Int64 fuses get-add-set for map[int]int, performing general[A][ints[B]]
+	// += ints[C] in one map probe. Absent keys are treated as 0.
+	OpAddToMapInt64Int64
 
-	// OpMapAddStringInt fuses get-add-set for map[string]int, performing
+	// OpAddToMapStringInt64 fuses get-add-set for map[string]int, performing
 	// general[A][strings[B]] += ints[C] in one map probe. Absent keys are treated as 0.
-	OpMapAddStringInt
+	OpAddToMapStringInt64
 
 	// OpGetField reads general[B].Field(C) into the target register. A encodes the
 	// destination and the register kind comes from an extension word.
@@ -509,39 +516,41 @@ const (
 	// OpSetField writes source register to general[A].Field(B).
 	OpSetField
 
-	// OpSetFieldInt writes ints[C] to general[A].Field(B).
-	OpSetFieldInt
+	// OpSetFieldInt64 writes ints[C] to general[A].Field(B).
+	OpSetFieldInt64
 
-	// OpGetFieldInt reads ints[A] = general[B].Field(C).Int().
-	OpGetFieldInt
+	// OpGetFieldInt64 reads ints[A] = general[B].Field(C).Int().
+	OpGetFieldInt64
 
 	// OpBindMethod creates a bound method value in general[A] with receiver general[B]. C is
 	// the embedded field traversal count and extension words carry function and field
 	// indices.
 	OpBindMethod
 
-	// OpChannelSend sends a value on general[A].
-	OpChannelSend
+	// OpSendToChannel sends a value on general[A].
+	OpSendToChannel
 
-	// OpAddr takes the address: general[A] = &register[B]. C encodes the source register
+	// OpAddress takes an address, general[A] = &register[B]. C encodes the source register
 	// kind.
-	OpAddr
+	OpAddress
 
-	// OpDeref dereferences *general[B] into the target register. A encodes the destination
-	// register index and C encodes its kind.
-	OpDeref
+	// OpDereference dereferences *general[B] into the target register. A encodes the
+	// destination register index and C encodes its kind.
+	OpDereference
 
-	// OpAllocIndirect heap-escapes a variable via reflect.New of the type at the OpExt type
-	// table index. general[A] = the pointer; B = source register index; C = source
+	// OpAllocateIndirect heap-escapes a variable via reflect.New of the type at the
+	// OpExtension type table index.
+	//
+	// general[A] receives the pointer. B is the source register index, and C is the source
 	// RegisterKind.
-	OpAllocIndirect
+	OpAllocateIndirect
 
 	// OpTypeAssert performs general[A] = general[B].(T). ints[C] receives the ok flag for
 	// the comma-ok form; the type T index comes from an extension instruction.
 	OpTypeAssert
 
-	// OpConvert performs type conversion: general[A] = T(general[B]).
-	OpConvert
+	// OpConvertGeneral performs a type conversion, general[A] = T(general[B]).
+	OpConvertGeneral
 
 	// OpGetGlobal loads a package-level variable into the register at index A in bank C. B
 	// is the global variable index.
@@ -560,93 +569,93 @@ const (
 	// OpUnsafeAdd sets general[A] = unsafe.Add(general[B], ints[C]).
 	OpUnsafeAdd
 
-	// OpStrContainsRune sets bools[A] = strings.ContainsRune(strings[B], rune(ints[C])).
-	OpStrContainsRune
+	// OpStringsContainsRune sets bools[A] = strings.ContainsRune(strings[B], rune(ints[C])).
+	OpStringsContainsRune
 
-	// OpStrContains sets bools[A] = strings.Contains(strings[B], strings[C]).
-	OpStrContains
+	// OpStringsContains sets bools[A] = strings.Contains(strings[B], strings[C]).
+	OpStringsContains
 
-	// OpStrHasPrefix sets bools[A] = strings.HasPrefix(strings[B], strings[C]).
-	OpStrHasPrefix
+	// OpStringsHasPrefix sets bools[A] = strings.HasPrefix(strings[B], strings[C]).
+	OpStringsHasPrefix
 
-	// OpStrHasSuffix sets bools[A] = strings.HasSuffix(strings[B], strings[C]).
-	OpStrHasSuffix
+	// OpStringsHasSuffix sets bools[A] = strings.HasSuffix(strings[B], strings[C]).
+	OpStringsHasSuffix
 
-	// OpStrEqualFold sets bools[A] = strings.EqualFold(strings[B], strings[C]).
-	OpStrEqualFold
+	// OpStringsEqualFold sets bools[A] = strings.EqualFold(strings[B], strings[C]).
+	OpStringsEqualFold
 
-	// OpStrIndex sets ints[A] = strings.Index(strings[B], strings[C]).
-	OpStrIndex
+	// OpStringsIndex sets ints[A] = strings.Index(strings[B], strings[C]).
+	OpStringsIndex
 
-	// OpStrCount sets ints[A] = strings.Count(strings[B], strings[C]).
-	OpStrCount
+	// OpStringsCount sets ints[A] = strings.Count(strings[B], strings[C]).
+	OpStringsCount
 
-	// OpStrTrimPrefix sets strings[A] = strings.TrimPrefix(strings[B], strings[C]).
-	OpStrTrimPrefix
+	// OpStringsTrimPrefix sets strings[A] = strings.TrimPrefix(strings[B], strings[C]).
+	OpStringsTrimPrefix
 
-	// OpStrTrimSuffix sets strings[A] = strings.TrimSuffix(strings[B], strings[C]).
-	OpStrTrimSuffix
+	// OpStringsTrimSuffix sets strings[A] = strings.TrimSuffix(strings[B], strings[C]).
+	OpStringsTrimSuffix
 
-	// OpStrTrim sets strings[A] = strings.Trim(strings[B], strings[C]).
-	OpStrTrim
+	// OpStringsTrim sets strings[A] = strings.Trim(strings[B], strings[C]).
+	OpStringsTrim
 
-	// OpStrIndexRune sets ints[A] = strings.IndexRune(strings[B], rune(ints[C])).
-	OpStrIndexRune
+	// OpStringsIndexRune sets ints[A] = strings.IndexRune(strings[B], rune(ints[C])).
+	OpStringsIndexRune
 
-	// OpStrRepeat sets strings[A] = strings.Repeat(strings[B], int(ints[C])).
-	OpStrRepeat
+	// OpStringsRepeat sets strings[A] = strings.Repeat(strings[B], int(ints[C])).
+	OpStringsRepeat
 
-	// OpStrLastIndex sets ints[A] = strings.LastIndex(strings[B], strings[C]).
-	OpStrLastIndex
+	// OpStringsLastIndex sets ints[A] = strings.LastIndex(strings[B], strings[C]).
+	OpStringsLastIndex
 
-	// OpStrJoin sets strings[A] = strings.Join(general[B], strings[C]).
-	OpStrJoin
+	// OpStringsJoin sets strings[A] = strings.Join(general[B], strings[C]).
+	OpStringsJoin
 
-	// OpStrSplit sets general[A] = strings.Split(strings[B], strings[C]).
-	OpStrSplit
+	// OpStringsSplit sets general[A] = strings.Split(strings[B], strings[C]).
+	OpStringsSplit
 
-	// OpStrReplaceAll sets strings[A] = strings.ReplaceAll(strings[B], strings[C],
+	// OpStringsReplaceAll sets strings[A] = strings.ReplaceAll(strings[B], strings[C],
 	// strings[extensionWord.a]). The replacement string register index is in the following
-	// OpExt.
-	OpStrReplaceAll
+	// OpExtension.
+	OpStringsReplaceAll
 
 	// OpMathPow sets floats[A] = math.Pow(floats[B], floats[C]).
 	OpMathPow
 
-	// OpSliceGetIntDirect sets ints[A] = slicesInt[B][ints[C]] via direct Go indexing with
-	// bounds checking.
-	OpSliceGetIntDirect
+	// OpGetSliceInt64Element sets ints[A] = slicesInt[B][ints[C]] via direct Go indexing
+	// with bounds checking.
+	OpGetSliceInt64Element
 
-	// OpSliceSetIntDirect sets slicesInt[A][ints[B]] = ints[C] via direct Go indexing.
-	OpSliceSetIntDirect
+	// OpSetSliceInt64Element sets slicesInt[A][ints[B]] = ints[C] via direct Go indexing.
+	OpSetSliceInt64Element
 
-	// OpRangeNextSliceInt advances a typed range over a slicesInt entry. A=index int,
+	// OpRangeNextSliceInt64 advances a typed range over a slicesInt entry. A=index int,
 	// B=source slicesInt, C=destination int.
-	OpRangeNextSliceInt
+	OpRangeNextSliceInt64
 
-	// OpGetStructFieldIntT0 is the tier-0 fast-path int struct-field read (A=dest int,
+	// OpGetStructFieldInt64 is the tier-0 fast-path int struct-field read (A=dest int,
 	// B=source general, C=structLayoutTable index), falling back to the tier-1 sub-op when
 	// the index exceeds uint8.
-	OpGetStructFieldIntT0
+	OpGetStructFieldInt64
 
-	// OpSetStructFieldIntT0 is the tier-0 fast-path int struct-field write. Operand
+	// OpSetStructFieldInt64 is the tier-0 fast-path int struct-field write. Operand
 	// A=structReg general, B=value int register, C=structLayoutTable index (uint8).
-	OpSetStructFieldIntT0
+	OpSetStructFieldInt64
 
-	// OpGetStructFieldUint is the tier-0 fast-path uint struct-field read. Same operand
-	// layout as OpGetStructFieldIntT0 but writes into the uints bank.
-	OpGetStructFieldUint
+	// OpGetStructFieldUint64 is the tier-0 fast-path uint struct-field read. Same operand
+	// layout as OpGetStructFieldInt64 but writes into the uints bank.
+	OpGetStructFieldUint64
 
-	// OpSetStructFieldUint is the tier-0 fast-path uint struct-field write. Operand
+	// OpSetStructFieldUint64 is the tier-0 fast-path uint struct-field write. Operand
 	// A=structReg general, B=value uint register, C=structLayoutTable index (uint8).
-	OpSetStructFieldUint
+	OpSetStructFieldUint64
 
-	// OpGetStructFieldFloat is the tier-0 fast-path float struct-field read. Same operand
-	// layout as OpGetStructFieldUint but writes into the floats bank.
-	OpGetStructFieldFloat
+	// OpGetStructFieldFloat64 is the tier-0 fast-path float struct-field read. Same operand
+	// layout as OpGetStructFieldUint64 but writes into the floats bank.
+	OpGetStructFieldFloat64
 
-	// OpSetStructFieldFloat is the tier-0 fast-path float struct-field write.
-	OpSetStructFieldFloat
+	// OpSetStructFieldFloat64 is the tier-0 fast-path float struct-field write.
+	OpSetStructFieldFloat64
 
 	// OpGetStructFieldBool is the tier-0 fast-path bool struct-field read.
 	OpGetStructFieldBool
@@ -663,87 +672,87 @@ const (
 	// index).
 	OpSetStructFieldGeneral
 
-	// OpCopyStructFieldGeneralT0 is the fused general-bank field copy (A=srcRecv general,
-	// B=dstRecv general, C=srcLayoutIdx) with the dstLayoutIdx in the following OpExt.
-	OpCopyStructFieldGeneralT0
+	// OpCopyStructFieldGeneral is the fused general-bank field copy (A=srcRecv general,
+	// B=dstRecv general, C=srcLayoutIdx) with the dstLayoutIdx in the following OpExtension.
+	OpCopyStructFieldGeneral
 
-	// OpSliceIndexStructFieldInt is the tier-0 fused slice[i].field read for int leaves
-	// (A=dest int, B=source slice general, C=index int).
-	OpSliceIndexStructFieldInt
+	// OpGetElementFieldInt64 is the tier-0 fused slice[i].field read for int leaves (A=dest
+	// int, B=source slice general, C=index int).
+	OpGetElementFieldInt64
 
-	// OpSliceIndexStructFieldUint mirrors OpSliceIndexStructFieldInt for uint-kind leaf
-	// fields. Destination is uint register A.
-	OpSliceIndexStructFieldUint
+	// OpGetElementFieldUint64 mirrors OpGetElementFieldInt64 for uint-kind leaf fields.
+	// Destination is uint register A.
+	OpGetElementFieldUint64
 
-	// OpSliceIndexStructFieldFloat mirrors OpSliceIndexStructFieldInt for float-kind leaf
-	// fields. Destination is float register A.
-	OpSliceIndexStructFieldFloat
+	// OpGetElementFieldFloat64 mirrors OpGetElementFieldInt64 for float-kind leaf fields.
+	// Destination is float register A.
+	OpGetElementFieldFloat64
 
-	// OpSliceIndexStructFieldBool mirrors OpSliceIndexStructFieldInt for bool-kind leaf
-	// fields. Destination is bool register A.
-	OpSliceIndexStructFieldBool
+	// OpGetElementFieldBool mirrors OpGetElementFieldInt64 for bool-kind leaf fields.
+	// Destination is bool register A.
+	OpGetElementFieldBool
 
-	// OpSliceIndexStructFieldString mirrors OpSliceIndexStructFieldInt for string-kind
-	// leaves. Destination is string register A.
-	OpSliceIndexStructFieldString
+	// OpGetElementFieldString mirrors OpGetElementFieldInt64 for string-kind leaves.
+	// Destination is string register A.
+	OpGetElementFieldString
 
-	// OpMapIndexOkJumpIfFalseIntInt fuses OpMapIndexOkIntInt + OpJumpIfFalse. The extension
-	// word carries the ok register, jump offset low and high bytes.
-	OpMapIndexOkJumpIfFalseIntInt
+	// OpGetMapInt64Int64OkThenJumpIfFalse fuses OpGetMapInt64Int64Ok + OpJumpIfFalse. The
+	// extension word carries the ok register, jump offset low and high bytes.
+	OpGetMapInt64Int64OkThenJumpIfFalse
 
-	// OpMapIndexOkJumpIfFalseStringInt mirrors OpMapIndexOkJumpIfFalseIntInt for
+	// OpGetMapStringInt64OkThenJumpIfFalse mirrors OpGetMapInt64Int64OkThenJumpIfFalse for
 	// map[string]int with string keys.
-	OpMapIndexOkJumpIfFalseStringInt
+	OpGetMapStringInt64OkThenJumpIfFalse
 
-	// OpMapIndexOkJumpIfFalseStringString mirrors OpMapIndexOkJumpIfFalseIntInt for
+	// OpGetMapStringStringOkThenJumpIfFalse mirrors OpGetMapInt64Int64OkThenJumpIfFalse for
 	// map[string]string (string keys + string values).
-	OpMapIndexOkJumpIfFalseStringString
+	OpGetMapStringStringOkThenJumpIfFalse
 
-	// OpMapIndexOkJumpIfFalseIntString mirrors OpMapIndexOkJumpIfFalseIntInt for
+	// OpGetMapInt64StringOkThenJumpIfFalse mirrors OpGetMapInt64Int64OkThenJumpIfFalse for
 	// map[int]string (int keys + string values).
-	OpMapIndexOkJumpIfFalseIntString
+	OpGetMapInt64StringOkThenJumpIfFalse
 
-	// OpMapIndexOkJumpIfFalseIntGeneral mirrors OpMapIndexOkJumpIfFalseIntInt for map[int]V
-	// where V is in the general bank.
-	OpMapIndexOkJumpIfFalseIntGeneral
+	// OpGetMapInt64GeneralOkThenJumpIfFalse mirrors OpGetMapInt64Int64OkThenJumpIfFalse for
+	// map[int]V where V is in the general bank.
+	OpGetMapInt64GeneralOkThenJumpIfFalse
 
-	// OpMapIndexOkJumpIfFalseStringGeneral mirrors OpMapIndexOkJumpIfFalseIntGeneral for
-	// map[string]V with string keys.
-	OpMapIndexOkJumpIfFalseStringGeneral
+	// OpGetMapStringGeneralOkThenJumpIfFalse mirrors OpGetMapInt64GeneralOkThenJumpIfFalse
+	// for map[string]V with string keys.
+	OpGetMapStringGeneralOkThenJumpIfFalse
 
-	// OpSwapStructFieldsGeneralT0 fuses `t.x, t.y = t.y, t.x` for two general-bank fields
-	// into a single dispatch (A=struct general, B=layout index X, C=layout index Y),
-	// requiring both fields to have the same kind.
-	OpSwapStructFieldsGeneralT0
+	// OpSwapStructFieldsGeneral fuses `t.x, t.y = t.y, t.x` for two general-bank fields into
+	// a single dispatch (A=struct general, B=layout index X, C=layout index Y), requiring
+	// both fields to have the same kind.
+	OpSwapStructFieldsGeneral
 
-	// OpGetStructFieldRawPointerT0 specialises OpGetStructFieldGeneral for cycle-broken
+	// OpGetStructFieldRawPointer specialises OpGetStructFieldGeneral for cycle-broken
 	// interface{} fields that always hold a pointer.
-	OpGetStructFieldRawPointerT0
+	OpGetStructFieldRawPointer
 
-	// OpSliceGetIntDirectUnchecked is the bounds-elided variant of OpSliceGetIntDirect.
-	// Emitted only when the access is provably in range.
-	OpSliceGetIntDirectUnchecked
+	// OpGetSliceInt64ElementUnchecked is the bounds-elided variant of
+	// OpGetSliceInt64Element. Emitted only when the access is provably in range.
+	OpGetSliceInt64ElementUnchecked
 
-	// OpSliceSetIntDirectUnchecked is the bounds-elided variant of OpSliceSetIntDirect.
-	// Emitted only when the access is provably in range.
-	OpSliceSetIntDirectUnchecked
+	// OpSetSliceInt64ElementUnchecked is the bounds-elided variant of
+	// OpSetSliceInt64Element. Emitted only when the access is provably in range.
+	OpSetSliceInt64ElementUnchecked
 
-	// OpSliceGetIntUnchecked is the bounds-elided variant of OpSliceGetInt. Emitted only
-	// when the BCE pass proves the access is in range.
-	OpSliceGetIntUnchecked
+	// OpGetElementInt64Unchecked is the bounds-elided variant of OpGetElementInt64. Emitted
+	// only when the BCE pass proves the access is in range.
+	OpGetElementInt64Unchecked
 
-	// OpSliceSetIntUnchecked is the bounds-elided variant of OpSliceSetInt. Emitted only
-	// when the access is provably in range.
-	OpSliceSetIntUnchecked
+	// OpSetElementInt64Unchecked is the bounds-elided variant of OpSetElementInt64. Emitted
+	// only when the access is provably in range.
+	OpSetElementInt64Unchecked
 
-	// OpPackTyped boxes a typed-bank value into the general bank (A=general dest, B=source
-	// register, C=source RegisterKind) with a following OpExt carrying the type index.
-	OpPackTyped
+	// OpBoxAsType boxes a typed-bank value into the general bank (A=general dest, B=source
+	// register, C=source RegisterKind) with a following OpExtension carrying the type index.
+	OpBoxAsType
 
-	// OpAppendByteFastInPlace is the byte-builder in-place append, covering both the `x =
+	// OpAppendByteInPlace is the byte-builder in-place append, covering both the `x =
 	// append(x, b)` and `*p = append(*p, b)` forms. The alias analysis pass demotes it back
-	// to OpAppendByteFast at any site it cannot prove alias-free.
-	OpAppendByteFastInPlace
+	// to OpAppendByte at any site it cannot prove alias-free.
+	OpAppendByteInPlace
 
 	// OpAppendInPlace is the generic in-place sibling of OpAppend, covering both direct and
 	// pointer forms. Falls back to OpAppend when the source header is not arena-owned.
@@ -753,71 +762,98 @@ const (
 	// append(x, source...)` for arbitrary element types.
 	OpAppendSpreadInPlace
 
-	// OpMapSetIntGeneral writes general[A][ints[B]] = general[C] for map[int]V where V is in
-	// the general bank.
-	OpMapSetIntGeneral
+	// OpSetMapInt64General writes general[A][ints[B]] = general[C] for map[int]V where V is
+	// in the general bank.
+	OpSetMapInt64General
 
-	// OpGetStructFieldIndexGeneral fuses an array-typed struct-field read with an element
+	// OpGetStructFieldElementGeneral fuses an array-typed struct-field read with an element
 	// index. Sets general[A] = receiver[B].field(layout[C]).elem[ints[ext1.c]].
-	OpGetStructFieldIndexGeneral
+	OpGetStructFieldElementGeneral
 
-	// OpSetStructFieldIndexGeneral is the write-side twin of OpGetStructFieldIndexGeneral.
-	// Sets receiver[A].field(layout[C]).elem[ints[ext1.c]] = general[B].
-	OpSetStructFieldIndexGeneral
+	// OpSetStructFieldElementGeneral is the write-side twin of
+	// OpGetStructFieldElementGeneral. Sets receiver[A].field(layout[C]).elem[ints[ext1.c]] =
+	// general[B].
+	OpSetStructFieldElementGeneral
 
-	// OpDerefSliceGetInt reads one element of an int slice reached through a pointer,
-	// setting ints[A] = (*general[B])[ints[C]].
-	OpDerefSliceGetInt
+	// OpGetElementInt64ViaPointer reads one element of an int slice reached through a
+	// pointer, setting ints[A] = (*general[B])[ints[C]].
+	OpGetElementInt64ViaPointer
 
-	// OpDerefSliceSetInt is the write-side twin: (*general[A])[ints[B]] = ints[C]. Element
-	// stores into int slices carry no pointers, so no write barrier applies.
-	OpDerefSliceSetInt
+	// OpSetElementInt64ViaPointer is the write-side twin, (*general[A])[ints[B]] = ints[C].
+	// Element stores into int slices carry no pointers, so no write barrier applies.
+	OpSetElementInt64ViaPointer
 
-	// OpGetStructFieldSliceLen reads the length of a slice-kind struct field without
+	// OpLengthStructField reads the length of a slice-kind struct field without
 	// materialising a slice header. Sets ints[A] = len(receiver[B].field(layout[C])).
-	OpGetStructFieldSliceLen
+	OpLengthStructField
 
-	// OpGetStructFieldSliceIndexScalar reads a scalar sub-field of one element from a
+	// OpGetStructFieldElementField reads a scalar sub-field of one element from a
 	// slice-typed struct field without materialising a slice header or boxing the element.
-	OpGetStructFieldSliceIndexScalar
+	OpGetStructFieldElementField
 
-	// OpAppendStructFast appends a pointer-free struct or array element to a general-bank
-	// slice. The extension word indexes the element type in the type table.
-	OpAppendStructFast
+	// OpAppendStruct appends a pointer-free struct or array element to a general-bank slice.
+	// The extension word indexes the element type in the type table.
+	OpAppendStruct
 
-	// OpAppendIntFast appends ints[C] to the general-bank slice in general[B], writing the
+	// OpAppendInt64 appends ints[C] to the general-bank slice in general[B], writing the
 	// result to general[A].
-	OpAppendIntFast
+	OpAppendInt64
 
-	// OpAppendFloatFast is the float-bank twin of OpAppendIntFast.
-	OpAppendFloatFast
+	// OpAppendFloat64 is the float-bank twin of OpAppendInt64.
+	OpAppendFloat64
 
-	// OpAppendStringFast is the string-bank twin of OpAppendIntFast. The element passes the
-	// arena string barrier inside the handler.
-	OpAppendStringFast
+	// OpAppendString is the string-bank twin of OpAppendInt64. The element passes the arena
+	// string barrier inside the handler.
+	OpAppendString
 
 	// OpTypeSwitchCase is one row of a SubOpTypeSwitchJump table. A indexes the case type
 	// and B|(C<<8) is the signed offset to the case body.
 	OpTypeSwitchCase
 
-	// OpAddInt32 sets ints[A] = int64(int32(ints[B] + ints[C])). Fuses OpAddInt with the
-	// 32-bit OpTruncateNarrow of its result.
+	// OpAddInt32 sets ints[A] = int64(int32(ints[B] + ints[C])). Fuses OpAddInt64 with the
+	// 32-bit OpTruncateToWidth of its result.
 	OpAddInt32
 
-	// OpSubInt32 sets ints[A] = int64(int32(ints[B] - ints[C])).
-	OpSubInt32
+	// OpSubtractInt32 sets ints[A] = int64(int32(ints[B] - ints[C])).
+	OpSubtractInt32
 
-	// OpMulInt32 sets ints[A] = int64(int32(ints[B] * ints[C])).
-	OpMulInt32
+	// OpMultiplyInt32 sets ints[A] = int64(int32(ints[B] * ints[C])).
+	OpMultiplyInt32
 
-	// OpAddInt32Const sets ints[A] = int64(int32(ints[B] + intConstants[C])).
-	OpAddInt32Const
+	// OpAddInt32Constant sets ints[A] = int64(int32(ints[B] + intConstants[C])).
+	OpAddInt32Constant
 
-	// OpSubInt32Const sets ints[A] = int64(int32(ints[B] - intConstants[C])).
-	OpSubInt32Const
+	// OpSubtractInt32Constant sets ints[A] = int64(int32(ints[B] - intConstants[C])).
+	OpSubtractInt32Constant
 
 	// OpAddUint32 sets uints[A] = uint64(uint32(uints[B] + uints[C])).
 	OpAddUint32
+
+	// OpMultiplyInt64ConstantThenAdd sets ints[A] = ints[extension.A] + ints[B] *
+	// intConstants[C].
+	OpMultiplyInt64ConstantThenAdd
+
+	// OpAppendStringToMapString appends strings[C] to the slice the map general[A] holds
+	// under strings[B] and stores the slice back.
+	OpAppendStringToMapString
+
+	// OpSubtractUint32 sets uints[A] = uint64(uint32(uints[B] - uints[C])).
+	OpSubtractUint32
+
+	// OpMultiplyUint32 sets uints[A] = uint64(uint32(uints[B] * uints[C])).
+	OpMultiplyUint32
+
+	// OpSetElementFieldInt64 stores ints[A] into an integer field of the struct element
+	// ints[C] of the slice in general[B], truncated to the field's width.
+	//
+	// One OpExtension word follows. Bytes A and B hold the struct-layout index of the field.
+	// Byte C names a register of the general bank the operation may pass the element
+	// through. A store that succeeds leaves that register as it found it. An index out of
+	// range and a nil slice fail as OpGetElement fails.
+	OpSetElementFieldInt64
+
+	// OpSetElementFieldFloat64 is OpSetElementFieldInt64 for floats[A] and a float field.
+	OpSetElementFieldFloat64
 )
 
 const (
@@ -849,104 +885,97 @@ const (
 	// SubOpStrconvItoa sets strings[B] = strconv.Itoa(int(ints[C])).
 	SubOpStrconvItoa
 
-	// SubOpRealComplex sets floats[B] = real(complex[C]).
-	SubOpRealComplex
+	// SubOpRealPartComplex128 sets floats[B] = real(complex[C]).
+	SubOpRealPartComplex128
 
-	// SubOpImagComplex sets floats[B] = imag(complex[C]).
-	SubOpImagComplex
+	// SubOpImaginaryPartComplex128 sets floats[B] = imag(complex[C]).
+	SubOpImaginaryPartComplex128
 
-	// SubOpBytesToString sets strings[B] = string(general[C]) for a []byte source.
-	SubOpBytesToString
+	// SubOpConvertBytesToString sets strings[B] = string(general[C]) for a []byte source.
+	SubOpConvertBytesToString
 
-	// SubOpMakeMethodExpr builds a method expression value in general[B] from general[C].
-	SubOpMakeMethodExpr
+	// SubOpMakeMethodExpression builds a method expression value in general[B] from
+	// general[C].
+	SubOpMakeMethodExpression
 
-	// SubOpCap sets ints[B] = cap(general[C]) for any capacity-bearing collection bank.
-	SubOpCap
+	// SubOpCapacityGeneral sets ints[B] = cap(general[C]) for any capacity-bearing
+	// collection bank.
+	SubOpCapacityGeneral
 
-	// SubOpNegComplex sets complex[B] = -complex[C].
-	SubOpNegComplex
+	// SubOpNegateComplex128 sets complex[B] = -complex[C].
+	SubOpNegateComplex128
 
-	// SubOpMoveComplex copies complex[C] to complex[B].
-	SubOpMoveComplex
+	// SubOpMoveComplex128 copies complex[C] to complex[B].
+	SubOpMoveComplex128
 
-	// SubOpMakeSliceInt creates a typed []int64 slice in the slicesInt bank. B=dest
-	// slicesInt, C=length int, capacity in following OpExt.
-	SubOpMakeSliceInt
+	// SubOpMakeSliceInt64 creates a typed []int64 slice in the slicesInt bank. B=dest
+	// slicesInt, C=length int, capacity in following OpExtension.
+	SubOpMakeSliceInt64
 
-	// SubOpLenSliceIntDirect sets ints[B] = int64(len(slicesInt[C])).
-	SubOpLenSliceIntDirect
+	// SubOpLengthSliceInt64 sets ints[B] = int64(len(slicesInt[C])).
+	SubOpLengthSliceInt64
 
-	// SubOpMakeSliceFloat creates a typed []float64 slice in the slicesFloat bank:
-	// slicesFloat[B] = make([]float64, ints[C], ints[ext.A]).
-	SubOpMakeSliceFloat
+	// SubOpMakeSliceFloat64 creates a typed []float64 slice in the slicesFloat bank.
+	SubOpMakeSliceFloat64
 
-	// SubOpSliceGetFloatDirect reads a float element from a typed []float64 slice without
-	// crossing the reflect boundary: floats[B] = slicesFloat[C][ints[ext.A]]. The index is
-	// in the extension word so the three primary operands cover destination, source and the
-	// umbrella sub-opcode.
-	SubOpSliceGetFloatDirect
+	// SubOpGetSliceFloat64Element reads a float element from a typed []float64 slice without
+	// crossing the reflect boundary. The index is in the extension word so the three primary
+	// operands cover destination, source and the umbrella sub-opcode.
+	SubOpGetSliceFloat64Element
 
-	// SubOpSliceSetFloatDirect writes a float value to a typed []float64 slice element:
-	// slicesFloat[B][ints[C]] = floats[ext.A].
-	SubOpSliceSetFloatDirect
+	// SubOpSetSliceFloat64Element writes a float value to a typed []float64 slice element.
+	SubOpSetSliceFloat64Element
 
-	// SubOpLenSliceFloatDirect sets ints[B] = int64(len(slicesFloat[C])).
-	SubOpLenSliceFloatDirect
+	// SubOpLengthSliceFloat64 sets ints[B] = int64(len(slicesFloat[C])).
+	SubOpLengthSliceFloat64
 
 	// SubOpMakeSliceString creates a typed []string slice in the slicesString bank.
 	SubOpMakeSliceString
 
-	// SubOpSliceGetStringDirect reads a string element from a typed []string slice:
-	// strings[B] = slicesString[C][ints[ext.A]].
-	SubOpSliceGetStringDirect
+	// SubOpGetSliceStringElement reads a string element from a typed []string slice.
+	SubOpGetSliceStringElement
 
-	// SubOpSliceSetStringDirect writes a string value to a typed []string slice element:
-	// slicesString[B][ints[C]] = strings[ext.A].
-	SubOpSliceSetStringDirect
+	// SubOpSetSliceStringElement writes a string value to a typed []string slice element.
+	SubOpSetSliceStringElement
 
-	// SubOpLenSliceStringDirect sets ints[B] = int64(len(slicesString[C])).
-	SubOpLenSliceStringDirect
+	// SubOpLengthSliceString sets ints[B] = int64(len(slicesString[C])).
+	SubOpLengthSliceString
 
 	// SubOpMakeSliceBool creates a typed []bool slice in the slicesBool bank.
 	SubOpMakeSliceBool
 
-	// SubOpSliceGetBoolDirect reads a bool element from a typed []bool slice: bools[B] =
+	// SubOpGetSliceBoolElement reads a bool element from a typed []bool slice, bools[B] =
 	// slicesBool[C][ints[ext.A]].
-	SubOpSliceGetBoolDirect
+	SubOpGetSliceBoolElement
 
-	// SubOpSliceSetBoolDirect writes a bool value to a typed []bool slice element:
-	// slicesBool[B][ints[C]] = bools[ext.A].
-	SubOpSliceSetBoolDirect
+	// SubOpSetSliceBoolElement writes a bool value to a typed []bool slice element.
+	SubOpSetSliceBoolElement
 
-	// SubOpLenSliceBoolDirect sets ints[B] = int64(len(slicesBool[C])).
-	SubOpLenSliceBoolDirect
+	// SubOpLengthSliceBool sets ints[B] = int64(len(slicesBool[C])).
+	SubOpLengthSliceBool
 
-	// SubOpMakeSliceUint creates a typed []uint64 slice in the slicesUint bank.
-	SubOpMakeSliceUint
+	// SubOpMakeSliceUint64 creates a typed []uint64 slice in the slicesUint bank.
+	SubOpMakeSliceUint64
 
-	// SubOpSliceGetUintDirect reads a uint element from a typed []uint64 slice: uints[B] =
-	// slicesUint[C][ints[ext.A]].
-	SubOpSliceGetUintDirect
+	// SubOpGetSliceUint64Element reads a uint element from a typed []uint64 slice, uints[B]
+	// = slicesUint[C][ints[ext.A]].
+	SubOpGetSliceUint64Element
 
-	// SubOpSliceSetUintDirect writes a uint value to a typed []uint64 slice element:
-	// slicesUint[B][ints[C]] = uints[ext.A].
-	SubOpSliceSetUintDirect
+	// SubOpSetSliceUint64Element writes a uint value to a typed []uint64 slice element.
+	SubOpSetSliceUint64Element
 
-	// SubOpLenSliceUintDirect sets ints[B] = int64(len(slicesUint[C])).
-	SubOpLenSliceUintDirect
+	// SubOpLengthSliceUint64 sets ints[B] = int64(len(slicesUint[C])).
+	SubOpLengthSliceUint64
 
-	// SubOpBoxSliceInt converts a typed []int64 slice in the slicesInt bank to a
-	// reflect.Value in the general bank: general[B] = reflect.ValueOf(slicesInt[C]). Used at
-	// boundaries where a typed slice is consumed by a reflect-bank operation (native
-	// function call, map value insert, interface conversion).
-	SubOpBoxSliceInt
+	// SubOpBoxSliceInt64 converts a typed []int64 slice in the slicesInt bank to a
+	// reflect.Value in the general bank.
+	SubOpBoxSliceInt64
 
-	// SubOpMoveInt copies ints[C] to ints[B].
-	SubOpMoveInt
+	// SubOpMoveInt64 copies ints[C] to ints[B].
+	SubOpMoveInt64
 
-	// SubOpMoveFloat copies floats[C] to floats[B].
-	SubOpMoveFloat
+	// SubOpMoveFloat64 copies floats[C] to floats[B].
+	SubOpMoveFloat64
 
 	// SubOpMoveString copies strings[C] to strings[B].
 	SubOpMoveString
@@ -954,66 +983,67 @@ const (
 	// SubOpMoveBool copies bools[C] to bools[B].
 	SubOpMoveBool
 
-	// SubOpMoveUint copies uints[C] to uints[B].
-	SubOpMoveUint
+	// SubOpMoveUint64 copies uints[C] to uints[B].
+	SubOpMoveUint64
 
-	// SubOpMoveIntToGeneral boxes ints[C] into general[B].
-	SubOpMoveIntToGeneral
+	// SubOpBoxInt64 boxes ints[C] into general[B].
+	SubOpBoxInt64
 
-	// SubOpMoveGeneralToInt unboxes general[C] into ints[B].
-	SubOpMoveGeneralToInt
+	// SubOpUnboxInt64 unboxes general[C] into ints[B].
+	SubOpUnboxInt64
 
-	// SubOpMoveFloatToGeneral boxes floats[C] into general[B].
-	SubOpMoveFloatToGeneral
+	// SubOpBoxFloat64 boxes floats[C] into general[B].
+	SubOpBoxFloat64
 
-	// SubOpMoveGeneralToFloat unboxes general[C] into floats[B].
-	SubOpMoveGeneralToFloat
+	// SubOpUnboxFloat64 unboxes general[C] into floats[B].
+	SubOpUnboxFloat64
 
-	// SubOpMoveStringToGeneral boxes strings[C] into general[B].
-	SubOpMoveStringToGeneral
+	// SubOpBoxString boxes strings[C] into general[B].
+	SubOpBoxString
 
-	// SubOpMoveGeneralToString unboxes general[C] into strings[B].
-	SubOpMoveGeneralToString
+	// SubOpUnboxString unboxes general[C] into strings[B].
+	SubOpUnboxString
 
-	// SubOpNegInt sets ints[B] = -ints[C].
-	SubOpNegInt
+	// SubOpNegateInt64 sets ints[B] = -ints[C].
+	SubOpNegateInt64
 
-	// SubOpNegFloat sets floats[B] = -floats[C].
-	SubOpNegFloat
+	// SubOpNegateFloat64 sets floats[B] = -floats[C].
+	SubOpNegateFloat64
 
-	// SubOpBitNot sets ints[B] = ^ints[C].
-	SubOpBitNot
+	// SubOpBitNotInt64 sets ints[B] = ^ints[C].
+	SubOpBitNotInt64
 
-	// SubOpBitNotUint sets uints[B] = ^uints[C].
-	SubOpBitNotUint
+	// SubOpBitNotUint64 sets uints[B] = ^uints[C].
+	SubOpBitNotUint64
 
-	// SubOpIntToFloat converts ints[C] to floats[B].
-	SubOpIntToFloat
+	// SubOpConvertInt64ToFloat64 converts ints[C] to floats[B].
+	SubOpConvertInt64ToFloat64
 
-	// SubOpFloatToInt converts floats[C] to ints[B].
-	SubOpFloatToInt
+	// SubOpConvertFloat64ToInt64 converts floats[C] to ints[B].
+	SubOpConvertFloat64ToInt64
 
-	// SubOpNot inverts bools[C] into ints[B] (treated as bool by the caller; Go-side handler
-	// reads/writes the int bank as bool).
-	SubOpNot
+	// SubOpNotInt64 sets ints[B] to 1 when ints[C] is zero and to 0 otherwise, the logical
+	// NOT of a boolean held in the int bank (a bool operand is converted to and from the int
+	// bank around it).
+	SubOpNotInt64
 
-	// SubOpBoolToInt converts bools[C] to ints[B].
-	SubOpBoolToInt
+	// SubOpConvertBoolToInt64 converts bools[C] to ints[B].
+	SubOpConvertBoolToInt64
 
-	// SubOpIntToBool converts ints[C] to bools[B].
-	SubOpIntToBool
+	// SubOpConvertInt64ToBool converts ints[C] to bools[B].
+	SubOpConvertInt64ToBool
 
-	// SubOpIntToUint converts ints[C] to uints[B].
-	SubOpIntToUint
+	// SubOpConvertInt64ToUint64 converts ints[C] to uints[B].
+	SubOpConvertInt64ToUint64
 
-	// SubOpUintToInt converts uints[C] to ints[B].
-	SubOpUintToInt
+	// SubOpConvertUint64ToInt64 converts uints[C] to ints[B].
+	SubOpConvertUint64ToInt64
 
-	// SubOpUintToFloat converts uints[C] to floats[B].
-	SubOpUintToFloat
+	// SubOpConvertUint64ToFloat64 converts uints[C] to floats[B].
+	SubOpConvertUint64ToFloat64
 
-	// SubOpFloatToUint converts floats[C] to uints[B].
-	SubOpFloatToUint
+	// SubOpConvertFloat64ToUint64 converts floats[C] to uints[B].
+	SubOpConvertFloat64ToUint64
 
 	// SubOpMathSqrt sets floats[B] = math.Sqrt(floats[C]).
 	SubOpMathSqrt
@@ -1033,26 +1063,26 @@ const (
 	// SubOpMathRound sets floats[B] = math.Round(floats[C]).
 	SubOpMathRound
 
-	// SubOpLenString sets ints[B] = len(strings[C]).
-	SubOpLenString
+	// SubOpLengthString sets ints[B] = len(strings[C]).
+	SubOpLengthString
 
-	// SubOpRuneToString sets strings[B] = string(rune(ints[C])).
-	SubOpRuneToString
+	// SubOpConvertRuneToString sets strings[B] = string(rune(ints[C])).
+	SubOpConvertRuneToString
 
-	// SubOpStrToUpper sets strings[B] = strings.ToUpper(strings[C]).
-	SubOpStrToUpper
+	// SubOpStringsToUpper sets strings[B] = strings.ToUpper(strings[C]).
+	SubOpStringsToUpper
 
-	// SubOpStrToLower sets strings[B] = strings.ToLower(strings[C]).
-	SubOpStrToLower
+	// SubOpStringsToLower sets strings[B] = strings.ToLower(strings[C]).
+	SubOpStringsToLower
 
-	// SubOpStrTrimSpace sets strings[B] = strings.TrimSpace(strings[C]).
-	SubOpStrTrimSpace
+	// SubOpStringsTrimSpace sets strings[B] = strings.TrimSpace(strings[C]).
+	SubOpStringsTrimSpace
 
-	// SubOpLen sets ints[B] = len(general[C]) for any collection bank.
-	SubOpLen
+	// SubOpLengthGeneral sets ints[B] = len(general[C]) for any collection bank.
+	SubOpLengthGeneral
 
-	// SubOpStringToBytes sets general[B] = []byte(strings[C]).
-	SubOpStringToBytes
+	// SubOpConvertStringToBytes sets general[B] = []byte(strings[C]).
+	SubOpConvertStringToBytes
 
 	// SubOpUnsafeStringData sets general[B] to the *byte data pointer of strings[C].
 	SubOpUnsafeStringData
@@ -1064,19 +1094,21 @@ const (
 	// SubOpJump unconditionally jumps by the signed offset B|(C<<8).
 	SubOpJump
 
-	// SubOpLoadIntConstSmall sets ints[B] = int64(C), materialising a small literal inline.
-	SubOpLoadIntConstSmall
+	// SubOpLoadInt64Immediate sets ints[B] = int64(C), materialising a small literal inline.
+	SubOpLoadInt64Immediate
 
-	// SubOpLoadBool sets ints[B] = C (0 or 1), materialising a boolean literal inline.
-	SubOpLoadBool
+	// SubOpLoadBoolImmediateAsInt64 sets ints[B] = C (0 or 1), materialising a boolean
+	// literal inline.
+	SubOpLoadBoolImmediateAsInt64
 
-	// SubOpIncIntJumpLt fuses increment + compare + branch for the for-loop back-edge.
-	// Increments ints[B] and jumps (offset in OpExt) when ints[B] < ints[C].
-	SubOpIncIntJumpLt
+	// SubOpIncrementInt64ThenJumpIfLessThan fuses increment + compare + branch for the
+	// for-loop back-edge. Increments ints[B] and jumps (offset in OpExtension) when ints[B]
+	// < ints[C].
+	SubOpIncrementInt64ThenJumpIfLessThan
 
-	// SubOpLenStringLtJumpFalse fuses len + compare + branch for string-loop conditions.
-	// Jumps when ints[B] >= len(strings[C]).
-	SubOpLenStringLtJumpFalse
+	// SubOpLessThanLengthStringThenJumpIfFalse fuses len + compare + branch for string-loop
+	// conditions. Jumps when ints[B] >= len(strings[C]).
+	SubOpLessThanLengthStringThenJumpIfFalse
 
 	// SubOpLoadZero zeroes the register at index B in the bank named by kind C.
 	SubOpLoadZero
@@ -1085,184 +1117,201 @@ const (
 	// capacity ints[C].
 	SubOpMakeChannel
 
-	// SubOpMapDelete deletes general[C] from the map at general[B].
-	SubOpMapDelete
+	// SubOpDeleteFromMap deletes general[C] from the map at general[B].
+	SubOpDeleteFromMap
 
-	// SubOpChannelReceive receives a value from the channel at general[B] into the
+	// SubOpReceiveFromChannel receives a value from the channel at general[B] into the
 	// destination encoded by ints[C].
-	SubOpChannelReceive
+	SubOpReceiveFromChannel
 
-	// SubOpGetMethod resolves the method named by the following OpExt word on general[B] and
-	// stores the bound method in general[C].
-	SubOpGetMethod
+	// SubOpBindMethodByName resolves the method named by the following OpExtension word on
+	// general[B] and stores the bound method in general[C].
+	SubOpBindMethodByName
 
 	// SubOpSpill writes the register at index B (in bank kind C) into a reserved spill slot
-	// encoded in the following OpExt word.
+	// encoded in the following OpExtension word.
 	SubOpSpill
 
-	// SubOpReload reads from the spill slot encoded in the following OpExt word into the
-	// register at index B (in bank kind C).
+	// SubOpReload reads from the spill slot encoded in the following OpExtension word into
+	// the register at index B (in bank kind C).
 	SubOpReload
 
-	// SubOpGetStructFieldInt reads an integer-kind struct field via the structLayoutTable.
-	// B=dest int, C=source general (struct), with the layout index in the following OpExt.
-	SubOpGetStructFieldInt
+	// SubOpGetStructFieldInt64Wide reads an integer-kind struct field via the
+	// structLayoutTable. B=dest int, C=source general (struct), with the layout index in the
+	// following OpExtension.
+	SubOpGetStructFieldInt64Wide
 
-	// SubOpGetStructFieldUint reads an unsigned-integer struct field via structLayoutTable
-	// into uints[B]. Covers uint8 through uint64, uint and uintptr.
-	SubOpGetStructFieldUint
+	// SubOpGetStructFieldUint64Wide reads an unsigned-integer struct field via
+	// structLayoutTable into uints[B]. Covers uint8 through uint64, uint and uintptr.
+	SubOpGetStructFieldUint64Wide
 
-	// SubOpGetStructFieldFloat reads a float-kind struct field via the structLayoutTable
-	// into floats[B]. Covers float32 and float64.
-	SubOpGetStructFieldFloat
+	// SubOpGetStructFieldFloat64Wide reads a float-kind struct field via the
+	// structLayoutTable into floats[B]. Covers float32 and float64.
+	SubOpGetStructFieldFloat64Wide
 
-	// SubOpGetStructFieldBool reads a bool-kind struct field via the structLayoutTable
+	// SubOpGetStructFieldBoolWide reads a bool-kind struct field via the structLayoutTable
 	// mechanism. Stores into bools[B].
-	SubOpGetStructFieldBool
+	SubOpGetStructFieldBoolWide
 
-	// SubOpGetStructFieldString reads a string-kind struct field via the structLayoutTable
-	// into strings[B].
-	SubOpGetStructFieldString
+	// SubOpGetStructFieldStringWide reads a string-kind struct field via the
+	// structLayoutTable into strings[B].
+	SubOpGetStructFieldStringWide
 
-	// SubOpSetStructFieldInt writes an integer-kind struct field via the structLayoutTable.
-	// B=dest general (struct), C=source int, with the layout index in the following OpExt.
-	SubOpSetStructFieldInt
+	// SubOpSetStructFieldInt64Wide writes an integer-kind struct field via the
+	// structLayoutTable. B=dest general (struct), C=source int, with the layout index in the
+	// following OpExtension.
+	SubOpSetStructFieldInt64Wide
 
-	// SubOpSetStructFieldUint writes an unsigned-integer-kind struct field via the
+	// SubOpSetStructFieldUint64Wide writes an unsigned-integer-kind struct field via the
 	// structLayoutTable mechanism.
-	SubOpSetStructFieldUint
+	SubOpSetStructFieldUint64Wide
 
-	// SubOpSetStructFieldFloat writes a float-kind struct field via the structLayoutTable
+	// SubOpSetStructFieldFloat64Wide writes a float-kind struct field via the
+	// structLayoutTable mechanism.
+	SubOpSetStructFieldFloat64Wide
+
+	// SubOpSetStructFieldBoolWide writes a bool-kind struct field via the structLayoutTable
 	// mechanism.
-	SubOpSetStructFieldFloat
+	SubOpSetStructFieldBoolWide
 
-	// SubOpSetStructFieldBool writes a bool-kind struct field via the structLayoutTable
-	// mechanism.
-	SubOpSetStructFieldBool
+	// SubOpSetStructFieldStringWide writes a string-kind struct field via the
+	// structLayoutTable mechanism.
+	SubOpSetStructFieldStringWide
 
-	// SubOpSetStructFieldString writes a string-kind struct field via the structLayoutTable
-	// mechanism.
-	SubOpSetStructFieldString
+	// SubOpAddUint64Constant sets uints[B] = uints[C] + constant, the constant being the
+	// entry of the uint constant pool that bytes A and B of the OpExtension word that
+	// follows index.
+	SubOpAddUint64Constant
 
-	// SubOpAddUintConst sets uints[A] = uints[B] + uintConstants[C].
-	SubOpAddUintConst
+	// SubOpSubtractUint64Constant sets uints[B] = uints[C] - constant, the constant being
+	// named as SubOpAddUint64Constant names its own.
+	SubOpSubtractUint64Constant
 
-	// SubOpSubUintConst sets uints[A] = uints[B] - uintConstants[C].
-	SubOpSubUintConst
+	// SubOpBitAndUint64Constant sets uints[B] = uints[C] & constant, the constant being
+	// named as SubOpAddUint64Constant names its own.
+	SubOpBitAndUint64Constant
 
-	// SubOpBitAndUintConst sets uints[A] = uints[B] & uintConstants[C].
-	SubOpBitAndUintConst
-
-	// SubOpLoadUintConstSmall sets uints[B] = uint64(C), materialising a small unsigned
+	// SubOpLoadUint64Immediate sets uints[B] = uint64(C), materialising a small unsigned
 	// literal inline without a constant-pool lookup.
-	SubOpLoadUintConstSmall
+	SubOpLoadUint64Immediate
 
-	// SubOpAppendUint appends uints[ext.A] to a uint-element slice in general[C], storing
-	// the result in general[B].
-	SubOpAppendUint
+	// SubOpAppendUint64Wide appends uints[ext.A] to a uint-element slice in general[C],
+	// storing the result in general[B].
+	SubOpAppendUint64Wide
 
-	// SubOpAppendInt appends ints[ext.A] to an int-element slice in general[C], storing the
-	// result in general[B].
-	SubOpAppendInt
+	// SubOpAppendInt64Wide appends ints[ext.A] to an int-element slice in general[C],
+	// storing the result in general[B].
+	SubOpAppendInt64Wide
 
-	// SubOpAppendString is the tier-1 sibling for string elements: general[B] =
+	// SubOpAppendStringWide is the tier-1 sibling for string elements, general[B] =
 	// append(general[C], strings[ext.A]).
-	SubOpAppendString
+	SubOpAppendStringWide
 
-	// SubOpAppendFloat is the tier-1 sibling for float elements: general[B] =
+	// SubOpAppendFloat64Wide is the tier-1 sibling for float elements, general[B] =
 	// append(general[C], float*(floats[ext.A])).
-	SubOpAppendFloat
+	SubOpAppendFloat64Wide
 
-	// SubOpAppendBool is the tier-1 sibling for bool elements: general[B] =
+	// SubOpAppendBoolWide is the tier-1 sibling for bool elements, general[B] =
 	// append(general[C], bools[ext.A]).
-	SubOpAppendBool
+	SubOpAppendBoolWide
 
-	// SubOpStarAppendByteFast fuses `*p = append(*p, b)` into a single op (B=pointer
+	// SubOpAppendByteViaPointer fuses `*p = append(*p, b)` into a single op (B=pointer
 	// general, C=byte uint).
-	SubOpStarAppendByteFast
+	SubOpAppendByteViaPointer
 
-	// SubOpStarAppendByteSpread fuses `*p = append(*p, X...)` for []byte. B=pointer general,
-	// C=source slice general.
-	SubOpStarAppendByteSpread
+	// SubOpAppendSpreadByteViaPointer fuses `*p = append(*p, X...)` for []byte. B=pointer
+	// general, C=source slice general.
+	SubOpAppendSpreadByteViaPointer
 
-	// SubOpIncStructFieldInt fuses `s.field++` for an int-kind struct field (B=receiver
-	// general, C=structLayoutTable index).
-	SubOpIncStructFieldInt
+	// SubOpIncrementStructFieldInt64 fuses `s.field++` for an int-kind struct field
+	// (B=receiver general, C=structLayoutTable index).
+	SubOpIncrementStructFieldInt64
 
-	// SubOpDecStructFieldInt is the decrement sibling of SubOpIncStructFieldInt. Same
-	// encoding, same constraints, `s.field--` semantics.
-	SubOpDecStructFieldInt
+	// SubOpDecrementStructFieldInt64 is the decrement sibling of
+	// SubOpIncrementStructFieldInt64. Same encoding, same constraints, `s.field--`
+	// semantics.
+	SubOpDecrementStructFieldInt64
 
-	// SubOpIncStructFieldUint mirrors SubOpIncStructFieldInt for uint-kind fields. Same
-	// encoding.
-	SubOpIncStructFieldUint
+	// SubOpIncrementStructFieldUint64 mirrors SubOpIncrementStructFieldInt64 for uint-kind
+	// fields. Same encoding.
+	SubOpIncrementStructFieldUint64
 
-	// SubOpDecStructFieldUint is the decrement sibling of SubOpIncStructFieldUint.
-	SubOpDecStructFieldUint
+	// SubOpDecrementStructFieldUint64 is the decrement sibling of
+	// SubOpIncrementStructFieldUint64.
+	SubOpDecrementStructFieldUint64
 
 	// SubOpMakeSliceByte builds slicesByte[B] = make([]byte, ints[C], ints[ext.A]).
 	SubOpMakeSliceByte
 
-	// SubOpSliceGetByteDirect sets uints[B] = uint64(slicesByte[C][ints[ext.A]]).
-	SubOpSliceGetByteDirect
+	// SubOpGetSliceByteElement sets uints[B] = uint64(slicesByte[C][ints[ext.A]]).
+	SubOpGetSliceByteElement
 
-	// SubOpSliceSetByteDirect sets slicesByte[B][ints[C]] = byte(uints[ext.A]).
-	SubOpSliceSetByteDirect
+	// SubOpSetSliceByteElement sets slicesByte[B][ints[C]+ext.B] = byte(uints[ext.A]). The
+	// extension word's byte B is an unsigned displacement, zero for a plain store.
+	SubOpSetSliceByteElement
 
-	// SubOpLenSliceByteDirect sets ints[B] = int64(len(slicesByte[C])).
-	SubOpLenSliceByteDirect
+	// SubOpLengthSliceByte sets ints[B] = int64(len(slicesByte[C])).
+	SubOpLengthSliceByte
 
-	// SubOpSliceByteSlice performs a three-way slice on slicesByte[C] via ext words.
-	SubOpSliceByteSlice
+	// SubOpSliceSliceByte performs a three-way slice on slicesByte[C] via ext words.
+	SubOpSliceSliceByte
 
-	// SubOpLtIntJumpFalse compares ints[B] < ints[C] and jumps by the offset in the
-	// following OpExt if false. Fuses OpLtInt + OpJumpIfFalse when neither operand is a
-	// constant.
-	SubOpLtIntJumpFalse
+	// SubOpLessThanInt64ThenJumpIfFalse compares ints[B] < ints[C] and jumps by the offset
+	// in the following OpExtension if false.
+	SubOpLessThanInt64ThenJumpIfFalse
 
-	// SubOpLeIntJumpFalse compares ints[B] <= ints[C] and jumps by the offset in the
-	// following OpExt if false. Fuses OpLeInt + OpJumpIfFalse.
-	SubOpLeIntJumpFalse
+	// SubOpLessOrEqualInt64ThenJumpIfFalse compares ints[B] <= ints[C] and jumps by the
+	// offset in the following OpExtension if false. Fuses OpLessOrEqualInt64 +
+	// OpJumpIfFalse.
+	SubOpLessOrEqualInt64ThenJumpIfFalse
 
-	// SubOpGtIntJumpFalse compares ints[B] > ints[C] and jumps by the offset in the
-	// following OpExt if false. Fuses OpGtInt + OpJumpIfFalse.
-	SubOpGtIntJumpFalse
+	// SubOpGreaterThanInt64ThenJumpIfFalse compares ints[B] > ints[C] and jumps by the
+	// offset in the following OpExtension if false. Fuses OpGreaterThanInt64 +
+	// OpJumpIfFalse.
+	SubOpGreaterThanInt64ThenJumpIfFalse
 
-	// SubOpGeIntJumpFalse compares ints[B] >= ints[C] and jumps by the offset in the
-	// following OpExt if false. Fuses OpGeInt + OpJumpIfFalse.
-	SubOpGeIntJumpFalse
+	// SubOpGreaterOrEqualInt64ThenJumpIfFalse compares ints[B] >= ints[C] and jumps by the
+	// offset in the following OpExtension if false. Fuses OpGreaterOrEqualInt64 +
+	// OpJumpIfFalse.
+	SubOpGreaterOrEqualInt64ThenJumpIfFalse
 
-	// SubOpEqIntJumpFalse compares ints[B] == ints[C] and jumps by the offset in the
-	// following OpExt if false. Fuses OpEqInt + OpJumpIfFalse.
-	SubOpEqIntJumpFalse
+	// SubOpEqualInt64ThenJumpIfFalse compares ints[B] == ints[C] and jumps by the offset in
+	// the following OpExtension if false. Fuses OpEqualInt64 + OpJumpIfFalse.
+	SubOpEqualInt64ThenJumpIfFalse
 
-	// SubOpNeIntJumpFalse compares ints[B] != ints[C] and jumps by the offset in the
-	// following OpExt if false. Fuses OpNeInt + OpJumpIfFalse.
-	SubOpNeIntJumpFalse
+	// SubOpNotEqualInt64ThenJumpIfFalse compares ints[B] != ints[C] and jumps by the offset
+	// in the following OpExtension if false. Fuses OpNotEqualInt64 + OpJumpIfFalse.
+	SubOpNotEqualInt64ThenJumpIfFalse
 
-	// SubOpLeIntConstJumpFalse compares ints[B] <= intConstants[C] and jumps by the offset
-	// in the following OpExt if false. Fuses OpLoadIntConst + OpLeInt + OpJumpIfFalse.
-	SubOpLeIntConstJumpFalse
+	// SubOpLessOrEqualInt64ConstantThenJumpIfFalse compares ints[B] <= intConstants[C] and
+	// jumps by the offset in the following OpExtension if false. Fuses OpLoadInt64Constant +
+	// OpLessOrEqualInt64 + OpJumpIfFalse.
+	SubOpLessOrEqualInt64ConstantThenJumpIfFalse
 
-	// SubOpLtIntConstJumpFalse compares ints[B] < intConstants[C] and jumps by the offset in
-	// the following OpExt if false. Fuses OpLoadIntConst + OpLtInt + OpJumpIfFalse.
-	SubOpLtIntConstJumpFalse
+	// SubOpLessThanInt64ConstantThenJumpIfFalse compares ints[B] < intConstants[C] and jumps
+	// by the offset in the following OpExtension if false. Fuses OpLoadInt64Constant +
+	// OpLessThanInt64 + OpJumpIfFalse.
+	SubOpLessThanInt64ConstantThenJumpIfFalse
 
-	// SubOpEqIntConstJumpFalse compares ints[B] == intConstants[C] and jumps by the offset
-	// in the following OpExt if false. Fuses OpLoadIntConst + OpEqInt + OpJumpIfFalse.
-	SubOpEqIntConstJumpFalse
+	// SubOpEqualInt64ConstantThenJumpIfFalse compares ints[B] == intConstants[C] and jumps
+	// by the offset in the following OpExtension if false. Fuses OpLoadInt64Constant +
+	// OpEqualInt64 + OpJumpIfFalse.
+	SubOpEqualInt64ConstantThenJumpIfFalse
 
-	// SubOpEqIntConstJumpTrue compares ints[B] == intConstants[C] and jumps by the offset in
-	// the following OpExt if true. Fuses OpLoadIntConst + OpEqInt + OpJumpIfTrue.
-	SubOpEqIntConstJumpTrue
+	// SubOpEqualInt64ConstantThenJumpIfTrue compares ints[B] == intConstants[C] and jumps by
+	// the offset in the following OpExtension if true. Fuses OpLoadInt64Constant +
+	// OpEqualInt64 + OpJumpIfTrue.
+	SubOpEqualInt64ConstantThenJumpIfTrue
 
-	// SubOpGeIntConstJumpFalse compares ints[B] >= intConstants[C] and jumps by the offset
-	// in the following OpExt if false. Fuses OpLoadIntConst + OpGeInt + OpJumpIfFalse.
-	SubOpGeIntConstJumpFalse
+	// SubOpGreaterOrEqualInt64ConstantThenJumpIfFalse compares ints[B] >= intConstants[C]
+	// and jumps by the offset in the following OpExtension if false. Fuses
+	// OpLoadInt64Constant + OpGreaterOrEqualInt64 + OpJumpIfFalse.
+	SubOpGreaterOrEqualInt64ConstantThenJumpIfFalse
 
-	// SubOpGtIntConstJumpFalse compares ints[B] > intConstants[C] and jumps by the offset in
-	// the following OpExt if false. Fuses OpLoadIntConst + OpGtInt + OpJumpIfFalse.
-	SubOpGtIntConstJumpFalse
+	// SubOpGreaterThanInt64ConstantThenJumpIfFalse compares ints[B] > intConstants[C] and
+	// jumps by the offset in the following OpExtension if false. Fuses OpLoadInt64Constant +
+	// OpGreaterThanInt64 + OpJumpIfFalse.
+	SubOpGreaterThanInt64ConstantThenJumpIfFalse
 
 	// SubOpCall calls a compiled function through the call site indexed by B|C<<8, which
 	// names the callee, the argument registers and the result registers.
@@ -1297,10 +1346,10 @@ const (
 	// dispatch otherwise.
 	SubOpCallMethodInlineable
 
-	// SubOpEqStringConstJumpFalse compares strings[B] == stringConstants[C] and jumps by
-	// offset in the following OpExt if false (not equal). Fuses OpLoadStringConst +
-	// OpEqString + OpJumpIfFalse.
-	SubOpEqStringConstJumpFalse
+	// SubOpEqualStringConstantThenJumpIfFalse compares strings[B] == stringConstants[C] and
+	// jumps by offset in the following OpExtension if false (not equal). Fuses
+	// OpLoadStringConstant + OpEqualString + OpJumpIfFalse.
+	SubOpEqualStringConstantThenJumpIfFalse
 
 	// SubOpSelect executes a select statement over B cases and writes the index of the
 	// chosen case to ints[C]. Extension words encode the cases: a header {direction, channel
@@ -1308,26 +1357,26 @@ const (
 	// and for a send by {value register, kind, 0}.
 	SubOpSelect
 
-	// SubOpLoadBoolConst loads BoolConstants[C] into bools[B].
-	SubOpLoadBoolConst
+	// SubOpLoadBoolConstant loads BoolConstants[C] into bools[B].
+	SubOpLoadBoolConstant
 
 	// SubOpResetSharedCell invalidates the shared upvalue cell for the register at index B
 	// in bank C, forcing the next OpMakeClosure to create a fresh cell. Used for Go 1.22+
 	// per-iteration loop variable scoping.
 	SubOpResetSharedCell
 
-	// SubOpWriteSharedCell copies the current register value (bank C, index B) into the
+	// SubOpSetSharedCell copies the current register value (bank C, index B) into the
 	// corresponding shared upvalue cell if one exists.
-	SubOpWriteSharedCell
+	SubOpSetSharedCell
 
-	// SubOpSliceOp slices: general[B] = general[C][low:high:max]. The bounds come from int
-	// registers named by the following extension words: {flags, low register, high register}
-	// and, when the flags carry SliceMaxBitFlag, {max register, 0, 0}.
-	SubOpSliceOp
+	// SubOpSliceGeneral slices a value, general[B] = general[C][low:high:max]. The bounds
+	// come from int registers named by the following extension words {flags, low register,
+	// high register} and, when the flags carry SliceMaxBitFlag, {max register, 0, 0}.
+	SubOpSliceGeneral
 
-	// SubOpRangeInit initialises a range iterator over the collection in general[C] and
-	// stores the iterator state in general[B].
-	SubOpRangeInit
+	// SubOpRangeInitialise initialises a range iterator over the collection in general[C]
+	// and stores the iterator state in general[B].
+	SubOpRangeInitialise
 
 	// SubOpRangeNext advances the iterator in general[B], writes the key and value to the
 	// registers named by the two following extension words, and sets ints[C] to 0 when the
@@ -1344,78 +1393,76 @@ const (
 	// extension word (A|(B<<8)).
 	SubOpSetGlobalWide
 
-	// SubOpEqInterfaceNil sets ints[B] = (!general[C].IsValid()) ? 1 : 0.
-	SubOpEqInterfaceNil
+	// SubOpEqualInterfaceNil sets ints[B] = (!general[C].IsValid()) ? 1 : 0.
+	SubOpEqualInterfaceNil
 
-	// SubOpNeInterfaceNil sets ints[B] = (general[C].IsValid()) ? 1 : 0.
-	SubOpNeInterfaceNil
+	// SubOpNotEqualInterfaceNil sets ints[B] = (general[C].IsValid()) ? 1 : 0.
+	SubOpNotEqualInterfaceNil
 
 	// SubOpBoxSliceByte sets general[B] = reflect.ValueOf(slicesByte[C]).
 	SubOpBoxSliceByte
 
-	// SubOpSliceByteToString converts the typed-bank []byte at slicesByte[C] to strings[B].
-	SubOpSliceByteToString
+	// SubOpConvertSliceByteToString converts the typed-bank []byte at slicesByte[C] to
+	// strings[B].
+	SubOpConvertSliceByteToString
 
-	// SubOpEqUintConstJumpFalse fuses a uint equality test with a conditional jump (B=value
-	// uint, C=8-bit immediate).
-	SubOpEqUintConstJumpFalse
+	// SubOpEqualUint64ImmediateThenJumpIfFalse fuses a uint equality test with a conditional
+	// jump (B=value uint, C=8-bit immediate).
+	SubOpEqualUint64ImmediateThenJumpIfFalse
 
 	// SubOpSimdDotProductFloat64 computes sum += a[i] * b[i] for two equal-length []float64
 	// slices (B=dest float, C=slice A general, ext.A=slice B general).
 	SubOpSimdDotProductFloat64
 
-	// SubOpSimdSumSliceFloat64 computes sum += a[i] for a []float64. Primary word: B =
-	// destination float register, C = slice A (general bank).
-	SubOpSimdSumSliceFloat64
+	// SubOpSimdSumFloat64 computes sum += a[i] for a []float64. In the primary word B is the
+	// destination float register and C the slice A (general bank).
+	SubOpSimdSumFloat64
 
-	// SubOpSimdAddSliceFloat64 computes destination[i] = a[i] + b[i] for three equal-length
+	// SubOpSimdAddFloat64 computes destination[i] = a[i] + b[i] for three equal-length
 	// []float64 slices. B=dest slice (general), C=slice A, ext.A=slice B.
-	SubOpSimdAddSliceFloat64
+	SubOpSimdAddFloat64
 
-	// SubOpSimdScaleSliceFloat64 computes s[i] *= k in place for a []float64 and a scalar k.
-	// Primary word: B = slice (general bank), C = scalar k (float register).
-	SubOpSimdScaleSliceFloat64
+	// SubOpSimdScaleFloat64 computes s[i] *= k in place for a []float64 and a scalar k. The
+	// primary word has B = slice (general bank), C = scalar k (float register).
+	SubOpSimdScaleFloat64
 
-	// SubOpAdoptGeneralToSlicesFloat extracts a []float64 from general[C] into
-	// slicesFloat[B].
-	SubOpAdoptGeneralToSlicesFloat
+	// SubOpUnboxSliceFloat64 extracts a []float64 from general[C] into slicesFloat[B].
+	SubOpUnboxSliceFloat64
 
-	// SubOpAdoptGeneralToSlicesInt extracts a []int64 from general[C] into slicesInt[B].
-	SubOpAdoptGeneralToSlicesInt
+	// SubOpUnboxSliceInt64 extracts a []int64 from general[C] into slicesInt[B].
+	SubOpUnboxSliceInt64
 
-	// SubOpAdoptGeneralToSlicesString mirrors SubOpAdoptGeneralToSlicesFloat for the
-	// slicesString bank ([]string).
-	SubOpAdoptGeneralToSlicesString
+	// SubOpUnboxSliceString mirrors SubOpUnboxSliceFloat64 for the slicesString bank
+	// ([]string).
+	SubOpUnboxSliceString
 
-	// SubOpAdoptGeneralToSlicesBool mirrors SubOpAdoptGeneralToSlicesFloat for the
-	// slicesBool bank ([]bool).
-	SubOpAdoptGeneralToSlicesBool
+	// SubOpUnboxSliceBool mirrors SubOpUnboxSliceFloat64 for the slicesBool bank ([]bool).
+	SubOpUnboxSliceBool
 
-	// SubOpAdoptGeneralToSlicesUint mirrors SubOpAdoptGeneralToSlicesFloat for the
-	// slicesUint bank ([]uint64).
-	SubOpAdoptGeneralToSlicesUint
+	// SubOpUnboxSliceUint64 mirrors SubOpUnboxSliceFloat64 for the slicesUint bank
+	// ([]uint64).
+	SubOpUnboxSliceUint64
 
-	// SubOpAdoptGeneralToSlicesByte mirrors SubOpAdoptGeneralToSlicesFloat for the
-	// slicesByte bank ([]byte).
-	SubOpAdoptGeneralToSlicesByte
+	// SubOpUnboxSliceByte mirrors SubOpUnboxSliceFloat64 for the slicesByte bank ([]byte).
+	SubOpUnboxSliceByte
 
-	// SubOpBoxSliceFloat sets general[B] = reflect.ValueOf(slicesFloat[C]).
-	SubOpBoxSliceFloat
+	// SubOpBoxSliceFloat64 sets general[B] = reflect.ValueOf(slicesFloat[C]).
+	SubOpBoxSliceFloat64
 
-	// SubOpBoxSliceString mirrors SubOpBoxSliceFloat for the slicesString bank.
+	// SubOpBoxSliceString mirrors SubOpBoxSliceFloat64 for the slicesString bank.
 	SubOpBoxSliceString
 
-	// SubOpBoxSliceBool mirrors SubOpBoxSliceFloat for the slicesBool bank.
+	// SubOpBoxSliceBool mirrors SubOpBoxSliceFloat64 for the slicesBool bank.
 	SubOpBoxSliceBool
 
-	// SubOpBoxSliceUint mirrors SubOpBoxSliceFloat for the slicesUint bank.
-	SubOpBoxSliceUint
+	// SubOpBoxSliceUint64 mirrors SubOpBoxSliceFloat64 for the slicesUint bank.
+	SubOpBoxSliceUint64
 
-	// SubOpMoveSliceInt copies slicesInt[C] to slicesInt[B].
-	SubOpMoveSliceInt
+	// SubOpMoveSliceInt64 copies slicesInt[C] to slicesInt[B].
+	SubOpMoveSliceInt64
 
-	// SubOpMoveSliceFloat copies slicesFloat[C] to slicesFloat[B].
-	SubOpMoveSliceFloat
+	// SubOpMoveSliceFloat64 copies slicesFloat[C] to slicesFloat[B].
+	SubOpMoveSliceFloat64
 
 	// SubOpMoveSliceString copies slicesString[C] to slicesString[B].
 	SubOpMoveSliceString
@@ -1423,88 +1470,88 @@ const (
 	// SubOpMoveSliceBool copies slicesBool[C] to slicesBool[B].
 	SubOpMoveSliceBool
 
-	// SubOpMoveSliceUint copies slicesUint[C] to slicesUint[B].
-	SubOpMoveSliceUint
+	// SubOpMoveSliceUint64 copies slicesUint[C] to slicesUint[B].
+	SubOpMoveSliceUint64
 
 	// SubOpMoveSliceByte copies slicesByte[C] to slicesByte[B].
 	SubOpMoveSliceByte
 
-	// SubOpAppendSliceIntDirect appends ints[ext.A] to slicesInt[C], storing the result in
+	// SubOpAppendSliceInt64 appends ints[ext.A] to slicesInt[C], storing the result in
 	// slicesInt[B].
-	SubOpAppendSliceIntDirect
+	SubOpAppendSliceInt64
 
-	// SubOpAppendSliceFloatDirect appends a float64 to a typed-bank []float64 slice. Same
-	// encoding as SubOpAppendSliceIntDirect but reads slicesFloat / floats and writes
+	// SubOpAppendSliceFloat64 appends a float64 to a typed-bank []float64 slice. Same
+	// encoding as SubOpAppendSliceInt64 but reads slicesFloat / floats and writes
 	// slicesFloat.
-	SubOpAppendSliceFloatDirect
+	SubOpAppendSliceFloat64
 
-	// SubOpAppendSliceStringDirect appends a string to a typed-bank []string slice.
-	SubOpAppendSliceStringDirect
+	// SubOpAppendSliceString appends a string to a typed-bank []string slice.
+	SubOpAppendSliceString
 
-	// SubOpAppendSliceBoolDirect appends a bool to a typed-bank []bool slice.
-	SubOpAppendSliceBoolDirect
+	// SubOpAppendSliceBool appends a bool to a typed-bank []bool slice.
+	SubOpAppendSliceBool
 
-	// SubOpAppendSliceUintDirect appends a uint64 to a typed-bank []uint64 slice.
-	SubOpAppendSliceUintDirect
+	// SubOpAppendSliceUint64 appends a uint64 to a typed-bank []uint64 slice.
+	SubOpAppendSliceUint64
 
-	// SubOpAppendSliceByteDirect appends a byte to a typed-bank []byte slice. Reads element
-	// from uints (pipit's storage for uint8 scalar values).
-	SubOpAppendSliceByteDirect
+	// SubOpAppendSliceByte appends a byte to a typed-bank []byte slice. Reads element from
+	// uints (pipit's storage for uint8 scalar values).
+	SubOpAppendSliceByte
 
-	// SubOpSliceSliceIntDirect performs `source[low:high:cap]` on slicesInt[C] and writes
-	// the result to slicesInt[B], with bounds in the following extension word.
-	SubOpSliceSliceIntDirect
+	// SubOpSliceSliceInt64 performs `source[low:high:cap]` on slicesInt[C] and writes the
+	// result to slicesInt[B], with bounds in the following extension word.
+	SubOpSliceSliceInt64
 
-	// SubOpSliceSliceFloatDirect mirrors SubOpSliceSliceIntDirect for slicesFloat.
-	SubOpSliceSliceFloatDirect
+	// SubOpSliceSliceFloat64 mirrors SubOpSliceSliceInt64 for slicesFloat.
+	SubOpSliceSliceFloat64
 
-	// SubOpSliceSliceStringDirect mirrors SubOpSliceSliceIntDirect for slicesString.
-	SubOpSliceSliceStringDirect
+	// SubOpSliceSliceString mirrors SubOpSliceSliceInt64 for slicesString.
+	SubOpSliceSliceString
 
-	// SubOpSliceSliceBoolDirect mirrors SubOpSliceSliceIntDirect for slicesBool.
-	SubOpSliceSliceBoolDirect
+	// SubOpSliceSliceBool mirrors SubOpSliceSliceInt64 for slicesBool.
+	SubOpSliceSliceBool
 
-	// SubOpSliceSliceUintDirect mirrors SubOpSliceSliceIntDirect for slicesUint.
-	SubOpSliceSliceUintDirect
+	// SubOpSliceSliceUint64 mirrors SubOpSliceSliceInt64 for slicesUint.
+	SubOpSliceSliceUint64
 
-	// SubOpCopySliceIntDirect implements `copy(destination, source)` between two typed
-	// slicesInt headers (A=count int, B=dest slicesInt, C=source slicesInt).
-	SubOpCopySliceIntDirect
+	// SubOpCopySliceInt64 implements `copy(destination, source)` between two typed slicesInt
+	// headers (A=count int, B=dest slicesInt, C=source slicesInt).
+	SubOpCopySliceInt64
 
-	// SubOpCopySliceFloatDirect mirrors SubOpCopySliceIntDirect for slicesFloat.
-	SubOpCopySliceFloatDirect
+	// SubOpCopySliceFloat64 mirrors SubOpCopySliceInt64 for slicesFloat.
+	SubOpCopySliceFloat64
 
-	// SubOpCopySliceStringDirect mirrors SubOpCopySliceIntDirect for slicesString.
-	SubOpCopySliceStringDirect
+	// SubOpCopySliceString mirrors SubOpCopySliceInt64 for slicesString.
+	SubOpCopySliceString
 
-	// SubOpCopySliceBoolDirect mirrors SubOpCopySliceIntDirect for slicesBool.
-	SubOpCopySliceBoolDirect
+	// SubOpCopySliceBool mirrors SubOpCopySliceInt64 for slicesBool.
+	SubOpCopySliceBool
 
-	// SubOpCopySliceUintDirect mirrors SubOpCopySliceIntDirect for slicesUint.
-	SubOpCopySliceUintDirect
+	// SubOpCopySliceUint64 mirrors SubOpCopySliceInt64 for slicesUint.
+	SubOpCopySliceUint64
 
-	// SubOpCopySliceByteDirect mirrors SubOpCopySliceIntDirect for slicesByte.
-	SubOpCopySliceByteDirect
+	// SubOpCopySliceByte mirrors SubOpCopySliceInt64 for slicesByte.
+	SubOpCopySliceByte
 
-	// SubOpAppendUintInPlace is the in-place sibling of SubOpAppendUint (B=C=slice general,
-	// ext.A=element uint).
-	SubOpAppendUintInPlace
+	// SubOpAppendUint64WideInPlace is the in-place sibling of SubOpAppendUint64Wide
+	// (B=C=slice general, ext.A=element uint).
+	SubOpAppendUint64WideInPlace
 
-	// SubOpAppendByteSpreadInPlace fuses `x = append(x, src...)` in place for []byte
+	// SubOpAppendSpreadByteInPlace fuses `x = append(x, src...)` in place for []byte
 	// (B=slice general, C=source general).
-	SubOpAppendByteSpreadInPlace
+	SubOpAppendSpreadByteInPlace
 
-	// SubOpGetStructFieldSliceInt reads a []int64 struct field directly into slicesInt[B]
-	// (C=receiver general, layout index in the following OpExt).
-	SubOpGetStructFieldSliceInt
+	// SubOpGetStructFieldSliceInt64 reads a []int64 struct field directly into slicesInt[B]
+	// (C=receiver general, layout index in the following OpExtension).
+	SubOpGetStructFieldSliceInt64
 
-	// SubOpGetStructFieldSliceFloat - float64 element bank counterpart of
-	// SubOpGetStructFieldSliceInt. Reads into slicesFloat[B].
-	SubOpGetStructFieldSliceFloat
+	// SubOpGetStructFieldSliceFloat64 - float64 element bank counterpart of
+	// SubOpGetStructFieldSliceInt64. Reads into slicesFloat[B].
+	SubOpGetStructFieldSliceFloat64
 
-	// SubOpGetStructFieldSliceUint - uint64 element bank counterpart. Reads into
+	// SubOpGetStructFieldSliceUint64 - uint64 element bank counterpart. Reads into
 	// slicesUint[B].
-	SubOpGetStructFieldSliceUint
+	SubOpGetStructFieldSliceUint64
 
 	// SubOpGetStructFieldSliceString - string element bank counterpart. Reads into
 	// slicesString[B].
@@ -1518,15 +1565,15 @@ const (
 	// slicesByte[B].
 	SubOpGetStructFieldSliceByte
 
-	// SubOpSetStructFieldSliceInt writes slicesInt[C] into the receiver's []int64 field
-	// (B=receiver general, layout index in the following OpExt).
-	SubOpSetStructFieldSliceInt
+	// SubOpSetStructFieldSliceInt64 writes slicesInt[C] into the receiver's []int64 field
+	// (B=receiver general, layout index in the following OpExtension).
+	SubOpSetStructFieldSliceInt64
 
-	// SubOpSetStructFieldSliceFloat - float64 counterpart.
-	SubOpSetStructFieldSliceFloat
+	// SubOpSetStructFieldSliceFloat64 - float64 counterpart.
+	SubOpSetStructFieldSliceFloat64
 
-	// SubOpSetStructFieldSliceUint - uint64 counterpart.
-	SubOpSetStructFieldSliceUint
+	// SubOpSetStructFieldSliceUint64 - uint64 counterpart.
+	SubOpSetStructFieldSliceUint64
 
 	// SubOpSetStructFieldSliceString - string counterpart.
 	SubOpSetStructFieldSliceString
@@ -1537,23 +1584,23 @@ const (
 	// SubOpSetStructFieldSliceByte - byte counterpart.
 	SubOpSetStructFieldSliceByte
 
-	// SubOpCapSliceIntDirect sets ints[B] = int64(cap(slicesInt[C])).
-	SubOpCapSliceIntDirect
+	// SubOpCapacitySliceInt64 sets ints[B] = int64(cap(slicesInt[C])).
+	SubOpCapacitySliceInt64
 
-	// SubOpCapSliceFloatDirect - float64 counterpart of SubOpCapSliceIntDirect.
-	SubOpCapSliceFloatDirect
+	// SubOpCapacitySliceFloat64 - float64 counterpart of SubOpCapacitySliceInt64.
+	SubOpCapacitySliceFloat64
 
-	// SubOpCapSliceStringDirect - string counterpart.
-	SubOpCapSliceStringDirect
+	// SubOpCapacitySliceString - string counterpart.
+	SubOpCapacitySliceString
 
-	// SubOpCapSliceBoolDirect - bool counterpart.
-	SubOpCapSliceBoolDirect
+	// SubOpCapacitySliceBool - bool counterpart.
+	SubOpCapacitySliceBool
 
-	// SubOpCapSliceUintDirect - uint64 counterpart.
-	SubOpCapSliceUintDirect
+	// SubOpCapacitySliceUint64 - uint64 counterpart.
+	SubOpCapacitySliceUint64
 
-	// SubOpCapSliceByteDirect - byte counterpart.
-	SubOpCapSliceByteDirect
+	// SubOpCapacitySliceByte - byte counterpart.
+	SubOpCapacitySliceByte
 
 	// SubOpMakeSliceHeap builds a typed-bank slice on the Go heap for locals that escape.
 	SubOpMakeSliceHeap
@@ -1563,25 +1610,85 @@ const (
 	// matching case type, then jumps to that case's body.
 	SubOpTypeSwitchJump
 
-	// SubOpRoundFloat32 rounds floats[C] to float32 precision and stores it in floats[B].
-	// float32 values live in the float64 bank; every operation that produces a float32
-	// result re-rounds through this op so accumulated error matches Go.
-	SubOpRoundFloat32
+	// SubOpRoundToFloat32 rounds floats[C] to float32 precision and stores it in floats[B].
+	// float32 values live in the float64 bank.
+	SubOpRoundToFloat32
 
-	// SubOpRoundComplex64 rounds both parts of complex[C] to float32 precision and stores
+	// SubOpRoundToComplex64 rounds both parts of complex[C] to float32 precision and stores
 	// the result in complex[B].
-	SubOpRoundComplex64
+	SubOpRoundToComplex64
 
-	// SubOpEqInterfaceStrict compares general[B] == general[C] using strict interface
-	// equality and stores the result in ints[A] of the trailing OpExt word.
-	SubOpEqInterfaceStrict
+	// SubOpEqualInterfaceStrict compares general[B] == general[C] using strict interface
+	// equality and stores the result in ints[A] of the trailing OpExtension word.
+	SubOpEqualInterfaceStrict
 
-	// SubOpNeInterfaceStrict is the != mirror of SubOpEqInterfaceStrict.
-	SubOpNeInterfaceStrict
+	// SubOpNotEqualInterfaceStrict is the != mirror of SubOpEqualInterfaceStrict.
+	SubOpNotEqualInterfaceStrict
 
-	// SubOpFieldAddr stores the address of a field of general[C] in general[B]. The trailing
-	// OpExt word's A operand supplies the field index.
-	SubOpFieldAddr
+	// SubOpAddressField stores the address of a field of general[C] in general[B]. The
+	// trailing OpExtension word's A operand supplies the field index.
+	SubOpAddressField
+
+	// SubOpIncrementInt64ThenJumpIfLessThanConstant increments ints[B] and jumps by the
+	// extension offset when ints[B] < intConstants[C].
+	SubOpIncrementInt64ThenJumpIfLessThanConstant
+
+	// SubOpSetSliceByteElementRun stores two to four bytes at consecutive positions of
+	// slicesByte[B], starting at ints[C] plus a displacement.
+	//
+	// One OpExtension word follows for each store, naming its value register of the uint
+	// bank in byte A. The first also carries the displacement in byte B and the number of
+	// stores in byte C. Stores before one that is out of range have happened when it panics,
+	// as with separate SubOpSetSliceByteElement stores.
+	SubOpSetSliceByteElementRun
+
+	// SubOpGetSliceByteElementInt64 sets ints[B] = int64(slicesByte[C][ints[ext.A]]). It is
+	// SubOpGetSliceByteElement and the conversion of the byte to int as one instruction.
+	SubOpGetSliceByteElementInt64
+
+	// SubOpGetStructFieldUint64Run reads two to four unsigned fields of the struct in
+	// general[B] into uint registers, after first setting general[B] = general[C] as
+	// OpMoveGeneral does when the two registers differ.
+	//
+	// One OpExtension word follows for each read, naming its destination register of the
+	// uint bank in byte A and its struct-layout index in byte B. Byte C of the first word
+	// holds the number of reads in its low half and the move's mode in its high half. The
+	// reads are OpGetStructFieldUint64 reads made in order, so a failing one leaves what the
+	// separate instructions would have left.
+	SubOpGetStructFieldUint64Run
+
+	// SubOpAddUint32Constant sets uints[B] = uint64(uint32(uints[C] + constant)), the
+	// constant being the entry of the uint constant pool that bytes A and B of the
+	// OpExtension word that follows index.
+	SubOpAddUint32Constant
+
+	// SubOpSubtractUint32Constant sets uints[B] = uint64(uint32(uints[C] - constant)), the
+	// constant being named as SubOpAddUint32Constant names its own.
+	SubOpSubtractUint32Constant
+
+	// SubOpEqualUint64ThenJumpIfFalse compares uints[B] == uints[C] and jumps by the offset
+	// in the OpExtension word that follows when they differ.
+	SubOpEqualUint64ThenJumpIfFalse
+
+	// SubOpNotEqualUint64ThenJumpIfFalse compares uints[B] != uints[C] and jumps by the
+	// offset in the OpExtension word that follows when they are equal.
+	SubOpNotEqualUint64ThenJumpIfFalse
+
+	// SubOpIncrementInt64ThenJumpIfLessOrEqual increments ints[B] and jumps by the offset in
+	// the OpExtension word that follows when ints[B] <= ints[C].
+	SubOpIncrementInt64ThenJumpIfLessOrEqual
+
+	// SubOpGetElementFieldUint64Run reads two to four unsigned fields of the struct element
+	// ints[C] of the collection in general[B] into uint registers.
+	//
+	// One OpExtension word follows for each read, naming its destination register of the
+	// uint bank in byte A and its struct-layout index in byte B. Byte C of the first word
+	// holds the number of reads in its low half and an OpMoveGeneral mode in its high half.
+	// Byte C of the second word names a register of the general bank that the operation
+	// writes only when a debugger is attached. It then holds the element, copied with that
+	// mode. An index out of range and a nil collection fail as OpGetElement fails, and a
+	// failing read leaves the registers of the earlier reads written.
+	SubOpGetElementFieldUint64Run
 )
 
 const (
@@ -1591,18 +1698,18 @@ const (
 	// sub-opcode discriminator.
 	SubOpTier2DrillTier3 SubOpcodeTier2 = iota
 
-	// SubOpTier2IncInt increments the int register named by operand C. Lives in tier 2
-	// because the op uses only one register operand.
-	SubOpTier2IncInt
+	// SubOpTier2IncrementInt64 increments the int register named by operand C. Lives in tier
+	// 2 because the op uses only one register operand.
+	SubOpTier2IncrementInt64
 
-	// SubOpTier2DecInt decrements the int register named by operand C.
-	SubOpTier2DecInt
+	// SubOpTier2DecrementInt64 decrements the int register named by operand C.
+	SubOpTier2DecrementInt64
 
-	// SubOpTier2IncUint increments the uint register named by operand C.
-	SubOpTier2IncUint
+	// SubOpTier2IncrementUint64 increments the uint register named by operand C.
+	SubOpTier2IncrementUint64
 
-	// SubOpTier2DecUint decrements the uint register named by operand C.
-	SubOpTier2DecUint
+	// SubOpTier2DecrementUint64 decrements the uint register named by operand C.
+	SubOpTier2DecrementUint64
 
 	// SubOpTier2Panic raises a panic with the value in the general register named by operand
 	// C.
@@ -1612,13 +1719,14 @@ const (
 	// operand C, or an invalid value if not panicking.
 	SubOpTier2Recover
 
-	// SubOpTier2SetZero zeroes the general register named by operand C (used by the
-	// assign-through optimisation to clear composite values in place).
-	SubOpTier2SetZero
+	// SubOpTier2SetZeroGeneral sets the value general[C] holds to its zero value in place,
+	// through to its storage (used by the assign-through optimisation to clear composite
+	// values in place).
+	SubOpTier2SetZeroGeneral
 
-	// SubOpTier2ChannelClose closes the channel held by the general register named by
+	// SubOpTier2CloseChannel closes the channel held by the general register named by
 	// operand C.
-	SubOpTier2ChannelClose
+	SubOpTier2CloseChannel
 
 	// SubOpTier2LoadNil writes a typed nil into the general register named by operand C.
 	SubOpTier2LoadNil
@@ -1627,47 +1735,83 @@ const (
 	// operand (the return-value count) sits in C of the tier-2 encoding.
 	SubOpTier2Return
 
-	// SubOpTier2MakeInterfaceMethodExpr builds a method expression on an interface type into
-	// general[C]. The function type and method name follow in two extension words.
-	SubOpTier2MakeInterfaceMethodExpr
+	// SubOpTier2MakeInterfaceMethodExpression builds a method expression on an interface
+	// type into general[C]. The function type and method name follow in two extension words.
+	SubOpTier2MakeInterfaceMethodExpression
 
 	// SubOpTier2MakeMap allocates a new map into general[C]. The following extension word
 	// carries the type-table index in A|B<<8 and a log2 size hint in C.
 	SubOpTier2MakeMap
 
-	// SubOpTier2RangeCheckUintJumpFalse fuses a `value >= lo && value <= hi` range check
-	// with a conditional jump. C=value uint register, with lo/hi constants and the jump
-	// offset in two following extension words.
-	SubOpTier2RangeCheckUintJumpFalse
+	// SubOpTier2InRangeUint64ThenJumpIfFalse fuses a `value >= lo && value <= hi` range
+	// check with a conditional jump. C=value uint register, with lo/hi constants and the
+	// jump offset in two following extension words.
+	SubOpTier2InRangeUint64ThenJumpIfFalse
 
-	// SubOpTier2AllocStructLiteral allocates a zeroed pointer-free struct literal in the
+	// SubOpTier2AllocateStructLiteral allocates a zeroed pointer-free struct literal in the
 	// register arena (general[C] = new(T), type index in the extension word).
-	SubOpTier2AllocStructLiteral
+	SubOpTier2AllocateStructLiteral
 
-	// SubOpTier2SyncClosureUpvalues copies shared upvalue cells from the closure in
-	// general[C] back into this frame's registers.
-	SubOpTier2SyncClosureUpvalues
+	// SubOpTier2SynchroniseClosureCapturedVariables copies shared upvalue cells from the
+	// closure in general[C] back into this frame's registers.
+	SubOpTier2SynchroniseClosureCapturedVariables
 
-	// SubOpTier2IncInt32 sets ints[C] = int64(int32(ints[C] + 1)). Fuses SubOpTier2IncInt
-	// with the 32-bit OpTruncateNarrow of its register.
-	SubOpTier2IncInt32
+	// SubOpTier2IncrementInt32 sets ints[C] = int64(int32(ints[C] + 1)). Fuses
+	// SubOpTier2IncrementInt64 with the 32-bit OpTruncateToWidth of its register.
+	SubOpTier2IncrementInt32
 
-	// SubOpTier2DecInt32 sets ints[C] = int64(int32(ints[C] - 1)).
-	SubOpTier2DecInt32
+	// SubOpTier2DecrementInt32 sets ints[C] = int64(int32(ints[C] - 1)).
+	SubOpTier2DecrementInt32
+
+	// SubOpTier2PanicRangeFunctionContinuedInt64 checks a range-over-func loop's state flag
+	// in ints[C].
+	SubOpTier2PanicRangeFunctionContinuedInt64
+
+	// SubOpTier2CheckShiftCount panics with Go's "negative shift amount" error when ints[C]
+	// is below zero.
+	SubOpTier2CheckShiftCount
+
+	// SubOpTier2JumpIfFalseBool jumps by the offset in the OpExtension word that follows
+	// when bools[C] is false.
+	SubOpTier2JumpIfFalseBool
+
+	// SubOpTier2JumpIfTrueBool jumps by the offset in the OpExtension word that follows when
+	// bools[C] is true.
+	SubOpTier2JumpIfTrueBool
 )
 
+// RangeFunctionStateExited is the value a range-over-func loop's state flag takes once
+// the range statement has finished, so a body the iterator calls afterwards panics with
+// Go's "after whole loop exit" error.
+const RangeFunctionStateExited int64 = math.MinInt64
+
+// RangeFunctionStatePanicked is the value a range-over-func loop's state flag holds while
+// a call of the body runs.
+const RangeFunctionStatePanicked int64 = math.MinInt64 + 1
+
+// RangeFunctionStateRecovered is the value the range statement hands
+// SubOpTier2PanicRangeFunctionContinuedInt64 after the iterator returns when the state
+// flag still holds RangeFunctionStatePanicked, so the check raises Go's error for an
+// iterator that recovered a panic of the body and did not resume panicking.
+const RangeFunctionStateRecovered int64 = math.MinInt64 + 2
+
 const (
-	// SubOpTier3Nop is the zero-operand no-op, encoded as the all-zero word {0, 0, 0, 0}.
-	SubOpTier3Nop SubOpcodeTier3 = iota
+	// SubOpTier3NoOperation is the zero-operand no-op, encoded as the all-zero word {0, 0,
+	// 0, 0}.
+	SubOpTier3NoOperation SubOpcodeTier3 = iota
 
 	// SubOpTier3ReturnVoid returns from the current function with no values. Lives in tier 3
 	// because the op consumes no register operands.
 	SubOpTier3ReturnVoid
 
-	// SubOpTier3SyncIIFEUpvalues copies upvalue cells of the just-returned IIFE back into
-	// this frame's registers.
-	SubOpTier3SyncIIFEUpvalues
+	// SubOpTier3SynchroniseIIFECapturedVariables copies upvalue cells of the just-returned
+	// IIFE back into this frame's registers.
+	SubOpTier3SynchroniseIIFECapturedVariables
 )
+
+// DisplayLabelWidth is the width of the disassembly label column, which is the longest
+// printed name in the spec plus the two-character tier prefix ("1" and a colon).
+const DisplayLabelWidth = 52
 
 // Opcode identifies a virtual machine operation.
 type Opcode uint8

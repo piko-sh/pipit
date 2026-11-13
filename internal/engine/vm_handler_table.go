@@ -68,7 +68,7 @@ func HandleTypeAssert(vm *VM, frame *CallFrame, registers *Registers, instructio
 	return handleTypeAssert(vm, frame, registers, instruction)
 }
 
-// HandleMapSetStringInt is the exported entry point for handleMapSetStringInt.
+// HandleSetMapStringInt64 is the exported entry point for handleSetMapStringInt64.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -76,11 +76,11 @@ func HandleTypeAssert(vm *VM, frame *CallFrame, registers *Registers, instructio
 // Takes instruction (isa.Instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func HandleMapSetStringInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
-	return handleMapSetStringInt(vm, frame, registers, instruction)
+func HandleSetMapStringInt64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	return handleSetMapStringInt64(vm, frame, registers, instruction)
 }
 
-// HandleMapAddStringInt is the exported entry point for handleMapAddStringInt.
+// HandleAddToMapStringInt64 is the exported entry point for handleAddToMapStringInt64.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -88,11 +88,11 @@ func HandleMapSetStringInt(vm *VM, frame *CallFrame, registers *Registers, instr
 // Takes instruction (isa.Instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func HandleMapAddStringInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
-	return handleMapAddStringInt(vm, frame, registers, instruction)
+func HandleAddToMapStringInt64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	return handleAddToMapStringInt64(vm, frame, registers, instruction)
 }
 
-// HandleMapSetStringString is the exported entry point for handleMapSetStringString.
+// HandleSetMapStringString is the exported entry point for handleSetMapStringString.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -100,11 +100,11 @@ func HandleMapAddStringInt(vm *VM, frame *CallFrame, registers *Registers, instr
 // Takes instruction (isa.Instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func HandleMapSetStringString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
-	return handleMapSetStringString(vm, frame, registers, instruction)
+func HandleSetMapStringString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	return handleSetMapStringString(vm, frame, registers, instruction)
 }
 
-// HandleMapSetStringGeneral is the exported entry point for handleMapSetStringGeneral.
+// HandleSetMapStringGeneral is the exported entry point for handleSetMapStringGeneral.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -112,8 +112,8 @@ func HandleMapSetStringString(vm *VM, frame *CallFrame, registers *Registers, in
 // Takes instruction (isa.Instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func HandleMapSetStringGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
-	return handleMapSetStringGeneral(vm, frame, registers, instruction)
+func HandleSetMapStringGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	return handleSetMapStringGeneral(vm, frame, registers, instruction)
 }
 
 // handleInvalidOpcode is the default handler for unregistered opcodes. It stores an

@@ -19,7 +19,6 @@
 package engine
 
 import (
-	"context"
 	"io/fs"
 	"reflect"
 	"sync"
@@ -56,9 +55,9 @@ func registryProbeRoot(parameterCount int) *program.CompiledFunction {
 	method.HasReceiver = true
 	method.ParameterKinds = append([]isa.RegisterKind{isa.RegisterGeneral}, make([]isa.RegisterKind, parameterCount)...)
 	for i := 1; i < len(method.ParameterKinds); i++ {
-		method.ParameterKinds[i] = isa.RegisterInt
+		method.ParameterKinds[i] = isa.RegisterInt64
 	}
-	method.ResultKinds = []isa.RegisterKind{isa.RegisterInt}
+	method.ResultKinds = []isa.RegisterKind{isa.RegisterInt64}
 	root.Functions = append(root.Functions, method)
 	if err := program.RegisterMethod(root, "Probe.Ping", 0); err != nil {
 		panic(err)
@@ -86,7 +85,7 @@ func TestRegisteredAdapterBuildsOnlyForMatchingMethods(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			vm := NewVM(context.Background(), NewGlobalStore(), symtab.NewSymbolRegistry(nil))
+			vm := NewVM(t.Context(), NewGlobalStore(), symtab.NewSymbolRegistry(nil))
 			vm.rootFunction = tt.root
 			adapter := buildRegisteredAdapter(vm, reflect.ValueOf(struct{ N int }{N: 1}), probeType, tt.typeName)
 			require.Equal(t, tt.want, adapter.IsValid())
@@ -98,7 +97,7 @@ func TestRegisteredAdapterBuildsOnlyForMatchingMethods(t *testing.T) {
 }
 
 func TestAdapterCoreInvokeRejectsUnknownMethods(t *testing.T) {
-	vm := NewVM(context.Background(), NewGlobalStore(), symtab.NewSymbolRegistry(nil))
+	vm := NewVM(t.Context(), NewGlobalStore(), symtab.NewSymbolRegistry(nil))
 	vm.rootFunction = registryProbeRoot(1)
 	core := &AdapterCore{vm: vm, underlying: reflect.ValueOf(1), typeName: "Probe", methods: map[string]adapterMethodRef{}}
 	_, err := core.Invoke("Ping")
@@ -223,7 +222,7 @@ func TestOptionalMethodGroupsCountOnlyWhenComplete(t *testing.T) {
 		},
 		{
 			name:    "a parameter in the wrong bank",
-			methods: []probeMethod{probeOpen, {name: "Stat", parameters: []isa.RegisterKind{isa.RegisterInt}, results: probeStat.results}},
+			methods: []probeMethod{probeOpen, {name: "Stat", parameters: []isa.RegisterKind{isa.RegisterInt64}, results: probeStat.results}},
 			value:   value,
 			want:    map[string]bool{"Stat": false},
 		},
@@ -320,4 +319,45 @@ func TestAdaptResult(t *testing.T) {
 			require.Equal(t, tt.want, file)
 		})
 	}
+}
+
+type promotedProbe interface {
+	Name() string
+}
+
+type promotedProbeAdapter struct{ *AdapterCore }
+
+func (a *promotedProbeAdapter) Name() string {
+	results, err := a.Invoke("Name")
+	if err != nil || len(results) == 0 {
+		return err.Error()
+	}
+	return results[0].String()
+}
+
+func TestARegisteredAdapterServesAMethodPromotedFromAnEmbeddedField(t *testing.T) {
+	probeType := reflect.TypeFor[promotedProbe]()
+	RegisterInterfaceAdapter(probeType, func(core *AdapterCore) reflect.Value {
+		return reflect.ValueOf(&promotedProbeAdapter{AdapterCore: core})
+	})
+	innerType := reflect.StructOf([]reflect.StructField{
+		{Name: "N", Type: reflect.TypeFor[int]()},
+		{Name: pipitIDFieldPrefix + "Inner", Type: reflect.TypeFor[struct{}](), PkgPath: "main"},
+	})
+	outerType := reflect.StructOf([]reflect.StructField{
+		{Name: isa.EmbeddedUnexportedPrefix + "Inner", Type: innerType},
+		{Name: pipitIDFieldPrefix + "Outer", Type: reflect.TypeFor[struct{}](), PkgPath: "main"},
+	})
+	vm := adapterHostVM(t, "Inner.Name", stringReturningMethod(t, "Name", "inner"))
+
+	adapter := buildRegisteredAdapter(vm, reflect.New(outerType).Elem(), probeType, "Outer")
+	require.True(t, adapter.IsValid(), "the method promoted from the embedded field satisfies the interface, as in Go")
+	probe, ok := reflect.TypeAssert[promotedProbe](adapter)
+	require.True(t, ok)
+	require.Equal(t, "inner", probe.Name())
+	core, ok := registeredAdapterCore(adapter)
+	require.True(t, ok)
+	require.Equal(t, []int{0}, core.methods["Name"].path, "the call goes through the embedded field")
+
+	require.False(t, buildRegisteredAdapter(vm, reflect.New(innerType).Elem(), reflect.TypeFor[registryProbe](), "Inner").IsValid())
 }

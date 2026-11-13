@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
@@ -30,17 +30,17 @@ import (
 
 func TestServiceRecoveryResumeReleaseGuards(t *testing.T) {
 	var absent *ServiceRecoveryClaim
-	if err := absent.ResumeRelease(context.Background(), "/"); !errors.Is(err, errClosed) {
+	if err := absent.ResumeRelease(t.Context(), "/"); !errors.Is(err, errClosed) {
 		t.Fatal("missing owner accepted:", err)
 	}
 	owner := &ServiceRecoveryClaim{snapshot: &sandboxbroker.LinuxRecoveryClaim{}}
 	if err := owner.ResumeRelease(nil, "/"); !errors.Is(err, ErrInvalidLimits) {
 		t.Fatal("missing context accepted:", err)
 	}
-	if err := owner.ResumeRelease(context.Background(), "relative"); !errors.Is(err, ErrInvalidLimits) {
+	if err := owner.ResumeRelease(t.Context(), "relative"); !errors.Is(err, ErrInvalidLimits) {
 		t.Fatal("relative parent accepted:", err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if err := owner.ResumeRelease(ctx, "/"); !errors.Is(err, context.Canceled) || owner.pending {
 		t.Fatal("cancelled resume changed ownership:", err)
@@ -49,19 +49,19 @@ func TestServiceRecoveryResumeReleaseGuards(t *testing.T) {
 		{snapshot: &sandboxbroker.LinuxRecoveryClaim{}, recovering: true},
 		{snapshot: &sandboxbroker.LinuxRecoveryClaim{}, process: &WorkerProcess{}},
 	} {
-		if err := busy.ResumeRelease(context.Background(), "/"); !errors.Is(err, ErrServiceBusy) {
+		if err := busy.ResumeRelease(t.Context(), "/"); !errors.Is(err, ErrServiceBusy) {
 			t.Fatal("unfinished helper allowed final release:", err)
 		}
 	}
 	if err := owner.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := owner.ResumeRelease(context.Background(), "/"); !errors.Is(err, errClosed) {
+	if err := owner.ResumeRelease(t.Context(), "/"); !errors.Is(err, errClosed) {
 		t.Fatal("aborted claim accepted:", err)
 	}
 	failure := errors.New("terminal failure")
 	owner = &ServiceRecoveryClaim{released: true, closed: true, releaseResult: failure}
-	if err := owner.ResumeRelease(context.Background(), "/"); !errors.Is(err, failure) {
+	if err := owner.ResumeRelease(t.Context(), "/"); !errors.Is(err, failure) {
 		t.Fatal("resumed release lost cached result:", err)
 	}
 }

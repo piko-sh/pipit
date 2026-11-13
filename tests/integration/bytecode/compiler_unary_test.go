@@ -68,7 +68,7 @@ func TestAddressOfUpvalueDoesNotReadTheValue(t *testing.T) {
 	for _, closure := range closures {
 		byIndex := map[uint8]map[isa.RegisterKind]int{}
 		for pc, instruction := range closure.Body {
-			if instruction.Op != isa.OpGetUpvalue {
+			if instruction.Op != isa.OpGetCapturedVariable {
 				continue
 			}
 			kind := isa.RegisterKind(instruction.C)

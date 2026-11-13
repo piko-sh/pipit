@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxlinux
 
@@ -86,7 +86,7 @@ func TestLaunchWorkerRejectsInvalidPolicy(t *testing.T) {
 		{Tenant: testTenant, OutputBytes: maximumWorkerOutput + 1},
 		{Tenant: ""},
 	} {
-		process, err := LaunchWorker(context.Background(), config)
+		process, err := LaunchWorker(t.Context(), config)
 		if process != nil || !errors.Is(err, ErrInvalidLimits) {
 			t.Fatalf("process=%v error=%v", process, err)
 		}
@@ -94,7 +94,7 @@ func TestLaunchWorkerRejectsInvalidPolicy(t *testing.T) {
 	if process, err := LaunchWorker(nil, WorkerConfig{Tenant: testTenant}); process != nil || err == nil {
 		t.Fatalf("nil context: process=%v error=%v", process, err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if process, err := LaunchWorker(ctx, WorkerConfig{Tenant: testTenant}); process != nil || !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled context: process=%v error=%v", process, err)
@@ -103,14 +103,14 @@ func TestLaunchWorkerRejectsInvalidPolicy(t *testing.T) {
 
 func TestLaunchWorkerFailureRetainsCloseableOwner(t *testing.T) {
 	t.Parallel()
-	process, err := LaunchWorker(context.Background(), WorkerConfig{Tenant: testTenant})
+	process, err := LaunchWorker(t.Context(), WorkerConfig{Tenant: testTenant})
 	if err == nil || process == nil {
 		t.Fatalf("process=%v error=%v", process, err)
 	}
 	if process.Stream() != nil || process.Output() != "" {
 		t.Fatal("invalid executable acquired execution resources")
 	}
-	if process.Wait() == nil || process.Close() == nil || process.Close() == nil {
+	if process.Wait() == nil || process.Close(t.Context()) == nil || process.Close(t.Context()) == nil {
 		t.Fatal("launch failure was lost")
 	}
 }
@@ -135,7 +135,7 @@ func TestWorkerProcessHostile(t *testing.T) {
 			if mode == "deadline" {
 				lifetime = 200 * time.Millisecond
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), lifetime)
+			ctx, cancel := context.WithTimeout(t.Context(), lifetime)
 			defer cancel()
 			reader, writer, err := os.Pipe()
 			if err != nil {
@@ -143,7 +143,7 @@ func TestWorkerProcessHostile(t *testing.T) {
 			}
 			defer writer.Close()
 			var process WorkerProcess
-			process.context = ctx
+			process.watchLifetime(ctx)
 			process.cancel = cancel
 			process.stream = reader
 			process.done = make(chan struct{})
@@ -159,15 +159,15 @@ func TestWorkerProcessHostile(t *testing.T) {
 				_ = reader.Close()
 				t.Fatal(err)
 			}
-			process.watch(command)
-			defer process.Close()
+			process.watch(ctx, command)
+			defer process.Close(t.Context())
 			if mode == "phase_deadline" {
 				if err := process.SetDeadline(time.Now().Add(200 * time.Millisecond)); err != nil {
 					t.Fatal(err)
 				}
 			}
 			if mode == "close" {
-				_ = process.Close()
+				_ = process.Close(t.Context())
 			}
 			err = process.Wait()
 			expected := context.DeadlineExceeded

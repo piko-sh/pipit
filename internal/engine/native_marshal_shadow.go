@@ -33,6 +33,16 @@ const (
 	marshalShadowDepthCap = 32
 )
 
+var (
+	// jsonShadowLeafMethods are the script methods that make a type a JSON encoder's shadow
+	// leaf. Shared so a walk allocates no list per type it checks.
+	jsonShadowLeafMethods = []string{"MarshalJSON", "MarshalText"}
+
+	// textShadowLeafMethods are the script methods that make a type an XML encoder's shadow
+	// leaf.
+	textShadowLeafMethods = []string{"MarshalText"}
+)
+
 // marshalShadowWalk carries the state of one shadow walk.
 type marshalShadowWalk struct {
 	// vm is the virtual machine whose method tables are consulted.
@@ -40,6 +50,18 @@ type marshalShadowWalk struct {
 
 	// budget is the remaining leaf-wrap allowance for this walk.
 	budget int
+
+	// sink is the encoder the shadow is built for, which decides the leaf methods.
+	sink nativeAnySink
+}
+
+// marshalShadowMemoKey keys the memo of typeNeedsShadow walks.
+type marshalShadowMemoKey struct {
+	// typ is the walked type.
+	typ reflect.Type
+
+	// sink is the encoder the walk was made for.
+	sink nativeAnySink
 }
 
 // shadow returns the shadow of value, or false when value needs none.
@@ -180,8 +202,8 @@ func (w *marshalShadowWalk) appendShadowFields(fields []reflect.StructField, val
 	return fields, values
 }
 
-// leafAdapter returns the marshaler adapter for a script value whose type declares
-// MarshalJSON, or an invalid value.
+// leafAdapter returns the adapter for a script value whose type declares a method the
+// encoder calls.
 //
 // Takes value (reflect.Value) which is the candidate leaf.
 //
@@ -191,7 +213,40 @@ func (w *marshalShadowWalk) leafAdapter(value reflect.Value) reflect.Value {
 	if typeName == "" {
 		return reflect.Value{}
 	}
-	return buildMarshalerAdapterIfRegistered(w.vm, value, typeName)
+	if w.sink.encodesJSON() {
+		if adapter := buildMarshalerAdapterIfRegistered(w.vm, value, typeName); adapter.IsValid() {
+			return adapter
+		}
+	}
+	return buildTextMarshalerAdapterIfRegistered(w.vm, value, typeName)
+}
+
+// isLeafType reports whether t is a script type that declares one of leafMethods.
+//
+// Takes t (reflect.Type) which is the candidate type.
+//
+// Returns bool which is true for a shadow leaf type.
+func (w *marshalShadowWalk) isLeafType(t reflect.Type) bool {
+	typeName := marshalLeafTypeName(t)
+	if typeName == "" {
+		return false
+	}
+	for _, method := range w.leafMethods() {
+		if _, _, ok := lookupAdapterMethod(w.vm, typeName+"."+method); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// leafMethods returns the script methods whose presence makes a type a shadow leaf.
+//
+// Returns []string which are the method names for the walk's encoder.
+func (w *marshalShadowWalk) leafMethods() []string {
+	if w.sink.encodesJSON() {
+		return jsonShadowLeafMethods
+	}
+	return textShadowLeafMethods
 }
 
 // typeNeedsShadow reports whether values of t can contain a script marshaler leaf,
@@ -205,13 +260,14 @@ func (w *marshalShadowWalk) typeNeedsShadow(t reflect.Type) bool {
 	if root == nil {
 		return w.typeNeedsShadowWalk(t, map[reflect.Type]struct{}{})
 	}
-	if cached, ok := root.MarshalShadowMemo.Load(t); ok {
+	key := marshalShadowMemoKey{typ: t, sink: w.sink}
+	if cached, ok := root.MarshalShadowMemo.Load(key); ok {
 		if needs, isBool := cached.(bool); isBool {
 			return needs
 		}
 	}
 	needs := w.typeNeedsShadowWalk(t, map[reflect.Type]struct{}{})
-	root.MarshalShadowMemo.Store(t, needs)
+	root.StoreMarshalShadow(key, needs)
 	return needs
 }
 
@@ -230,10 +286,8 @@ func (w *marshalShadowWalk) typeNeedsShadowWalk(t reflect.Type, inProgress map[r
 	}
 	inProgress[t] = struct{}{}
 	defer delete(inProgress, t)
-	if typeName := marshalLeafTypeName(t); typeName != "" {
-		if _, _, ok := lookupAdapterMethod(w.vm, typeName+".MarshalJSON"); ok {
-			return true
-		}
+	if w.isLeafType(t) {
+		return true
 	}
 	switch t.Kind() {
 	case reflect.Interface:
@@ -255,22 +309,20 @@ func (w *marshalShadowWalk) typeNeedsShadowWalk(t reflect.Type, inProgress map[r
 	}
 }
 
-// shadowForMarshal rebuilds a container so every nested script value that declares
-// MarshalJSON reaches the encoder as a marshaler adapter.
-//
-// Covers elements, fields and map values under a top-level value that the encoder would
-// otherwise see as bare structs and numbers. Values without such leaves are returned
-// unchanged.
+// shadowForMarshal rebuilds a container so every nested script value that declares a
+// method the encoder calls (see leafAdapter) reaches the encoder as an adapter.
 //
 // Takes vm (*VM) which owns the method tables.
 // Takes value (reflect.Value) which is the coerced argument.
+// Takes sink (nativeAnySink) which is a JSON encoder (encoding/json or encoding/json/v2)
+// or anySinkXMLEncode.
 //
 // Returns reflect.Value which is the shadow, or value itself when no leaf needs it.
-func shadowForMarshal(vm *VM, value reflect.Value) reflect.Value {
+func shadowForMarshal(vm *VM, value reflect.Value, sink nativeAnySink) reflect.Value {
 	if vm == nil || vm.rootFunction == nil || !value.IsValid() {
 		return value
 	}
-	walk := marshalShadowWalk{vm: vm, budget: marshalShadowLeafCap}
+	walk := marshalShadowWalk{vm: vm, budget: marshalShadowLeafCap, sink: sink}
 	if shadow, ok := walk.shadow(value, 0); ok {
 		return shadow
 	}
@@ -284,7 +336,7 @@ func shadowForMarshal(vm *VM, value reflect.Value) reflect.Value {
 //
 // Returns string which is the bare name or "".
 func marshalLeafTypeName(t reflect.Type) string {
-	if info, ok := typemodel.LookupNamedScalarPoolInfo(t); ok {
+	if info, ok := typemodel.LookupNamedTypeInfo(t); ok {
 		return info.BareName
 	}
 	if isPipitSynthesisedReflectType(t) {

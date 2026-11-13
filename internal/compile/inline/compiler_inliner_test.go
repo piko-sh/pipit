@@ -19,7 +19,7 @@
 package inline
 
 import (
-	"context"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -41,7 +41,7 @@ func TestScanCalleeForRefusal_EmptyBodyRefused(t *testing.T) {
 func TestScanCalleeForRefusal_UpvaluesRefused(t *testing.T) {
 	t.Parallel()
 	compiledFunction := &program.CompiledFunction{
-		Body:               []isa.Instruction{isa.NewInstruction(isa.OpNop, 0, 0, 0)},
+		Body:               []isa.Instruction{isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)},
 		UpvalueDescriptors: []program.UpvalueDescriptor{{}},
 	}
 	require.Equalf(t, program.InlineRefusalUpvalues, scanCalleeForRefusal(compiledFunction), "upvalues must refuse")
@@ -51,7 +51,7 @@ func TestScanCalleeForRefusal_DeferRefused(t *testing.T) {
 	t.Parallel()
 	compiledFunction := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
 			isa.NewInstruction(isa.OpDefer, 0, 0, 0),
 		},
 	}
@@ -90,6 +90,23 @@ func TestScanCalleeForRefusal_TailCallRefused(t *testing.T) {
 	require.Equalf(t, program.InlineRefusalTailCall, scanCalleeForRefusal(compiledFunction), "opTailCall must refuse")
 }
 
+func TestScanCalleeForRefusalKeepsOnlyTailCallsWithoutResults(t *testing.T) {
+	t.Parallel()
+	target := &program.CompiledFunction{Name: "target"}
+	tailCalling := func(results ...isa.RegisterKind) *program.CompiledFunction {
+		return &program.CompiledFunction{
+			Body:        []isa.Instruction{isa.NewTier1Instruction(isa.SubOpTailCall, 0, 0)},
+			CallSites:   []program.CallSite{{CachedCallee: target}},
+			ResultKinds: results,
+		}
+	}
+
+	require.Equal(t, program.InlineEligible, scanCalleeForRefusal(tailCalling()),
+		"a function without results ends in its tail call, which can run as a plain call")
+	require.Equal(t, program.InlineRefusalTailCall, scanCalleeForRefusal(tailCalling(isa.RegisterBool)),
+		"a tail call's site names nowhere for the values it returns")
+}
+
 func TestScanCalleeForRefusal_ClosureOpsRefused(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -97,10 +114,10 @@ func TestScanCalleeForRefusal_ClosureOpsRefused(t *testing.T) {
 		instr isa.Instruction
 	}{
 		{name: "makeClosure", instr: isa.NewInstruction(isa.OpMakeClosure, 0, 0, 0)},
-		{name: "getUpvalue", instr: isa.NewInstruction(isa.OpGetUpvalue, 0, 0, 0)},
-		{name: "setUpvalue", instr: isa.NewInstruction(isa.OpSetUpvalue, 0, 0, 0)},
-		{name: "syncClosureUpvalues", instr: isa.NewTier2Instruction(isa.SubOpTier2SyncClosureUpvalues, 0)},
-		{name: "syncIIFEUpvalues", instr: isa.NewTier3Instruction(isa.SubOpTier3SyncIIFEUpvalues)},
+		{name: "getUpvalue", instr: isa.NewInstruction(isa.OpGetCapturedVariable, 0, 0, 0)},
+		{name: "setUpvalue", instr: isa.NewInstruction(isa.OpSetCapturedVariable, 0, 0, 0)},
+		{name: "syncClosureUpvalues", instr: isa.NewTier2Instruction(isa.SubOpTier2SynchroniseClosureCapturedVariables, 0)},
+		{name: "syncIIFEUpvalues", instr: isa.NewTier3Instruction(isa.SubOpTier3SynchroniseIIFECapturedVariables)},
 		{name: "callIIFE", instr: isa.NewTier1Instruction(isa.SubOpCallIIFE, 0, 0)},
 	}
 	for _, tc := range cases {
@@ -118,7 +135,7 @@ func TestScanCalleeForRefusal_ChannelOpsRefused(t *testing.T) {
 	t.Parallel()
 	cases := []isa.Instruction{
 		isa.NewTier1Instruction(isa.SubOpSelect, 0, 0),
-		isa.NewInstruction(isa.OpChannelSend, 0, 0, 0),
+		isa.NewInstruction(isa.OpSendToChannel, 0, 0, 0),
 	}
 	for _, instr := range cases {
 		t.Run(isa.InstructionDisplayName(instr), func(t *testing.T) {
@@ -134,7 +151,7 @@ func TestScanCalleeForRefusal_ChannelOpsRefused(t *testing.T) {
 func TestScanCalleeForRefusal_VariadicAcceptedAtCalleeLevel(t *testing.T) {
 	t.Parallel()
 	compiledFunction := &program.CompiledFunction{
-		Body:       []isa.Instruction{isa.NewInstruction(isa.OpNop, 0, 0, 0)},
+		Body:       []isa.Instruction{isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)},
 		IsVariadic: true,
 	}
 	require.Equalf(t, program.InlineEligible, scanCalleeForRefusal(compiledFunction), "variadic alone must be eligible at callee level")
@@ -143,7 +160,7 @@ func TestScanCalleeForRefusal_VariadicAcceptedAtCalleeLevel(t *testing.T) {
 func TestScanCalleeForRefusal_GenericPlaceholderRefused(t *testing.T) {
 	t.Parallel()
 	compiledFunction := &program.CompiledFunction{
-		Body:                 []isa.Instruction{isa.NewInstruction(isa.OpNop, 0, 0, 0)},
+		Body:                 []isa.Instruction{isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)},
 		IsGenericFunction:    true,
 		SpecialisationOrigin: nil,
 	}
@@ -154,7 +171,7 @@ func TestScanCalleeForRefusal_GenericSpecialisationEligible(t *testing.T) {
 	t.Parallel()
 	origin := &program.CompiledFunction{IsGenericFunction: true}
 	compiledFunction := &program.CompiledFunction{
-		Body:                 []isa.Instruction{isa.NewInstruction(isa.OpNop, 0, 0, 0)},
+		Body:                 []isa.Instruction{isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)},
 		IsGenericFunction:    true,
 		SpecialisationOrigin: origin,
 	}
@@ -165,8 +182,8 @@ func TestScanCalleeForRefusalAcceptsSmallBody(t *testing.T) {
 	t.Parallel()
 	compiledFunction := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			isa.NewInstruction(isa.OpAddInt, 0, 1, 2),
-			isa.NewInstruction(isa.OpAddInt, 1, 2, 3),
+			isa.NewInstruction(isa.OpAddInt64, 0, 1, 2),
+			isa.NewInstruction(isa.OpAddInt64, 1, 2, 3),
 		},
 	}
 	require.Equalf(t, program.InlineEligible, scanCalleeForRefusal(compiledFunction), "simple body must be eligible")
@@ -182,7 +199,7 @@ func TestCalleeInlineRefusal_Caches(t *testing.T) {
 	require.Equalf(t, program.InlineRefusalDefer, first, "first probe must return defer")
 	require.Equalf(t, program.InlineRefusalDefer, compiledFunction.CachedInlineRefusal, "cache must be populated after first probe")
 
-	compiledFunction.Body = []isa.Instruction{isa.NewInstruction(isa.OpAddInt, 0, 0, 0)}
+	compiledFunction.Body = []isa.Instruction{isa.NewInstruction(isa.OpAddInt64, 0, 0, 0)}
 	second := calleeInlineRefusal(compiledFunction)
 	require.Equalf(t, program.InlineRefusalDefer, second, "cached probe must remain Defer despite body change")
 }
@@ -221,10 +238,10 @@ func TestCanInline_RespectsBudget(t *testing.T) {
 
 	body := make([]isa.Instruction, defaultInlineBudget+1)
 	for i := range body {
-		body[i] = isa.NewInstruction(isa.OpAddInt, 0, 0, 0)
+		body[i] = isa.NewInstruction(isa.OpAddInt64, 0, 0, 0)
 	}
 	callee := &program.CompiledFunction{Body: body}
-	caller := &program.CompiledFunction{Body: []isa.Instruction{isa.NewInstruction(isa.OpNop, 0, 0, 0)}}
+	caller := &program.CompiledFunction{Body: []isa.Instruction{isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)}}
 	site := &program.CallSite{CachedCallee: callee}
 	require.Equalf(t, program.InlineRefusalOversize, canInline(caller, site, 0, false), "oversize callee must refuse")
 	require.NotEqualf(t, program.InlineRefusalOversize, canInline(caller, site, 0, true), "loop-site budget should allow %d-instr callee", len(body))
@@ -243,7 +260,7 @@ func TestCalleeHairyness_OpcodeWeights(t *testing.T) {
 			body: func() []isa.Instruction {
 				b := make([]isa.Instruction, 10)
 				for i := range b {
-					b[i] = isa.NewInstruction(isa.OpAddInt, 0, 0, 0)
+					b[i] = isa.NewInstruction(isa.OpAddInt64, 0, 0, 0)
 				}
 				return b
 			}(),
@@ -257,19 +274,19 @@ func TestCalleeHairyness_OpcodeWeights(t *testing.T) {
 		{
 			name: "two_map_index",
 			body: []isa.Instruction{
-				isa.NewInstruction(isa.OpMapIndex, 0, 0, 0),
-				isa.NewInstruction(isa.OpMapIndex, 0, 0, 0),
+				isa.NewInstruction(isa.OpGetMap, 0, 0, 0),
+				isa.NewInstruction(isa.OpGetMap, 0, 0, 0),
 			},
 			want: 2,
 		},
 		{
 			name: "five_nops",
 			body: []isa.Instruction{
-				isa.NewInstruction(isa.OpNop, 0, 0, 0),
-				isa.NewInstruction(isa.OpNop, 0, 0, 0),
-				isa.NewInstruction(isa.OpNop, 0, 0, 0),
-				isa.NewInstruction(isa.OpNop, 0, 0, 0),
-				isa.NewInstruction(isa.OpNop, 0, 0, 0),
+				isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
+				isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
+				isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
+				isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
+				isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
 			},
 			want: 0,
 		},
@@ -287,14 +304,14 @@ func TestCanInline_HappyPath(t *testing.T) {
 	t.Parallel()
 	callee := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			isa.NewInstruction(isa.OpAddInt, 0, 1, 2),
+			isa.NewInstruction(isa.OpAddInt64, 0, 1, 2),
 		},
-		ParameterKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterInt},
-		NumRegisters:   [isa.NumRegisterKinds]uint32{isa.RegisterInt: 3},
+		ParameterKinds: []isa.RegisterKind{isa.RegisterInt64, isa.RegisterInt64},
+		NumRegisters:   [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 3},
 	}
 	caller := &program.CompiledFunction{
-		Body:         []isa.Instruction{isa.NewInstruction(isa.OpNop, 0, 0, 0)},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 5},
+		Body:         []isa.Instruction{isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 5},
 	}
 	site := &program.CallSite{CachedCallee: callee}
 	require.Equalf(t, program.InlineEligible, canInline(caller, site, 0, false), "happy path must be eligible")
@@ -312,10 +329,10 @@ func TestComputeInLoopMaskMarksLoopBody(t *testing.T) {
 	)
 	caller := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			isa.NewInstruction(isa.OpAddInt, 0, 0, 0),
-			isa.NewInstruction(isa.OpAddInt, 0, 0, 0),
+			isa.NewInstruction(isa.OpAddInt64, 0, 0, 0),
+			isa.NewInstruction(isa.OpAddInt64, 0, 0, 0),
 			jumpInstr,
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
 		},
 	}
 	mask := computeInLoopMask(caller)
@@ -328,13 +345,46 @@ func TestComputeInLoopMaskMarksLoopBody(t *testing.T) {
 
 func TestRunBytecodeInliner_SingleFunctionNoOp(t *testing.T) {
 	t.Parallel()
-	root := &program.CompiledFunction{Body: []isa.Instruction{isa.NewInstruction(isa.OpNop, 0, 0, 0)}}
+	root := &program.CompiledFunction{Body: []isa.Instruction{isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)}}
 	origLen := len(root.Body)
-	require.NoError(t, RunBytecodeInliner(context.Background(), root, passes.DefaultOptions()), "runBytecodeInliner unexpected error")
+	require.NoError(t, RunBytecodeInliner(t.Context(), root, passes.DefaultOptions()), "runBytecodeInliner unexpected error")
 	require.Lenf(t, root.Body, origLen, "body length must not change")
 }
 
 func TestRunBytecodeInliner_NilRoot(t *testing.T) {
 	t.Parallel()
-	require.NoError(t, RunBytecodeInliner(context.Background(), nil, passes.DefaultOptions()), "nil root must return nil")
+	require.NoError(t, RunBytecodeInliner(t.Context(), nil, passes.DefaultOptions()), "nil root must return nil")
+}
+
+func TestInliningConsidersTheCallSitesASpliceBringsWithIt(t *testing.T) {
+	t.Parallel()
+
+	leaf := doublingCallee()
+	middle := &program.CompiledFunction{
+		Name: "middle",
+		Body: []isa.Instruction{
+			isa.NewTier1Instruction(isa.SubOpCall, 0, 0),
+			isa.NewTier2Instruction(isa.SubOpTier2Return, 1),
+		},
+		NumRegisters:       [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 2},
+		ParameterKinds:     []isa.RegisterKind{isa.RegisterInt64},
+		ParameterRegisters: []uint8{1},
+		ResultKinds:        []isa.RegisterKind{isa.RegisterInt64},
+		CallSites: []program.CallSite{{
+			CachedCallee: leaf,
+			Arguments:    []program.VarLocation{intSlot(1)},
+			Returns:      []program.VarLocation{intSlot(0)},
+		}},
+	}
+	caller := callerCalling(middle, program.CallSite{
+		Arguments: []program.VarLocation{intSlot(2)},
+		Returns:   []program.VarLocation{intSlot(0)},
+	})
+
+	spliced := inlineCallsIn(caller, passes.DefaultOptions())
+
+	require.Equal(t, 2, spliced, "the call the spliced body makes is spliced in turn")
+	require.Zero(t, callsRemaining(caller))
+	require.GreaterOrEqual(t, slices.IndexFunc(caller.Body, func(instruction isa.Instruction) bool { return instruction.Op == isa.OpAddInt64 }), 0,
+		"the innermost body ends up in the caller")
 }

@@ -58,21 +58,26 @@ var (
 	}()
 
 	// phase2AllowedTier1SubOps lists the tier-1 sub-ops the splice driver supports.
-	// isa.SubOpCallScalar is deliberately absent because inlining a callee that itself calls
-	// changes what runtime.Caller() observes, and the runtime's frame walk lacks inline
-	// provenance to compensate.
+	//
+	// isa.SubOpCallScalar is on it, but phase2OpcodeScan admits one only when the function
+	// it calls cannot find out who its callers are. Splicing the function that makes the
+	// call changes what runtime.Caller() reports from below it, and the runtime's frame walk
+	// has no record of the splice to compensate.
 	phase2AllowedTier1SubOps = []isa.SubOpcode{
 		isa.SubOpJump,
-		isa.SubOpMoveInt, isa.SubOpMoveFloat, isa.SubOpMoveString,
-		isa.SubOpMoveBool, isa.SubOpMoveUint,
-		isa.SubOpLoadIntConstSmall, isa.SubOpLoadUintConstSmall, isa.SubOpLoadBool, isa.SubOpLoadBoolConst,
-		isa.SubOpGetStructFieldSliceByte, isa.SubOpSliceGetByteDirect,
-		isa.SubOpCall, isa.SubOpTailCall,
-		isa.SubOpLtIntJumpFalse, isa.SubOpLeIntJumpFalse, isa.SubOpGtIntJumpFalse,
-		isa.SubOpGeIntJumpFalse, isa.SubOpEqIntJumpFalse, isa.SubOpNeIntJumpFalse,
-		isa.SubOpLeIntConstJumpFalse, isa.SubOpLtIntConstJumpFalse, isa.SubOpEqIntConstJumpFalse,
-		isa.SubOpEqIntConstJumpTrue, isa.SubOpGeIntConstJumpFalse, isa.SubOpGtIntConstJumpFalse,
-		isa.SubOpEqStringConstJumpFalse,
+		isa.SubOpMoveInt64, isa.SubOpMoveFloat64, isa.SubOpMoveString,
+		isa.SubOpMoveBool, isa.SubOpMoveUint64,
+		isa.SubOpNotInt64, isa.SubOpConvertBoolToInt64, isa.SubOpConvertInt64ToBool,
+		isa.SubOpConvertUint64ToInt64, isa.SubOpConvertInt64ToUint64,
+		isa.SubOpLoadInt64Immediate, isa.SubOpLoadUint64Immediate, isa.SubOpLoadBoolImmediateAsInt64, isa.SubOpLoadBoolConstant,
+		isa.SubOpGetStructFieldSliceByte, isa.SubOpGetSliceByteElement,
+		isa.SubOpCall, isa.SubOpTailCall, isa.SubOpCallScalar,
+		isa.SubOpLessThanInt64ThenJumpIfFalse, isa.SubOpLessOrEqualInt64ThenJumpIfFalse, isa.SubOpGreaterThanInt64ThenJumpIfFalse,
+		isa.SubOpGreaterOrEqualInt64ThenJumpIfFalse, isa.SubOpEqualInt64ThenJumpIfFalse, isa.SubOpNotEqualInt64ThenJumpIfFalse,
+		isa.SubOpLessOrEqualInt64ConstantThenJumpIfFalse, isa.SubOpLessThanInt64ConstantThenJumpIfFalse, isa.SubOpEqualInt64ConstantThenJumpIfFalse,
+		isa.SubOpEqualInt64ConstantThenJumpIfTrue, isa.SubOpGreaterOrEqualInt64ConstantThenJumpIfFalse, isa.SubOpGreaterThanInt64ConstantThenJumpIfFalse,
+		isa.SubOpEqualStringConstantThenJumpIfFalse,
+		isa.SubOpIncrementInt64ThenJumpIfLessThan, isa.SubOpIncrementInt64ThenJumpIfLessThanConstant,
 		isa.SubOpDrillTier2,
 	}
 
@@ -80,7 +85,7 @@ var (
 	// driver allows.
 	phase2AllowedTier0Categories = func() []isa.Opcode {
 		categories := [][]isa.Opcode{
-			{isa.OpExt, isa.OpCopyStructFieldGeneralT0},
+			{isa.OpExtension, isa.OpCopyStructFieldGeneral},
 			phase2AllowedConstantLoads,
 			phase2AllowedConstFusedArith,
 			phase2AllowedTier0StructField,
@@ -92,7 +97,7 @@ var (
 			phase2AllowedMoveAndString,
 			phase2AllowedMapOps,
 			phase2AllowedExtensionOps,
-			phase2AllowedMapIndexOkVariants,
+			phase2AllowedGetMapOkVariants,
 			phase2AllowedTypedMapOps,
 		}
 		var total int
@@ -108,49 +113,49 @@ var (
 
 	// phase2AllowedConstantLoads carries the constant-load opcodes the splice driver allows.
 	phase2AllowedConstantLoads = []isa.Opcode{
-		isa.OpLoadIntConst, isa.OpLoadFloatConst, isa.OpLoadStringConst,
-		isa.OpLoadUintConst, isa.OpLoadComplexConst,
-		isa.OpLoadGeneralConst,
+		isa.OpLoadInt64Constant, isa.OpLoadFloat64Constant, isa.OpLoadStringConstant,
+		isa.OpLoadUint64Constant, isa.OpLoadComplex128Constant,
+		isa.OpLoadGeneralConstant,
 	}
 
 	// phase2AllowedConstFusedArith carries the const-fused arithmetic opcodes the splice
 	// driver allows.
 	phase2AllowedConstFusedArith = []isa.Opcode{
-		isa.OpAddIntConst, isa.OpSubIntConst, isa.OpMulIntConst,
-		isa.OpAddInt32Const, isa.OpSubInt32Const,
+		isa.OpAddInt64Constant, isa.OpSubtractInt64Constant, isa.OpMultiplyInt64Constant,
+		isa.OpAddInt32Constant, isa.OpSubtractInt32Constant, isa.OpMultiplyInt64ConstantThenAdd,
 	}
 
 	// phase2AllowedTier0StructField carries the tier-0 struct-field opcodes whose operand C
 	// is a StructLayoutTable index merged via inlinePoolShapes.
 	phase2AllowedTier0StructField = []isa.Opcode{
-		isa.OpGetStructFieldIntT0, isa.OpSetStructFieldIntT0,
-		isa.OpGetStructFieldUint, isa.OpSetStructFieldUint,
-		isa.OpGetStructFieldFloat, isa.OpSetStructFieldFloat,
+		isa.OpGetStructFieldInt64, isa.OpSetStructFieldInt64,
+		isa.OpGetStructFieldUint64, isa.OpSetStructFieldUint64,
+		isa.OpGetStructFieldFloat64, isa.OpSetStructFieldFloat64,
 		isa.OpGetStructFieldBool, isa.OpSetStructFieldBool,
 		isa.OpGetStructFieldGeneral, isa.OpSetStructFieldGeneral,
-		isa.OpGetStructFieldSliceLen,
+		isa.OpLengthStructField,
 	}
 
 	// phase2AllowedPureArithmetic carries the register-only arithmetic opcodes the splice
 	// driver allows.
 	phase2AllowedPureArithmetic = []isa.Opcode{
-		isa.OpAddInt, isa.OpSubInt, isa.OpMulInt, isa.OpDivInt, isa.OpRemInt,
-		isa.OpBitAnd, isa.OpBitOr, isa.OpBitXor, isa.OpBitAndNot,
-		isa.OpShiftLeft, isa.OpShiftRight,
-		isa.OpAddFloat, isa.OpSubFloat, isa.OpMulFloat, isa.OpDivFloat,
-		isa.OpAddUint, isa.OpSubUint, isa.OpMulUint, isa.OpDivUint, isa.OpRemUint,
-		isa.OpBitAndUint, isa.OpBitOrUint, isa.OpBitXorUint, isa.OpBitAndNotUint,
-		isa.OpShiftLeftUint, isa.OpShiftRightUint,
-		isa.OpAddInt32, isa.OpSubInt32, isa.OpMulInt32, isa.OpAddUint32,
+		isa.OpAddInt64, isa.OpSubtractInt64, isa.OpMultiplyInt64, isa.OpDivideInt64, isa.OpRemainderInt64,
+		isa.OpBitAndInt64, isa.OpBitOrInt64, isa.OpBitXorInt64, isa.OpBitAndNotInt64,
+		isa.OpShiftLeftInt64, isa.OpShiftRightInt64,
+		isa.OpAddFloat64, isa.OpSubtractFloat64, isa.OpMultiplyFloat64, isa.OpDivideFloat64,
+		isa.OpAddUint64, isa.OpSubtractUint64, isa.OpMultiplyUint64, isa.OpDivideUint64, isa.OpRemainderUint64,
+		isa.OpBitAndUint64, isa.OpBitOrUint64, isa.OpBitXorUint64, isa.OpBitAndNotUint64,
+		isa.OpShiftLeftUint64, isa.OpShiftRightUint64,
+		isa.OpAddInt32, isa.OpSubtractInt32, isa.OpMultiplyInt32, isa.OpAddUint32,
 	}
 
 	// phase2AllowedComparisons carries the typed comparison opcodes the splice driver
 	// allows.
 	phase2AllowedComparisons = []isa.Opcode{
-		isa.OpEqInt, isa.OpNeInt, isa.OpLtInt, isa.OpLeInt, isa.OpGtInt, isa.OpGeInt,
-		isa.OpEqFloat, isa.OpNeFloat, isa.OpLtFloat, isa.OpLeFloat, isa.OpGtFloat, isa.OpGeFloat,
-		isa.OpEqUint, isa.OpNeUint, isa.OpLtUint, isa.OpLeUint, isa.OpGtUint, isa.OpGeUint,
-		isa.OpEqString, isa.OpNeString, isa.OpLtString, isa.OpLeString, isa.OpGtString, isa.OpGeString,
+		isa.OpEqualInt64, isa.OpNotEqualInt64, isa.OpLessThanInt64, isa.OpLessOrEqualInt64, isa.OpGreaterThanInt64, isa.OpGreaterOrEqualInt64,
+		isa.OpEqualFloat64, isa.OpNotEqualFloat64, isa.OpLessThanFloat64, isa.OpLessOrEqualFloat64, isa.OpGreaterThanFloat64, isa.OpGreaterOrEqualFloat64,
+		isa.OpEqualUint64, isa.OpNotEqualUint64, isa.OpLessThanUint64, isa.OpLessOrEqualUint64, isa.OpGreaterThanUint64, isa.OpGreaterOrEqualUint64,
+		isa.OpEqualString, isa.OpNotEqualString, isa.OpLessThanString, isa.OpLessOrEqualString, isa.OpGreaterThanString, isa.OpGreaterOrEqualString,
 	}
 
 	// phase2AllowedJumpsAndFusions carries the jump and compare+jump fusion opcodes the
@@ -158,57 +163,56 @@ var (
 	// depends on them.
 	phase2AllowedJumpsAndFusions = []isa.Opcode{
 		isa.OpJumpIfTrue, isa.OpJumpIfFalse,
-		isa.OpTestNilJumpTrue, isa.OpTestNilJumpFalse,
+		isa.OpJumpIfNil, isa.OpJumpIfNotNil,
 	}
 
 	// phase2AllowedGeneralEquality carries general-bank equality opcodes. Needed for LRU's
 	// `node == cache.head` style comparisons.
 	phase2AllowedGeneralEquality = []isa.Opcode{
-		isa.OpEqGeneral, isa.OpNeGeneral,
+		isa.OpEqualGeneral, isa.OpNotEqualGeneral,
 	}
 
 	// phase2AllowedFieldAccessors carries the slow opGet/Set field opcodes where operand B/C
 	// is a uint8 field index and no pool merge is needed.
 	phase2AllowedFieldAccessors = []isa.Opcode{
-		isa.OpGetField, isa.OpSetField, isa.OpGetFieldInt, isa.OpSetFieldInt,
+		isa.OpGetField, isa.OpSetField, isa.OpGetFieldInt64, isa.OpSetFieldInt64,
 	}
 
 	// phase2AllowedMoveAndString carries the move and string-concat opcodes the splice
 	// driver allows.
 	phase2AllowedMoveAndString = []isa.Opcode{
-		isa.OpMoveGeneral, isa.OpConcatString,
+		isa.OpMoveGeneral, isa.OpConcatenateString,
 	}
 
 	// phase2AllowedMapOps carries the pure-register map opcodes (no extension) the splice
 	// driver allows.
 	phase2AllowedMapOps = []isa.Opcode{
-		isa.OpMapIndex, isa.OpMapSet,
+		isa.OpGetMap, isa.OpSetMap,
 	}
 
 	// phase2AllowedExtensionOps carries extension-word ops whose extension
 	// A|B<<InstructionByteShift is a typeTable pool index.
 	phase2AllowedExtensionOps = []isa.Opcode{
-		isa.OpMakeSlice, isa.OpConvert, isa.OpTypeAssert, isa.OpAllocIndirect, isa.OpPackTyped,
+		isa.OpMakeSlice, isa.OpConvertGeneral, isa.OpTypeAssert, isa.OpAllocateIndirect, isa.OpBoxAsType,
 	}
 
-	// phase2AllowedMapIndexOkVariants carries isa.OpMapIndexOk variants whose extension
-	// carries an okRegister to remap.
-	phase2AllowedMapIndexOkVariants = []isa.Opcode{
-		isa.OpMapIndexOk,
-		isa.OpMapIndexOkIntInt, isa.OpMapIndexOkIntString, isa.OpMapIndexOkIntGeneral,
-		isa.OpMapIndexOkStringInt, isa.OpMapIndexOkStringString,
+	// phase2AllowedGetMapOkVariants carries isa.OpGetMapOk variants whose extension carries
+	// an okRegister to remap.
+	phase2AllowedGetMapOkVariants = []isa.Opcode{
+		isa.OpGetMapOk,
+		isa.OpGetMapInt64Int64Ok, isa.OpGetMapInt64StringOk, isa.OpGetMapInt64GeneralOk,
+		isa.OpGetMapStringInt64Ok, isa.OpGetMapStringStringOk,
 	}
 
 	// phase2AllowedTypedMapOps carries the typed map operations with primitive key+value
-	// banks. The comma-ok variants are listed in phase2AllowedMapIndexOkVariants; these
-	// direct variants are pure-register without extension.
+	// banks. The comma-ok variants are listed in phase2AllowedGetMapOkVariants.
 	phase2AllowedTypedMapOps = []isa.Opcode{
-		isa.OpMapGetIntInt, isa.OpMapSetIntInt,
-		isa.OpMapGetStringInt, isa.OpMapSetStringInt,
-		isa.OpMapGetIntString, isa.OpMapSetIntString,
-		isa.OpMapGetStringString, isa.OpMapSetStringString,
-		isa.OpMapGetIntGeneral,
-		isa.OpMapAddIntInt, isa.OpMapAddStringInt,
+		isa.OpGetMapInt64Int64, isa.OpSetMapInt64Int64,
+		isa.OpGetMapStringInt64, isa.OpSetMapStringInt64,
+		isa.OpGetMapInt64String, isa.OpSetMapInt64String,
+		isa.OpGetMapStringString, isa.OpSetMapStringString,
+		isa.OpGetMapInt64General,
+		isa.OpAddToMapInt64Int64, isa.OpAddToMapStringInt64,
 	}
 )
 
@@ -268,34 +272,34 @@ func TrySpliceCall(caller *program.CompiledFunction, siteIndex uint16) spliceRes
 func CrossBankAdoptOrBoxSubOp(sourceKind, destinationKind isa.RegisterKind) (isa.SubOpcode, bool) {
 	if sourceKind == isa.RegisterGeneral {
 		switch destinationKind {
-		case isa.RegisterSliceInt:
-			return isa.SubOpAdoptGeneralToSlicesInt, true
-		case isa.RegisterSliceFloat:
-			return isa.SubOpAdoptGeneralToSlicesFloat, true
+		case isa.RegisterSliceInt64:
+			return isa.SubOpUnboxSliceInt64, true
+		case isa.RegisterSliceFloat64:
+			return isa.SubOpUnboxSliceFloat64, true
 		case isa.RegisterSliceString:
-			return isa.SubOpAdoptGeneralToSlicesString, true
+			return isa.SubOpUnboxSliceString, true
 		case isa.RegisterSliceBool:
-			return isa.SubOpAdoptGeneralToSlicesBool, true
-		case isa.RegisterSliceUint:
-			return isa.SubOpAdoptGeneralToSlicesUint, true
+			return isa.SubOpUnboxSliceBool, true
+		case isa.RegisterSliceUint64:
+			return isa.SubOpUnboxSliceUint64, true
 		case isa.RegisterSliceByte:
-			return isa.SubOpAdoptGeneralToSlicesByte, true
+			return isa.SubOpUnboxSliceByte, true
 		default:
 		}
 		return 0, false
 	}
 	if destinationKind == isa.RegisterGeneral {
 		switch sourceKind {
-		case isa.RegisterSliceInt:
-			return isa.SubOpBoxSliceInt, true
-		case isa.RegisterSliceFloat:
-			return isa.SubOpBoxSliceFloat, true
+		case isa.RegisterSliceInt64:
+			return isa.SubOpBoxSliceInt64, true
+		case isa.RegisterSliceFloat64:
+			return isa.SubOpBoxSliceFloat64, true
 		case isa.RegisterSliceString:
 			return isa.SubOpBoxSliceString, true
 		case isa.RegisterSliceBool:
 			return isa.SubOpBoxSliceBool, true
-		case isa.RegisterSliceUint:
-			return isa.SubOpBoxSliceUint, true
+		case isa.RegisterSliceUint64:
+			return isa.SubOpBoxSliceUint64, true
 		case isa.RegisterSliceByte:
 			return isa.SubOpBoxSliceByte, true
 		default:
@@ -323,8 +327,8 @@ func CaptureSpliceSnapshot(caller *program.CompiledFunction) spliceSnapshot {
 	}
 }
 
-// RestoreSpliceSnapshot restores the caller's slices, register counts and constant
-// pools after a failed splice.
+// RestoreSpliceSnapshot restores the caller's slices, register counts and constant pools
+// after a failed splice.
 //
 // Takes caller (*CompiledFunction) whose state is restored.
 // Takes snapshot (SpliceSnapshot) carrying the pre-splice lengths.
@@ -351,13 +355,9 @@ func SplitJumpOffsetBytes(offset int) (lowByte, highByte byte) {
 
 // trySpliceCallAt is the inner splice driver.
 //
-// When opCallPCHint >= 0 it is trusted as the call's PC; otherwise the body is scanned
-// via findOpCallPC. Callers in inlineCallsIn pass a precomputed hint so the per-site body
-// scan is avoided.
-//
 // Takes caller (*CompiledFunction) whose body is mutated on success.
 // Takes siteIndex (uint16) which selects the call site within caller.callSites.
-// Takes opCallPCHint (int) which is the isa.SubOpCall PC, or -1 to force a body scan.
+// Takes opCallPCHint (int) which is the call's PC, or -1 to scan the body.
 //
 // Returns spliceResult which is the splice outcome.
 func trySpliceCallAt(caller *program.CompiledFunction, siteIndex uint16, opCallPCHint int) spliceResult {
@@ -386,11 +386,14 @@ func trySpliceCallAt(caller *program.CompiledFunction, siteIndex uint16, opCallP
 		callee:    callee,
 		site:      site,
 		siteIndex: siteIndex,
-		opCallPC:  opCallPC, paramPreCopies: nil, remap: [isa.NumRegisterKinds][isa.GeneralRegisterBankSize]int16{}}
+		opCallPC:  opCallPC, paramPreCopies: nil, resultInPlace: nil, remap: [isa.NumRegisterKinds][isa.GeneralRegisterBankSize]int16{}}
+	snapshot := CaptureSpliceSnapshot(caller)
 	if reason := buildRegisterRemap(&ctx); reason != program.InlineEligible {
+		RestoreSpliceSnapshot(caller, snapshot)
 		return spliceResult{Reason: reason}
 	}
 	if reason := performSplice(&ctx); reason != program.InlineEligible {
+		RestoreSpliceSnapshot(caller, snapshot)
 		return spliceResult{Reason: reason}
 	}
 	return spliceResult{Spliced: true}
@@ -398,43 +401,34 @@ func trySpliceCallAt(caller *program.CompiledFunction, siteIndex uint16, opCallP
 
 // phase2OpcodeScan rejects callees containing any unhandled opcode.
 //
-// The check is allowlist-based: every opcode the splice driver must support has to be on
-// this list. Adding a new opcode involves verifying both (a) its operand shape is
-// described in isa.OperandShapes, and (b) any pool indices it references are wired into
-// inlinePoolShapes.
-//
 // Takes callee (*CompiledFunction) whose body is scanned.
 //
-// Returns InlineRefusal which is InlineEligible when every opcode is on the allowlist, or
-// InlineRefusalOversize when an unsupported opcode is encountered.
+// Returns InlineRefusal which is InlineEligible when every opcode is on the allowlist,
+// InlineRefusalOversize when an unsupported opcode is encountered, or
+// InlineRefusalObservesCallers for a scalar call that may see the frames above it.
 func phase2OpcodeScan(callee *program.CompiledFunction) program.InlineRefusal {
 	for i := range callee.Body {
 		instr := callee.Body[i]
 		if !phase2OperationAllowed(instr) {
 			return program.InlineRefusalOversize
 		}
+		if isa.InstrIsTier1SubOp(instr, isa.SubOpCallScalar) && !scalarCallCannotObserveItsCallers(callee, instr) {
+			return program.InlineRefusalObservesCallers
+		}
 	}
 	return program.InlineEligible
 }
 
-// phase2OperationAllowed reports whether the splice driver supports the operation inst
-// executes. Tier-1 instructions are checked against their sub-opcode, not the op byte, so
-// new sub-ops are not silently admitted.
+// phase2OperationAllowed reports whether the splice driver supports an instruction.
 //
 // Takes inst (isa.Instruction) which is the instruction under inspection.
 //
 // Returns bool which is true when the operation is on the splice driver's allowlist.
 func phase2OperationAllowed(inst isa.Instruction) bool {
-	if inst.Op == isa.OpDrillTier1 {
-		return phase2Tier1SubOpAllowList[inst.A]
-	}
-	return phase2OpcodeAllowList[inst.Op]
+	return operationOnASpliceList(inst) || spliceableByDescription(inst)
 }
 
-// buildRegisterRemap fills ctx.remap for every callee-side register, giving parameter
-// slots that the callee writes to fresh caller-side slots and a pre-copy MOVE so the
-// inlined body cannot clobber the caller's argument variable while read-only params alias
-// directly.
+// buildRegisterRemap maps callee registers onto caller registers.
 //
 // Takes ctx (*inlineContext) which holds caller, callee, site, and the remap arrays being
 // populated.
@@ -451,7 +445,11 @@ func buildRegisterRemap(ctx *inlineContext) program.InlineRefusal {
 	if refusal := remapInlineParameters(ctx, calleeSlots); refusal != program.InlineEligible {
 		return refusal
 	}
-	return remapInlineLocals(ctx, &isParamSlot)
+	if refusal := remapInlineLocals(ctx, &isParamSlot); refusal != program.InlineEligible {
+		return refusal
+	}
+	placeResultsInCallerRegisters(ctx)
+	return program.InlineEligible
 }
 
 // resolveCalleeParameterSlots returns per-parameter slot indices.
@@ -491,8 +489,10 @@ func resolveCalleeParameterSlots(callee *program.CompiledFunction) ([]uint8, [is
 // remapInlineParameters wires each callee parameter slot to its source.
 //
 // Arguments of a different kind to the parameter are routed through a fresh same-kind
-// temporary plus a param-pre-copy; arguments to a slot the callee writes to also get a
-// fresh temporary so the caller's slot is not clobbered by the inlined body.
+// temporary plus a param-pre-copy. Arguments to a slot the callee writes to also get a
+// fresh temporary so the caller's slot is not clobbered by the inlined body. A parameter
+// the callee only stores through takes the copy unless its type can hold nothing but a
+// reference (see parameterWrites.needsCopy).
 //
 // Takes ctx (*inlineContext) which holds caller, callee, and the remap table being
 // populated.
@@ -514,7 +514,7 @@ func remapInlineParameters(ctx *inlineContext, calleeSlots []uint8) program.Inli
 			}
 			continue
 		}
-		if !writtenParamSlots[paramKind][calleeSlot] {
+		if !writtenParamSlots.needsCopy(ctx.callee, i, calleeSlot) {
 			ctx.setRegister(paramKind, calleeSlot, argument.Register)
 			continue
 		}
@@ -590,71 +590,77 @@ func remapInlineLocals(ctx *inlineContext, isParamSlot *[isa.NumRegisterKinds][m
 	return program.InlineEligible
 }
 
-// scanWrittenParamSlots returns a per-bank bitmap of callee parameter slots that are
-// written to, treating dynamic-role operands conservatively as writes. Unwritten params
-// can alias the caller's argument register directly, avoiding a pre-copy MOVE.
+// scanWrittenParamSlots records direct and indirect writes to callee parameters.
+//
+// Dynamic-role operands are treated conservatively as writes, and so is an extension word
+// whose layout is not described for every bank.
 //
 // Takes callee (*CompiledFunction) whose body is scanned.
 //
-// Returns the per-bank write bitmap.
-func scanWrittenParamSlots(callee *program.CompiledFunction) [isa.NumRegisterKinds][maxParamSlotsScanned]bool {
-	var written [isa.NumRegisterKinds][maxParamSlotsScanned]bool
+// Returns parameterWrites which records direct and indirect parameter writes.
+func scanWrittenParamSlots(callee *program.CompiledFunction) parameterWrites {
+	var writes parameterWrites
+	if calleeNeedsEveryGeneralParameterCopied(callee) {
+		markGeneralParameterSlotsWrittenThrough(&writes, callee)
+	}
+	owner := -1
 	for i := range callee.Body {
-		if !recordInstructionParamWrites(&written, callee, callee.Body[i]) {
-			return written
+		if callee.Body[i].Op == isa.OpExtension && owner >= 0 {
+			if !recordExtensionParameterWrites(&writes, callee.Body[owner], callee.Body[owner+1:i+1]) {
+				markAllParamSlotsWritten(&writes, callee)
+				return writes
+			}
+			continue
+		}
+		owner = i
+		if !recordInstructionParamWrites(&writes, callee, callee.Body[i]) {
+			return writes
 		}
 	}
-	return written
+	return writes
 }
 
 // recordInstructionParamWrites records the parameter slots one instruction writes.
 //
-// A return reads the result slots and writes nothing. A call writes the registers its
-// call site names as results. An undescribed operation, an unresolvable call site, or an
-// operation whose writes reach registers its operand bytes do not name marks every slot
-// written and ends the scan.
+// An undescribed operation, an unresolvable call site, or an operation whose writes reach
+// registers its operand bytes do not name marks every slot written and ends the scan.
 //
-// Takes written (*[...]bool) which is the per-bank table being populated.
+// Takes writes (*parameterWrites) which is the record being populated.
 // Takes callee (*program.CompiledFunction) which owns the call-site table.
 // Takes instr (instruction) which is the instruction under inspection.
 //
 // Returns false when every slot has been marked and the scan can stop.
-func recordInstructionParamWrites(written *[isa.NumRegisterKinds][maxParamSlotsScanned]bool, callee *program.CompiledFunction, instr isa.Instruction) bool {
+func recordInstructionParamWrites(writes *parameterWrites, callee *program.CompiledFunction, instr isa.Instruction) bool {
 	if program.IsReturnInstruction(instr) {
 		return true
 	}
 	shape := isa.ShapeForInstruction(instr)
 	if shape.Flags&isa.ShapeFlagDescribed == 0 {
-		markAllParamSlotsWritten(written, callee)
+		markAllParamSlotsWritten(writes, callee)
 		return false
 	}
 	if isCallSiteInstruction(instr) {
-		if recordCallSiteParamWrites(written, callee, instr) {
+		if recordCallSiteParamWrites(writes, callee, instr) {
 			return true
 		}
-		markAllParamSlotsWritten(written, callee)
+		markAllParamSlotsWritten(writes, callee)
 		return false
 	}
 	if shape.Flags&isa.ShapeFlagOpaqueWrites != 0 {
-		markAllParamSlotsWritten(written, callee)
+		markAllParamSlotsWritten(writes, callee)
 		return false
 	}
-	if isa.InstrIsTier1SubOp(instr, isa.SubOpMapDelete) && int(instr.B) < maxParamSlotsScanned {
-		written[isa.RegisterGeneral][instr.B] = true
+	if isa.InstrIsTier1SubOp(instr, isa.SubOpDeleteFromMap) && int(instr.B) < maxParamSlotsScanned {
+		writes.through[instr.B] = true
 	}
-	return recordDescribedParamWrites(written, callee, instr, shape)
+	return recordDescribedParamWrites(writes, callee, instr, shape)
 }
 
 // markAllParamSlotsWritten marks every callee parameter slot as written.
 //
-// Used as the conservative fallback when the inliner cannot classify an opcode's writes
-// (unknown shape, isa.RoleRegDynamic operand). Forces every param through the pre-copy
-// path so no aliasing can occur.
-//
-// Takes written (*[NumRegisterKinds][maxParamSlotsScanned]bool) which is the per-bank
-// bitmap being populated.
+// Takes writes (*parameterWrites) which is the record being populated.
 // Takes callee (*CompiledFunction) whose parameterKinds drive which slots get marked.
-func markAllParamSlotsWritten(written *[isa.NumRegisterKinds][maxParamSlotsScanned]bool, callee *program.CompiledFunction) {
+func markAllParamSlotsWritten(writes *parameterWrites, callee *program.CompiledFunction) {
 	hasRecordedRegisters := len(callee.ParameterRegisters) == len(callee.ParameterKinds)
 	var bankCounter [isa.NumRegisterKinds]uint8
 	for i, paramKind := range callee.ParameterKinds {
@@ -666,17 +672,14 @@ func markAllParamSlotsWritten(written *[isa.NumRegisterKinds][maxParamSlotsScann
 		}
 		bankCounter[paramKind]++
 		if int(slot) < maxParamSlotsScanned {
-			written[paramKind][slot] = true
+			writes.direct[paramKind][slot] = true
 		}
 	}
 }
 
-// recordDescribedParamWrites marks param slots that an instruction writes, including
-// indirect writes through a register handle (e.g. isa.OpSetField, isa.OpMapSet) that
-// mutate the storage the register points at.
+// recordDescribedParamWrites records direct and indirect writes to parameter slots.
 //
-// Takes written (*[NumRegisterKinds][maxParamSlotsScanned]bool) which accumulates the
-// per-bank write bitmap.
+// Takes writes (*parameterWrites) which is the record being populated.
 // Takes callee (*CompiledFunction) used for the conservative fallback on dynamic-role
 // operands.
 // Takes instr (isa.Instruction) whose operand bytes are read.
@@ -684,7 +687,7 @@ func markAllParamSlotsWritten(written *[isa.NumRegisterKinds][maxParamSlotsScann
 // annotations.
 //
 // Returns bool which is true when the scan should continue.
-func recordDescribedParamWrites(written *[isa.NumRegisterKinds][maxParamSlotsScanned]bool, callee *program.CompiledFunction, instr isa.Instruction, shape isa.OperandShape) bool {
+func recordDescribedParamWrites(writes *parameterWrites, callee *program.CompiledFunction, instr isa.Instruction, shape isa.OperandShape) bool {
 	bytes := [instructionOperandCount]uint8{instr.A, instr.B, instr.C}
 	roles := [instructionOperandCount]isa.OperandRole{shape.A, shape.B, shape.C}
 	indirectPos, indirectBank, hasIndirect := indirectWriteThroughOperand(instr.Op)
@@ -692,8 +695,8 @@ func recordDescribedParamWrites(written *[isa.NumRegisterKinds][maxParamSlotsSca
 		isWrite := shape.Writes[pos]
 		if hasIndirect && pos == indirectPos {
 			slot := bytes[pos]
-			if int(slot) < maxParamSlotsScanned {
-				written[indirectBank][slot] = true
+			if indirectBank == isa.RegisterGeneral && int(slot) < maxParamSlotsScanned {
+				writes.through[slot] = true
 			}
 			continue
 		}
@@ -702,12 +705,12 @@ func recordDescribedParamWrites(written *[isa.NumRegisterKinds][maxParamSlotsSca
 		}
 		bank, isReg := writtenOperandBank(instr, shape, role)
 		if !isReg {
-			markAllParamSlotsWritten(written, callee)
+			markAllParamSlotsWritten(writes, callee)
 			return false
 		}
 		slot := bytes[pos]
 		if int(slot) < maxParamSlotsScanned {
-			written[bank][slot] = true
+			writes.direct[bank][slot] = true
 		}
 	}
 	return true
@@ -757,22 +760,21 @@ func isCallSiteInstruction(instr isa.Instruction) bool {
 	}
 }
 
-// recordCallSiteParamWrites marks the registers a call writes its results into, read from
-// the call site the instruction indexes.
+// recordCallSiteParamWrites marks the registers a call writes its results into.
 //
-// Takes written (*[...]bool) which is the per-bank table being populated.
+// Takes writes (*parameterWrites) which is the record being populated.
 // Takes callee (*program.CompiledFunction) which owns the call-site table.
 // Takes instr (instruction) which is the call instruction.
 //
 // Returns false when the site cannot be resolved, so the caller marks every slot.
-func recordCallSiteParamWrites(written *[isa.NumRegisterKinds][maxParamSlotsScanned]bool, callee *program.CompiledFunction, instr isa.Instruction) bool {
+func recordCallSiteParamWrites(writes *parameterWrites, callee *program.CompiledFunction, instr isa.Instruction) bool {
 	siteIndex := int(instr.WideIndex())
 	if siteIndex >= len(callee.CallSites) {
 		return false
 	}
 	for _, result := range callee.CallSites[siteIndex].Returns {
 		if int(result.Register) < maxParamSlotsScanned && int(result.Kind) < int(isa.NumRegisterKinds) {
-			written[result.Kind][result.Register] = true
+			writes.direct[result.Kind][result.Register] = true
 		}
 	}
 	return true
@@ -788,16 +790,16 @@ func recordCallSiteParamWrites(written *[isa.NumRegisterKinds][maxParamSlotsScan
 // Returns bool which is true when op mutates through a register.
 func indirectWriteThroughOperand(op isa.Opcode) (int, isa.RegisterKind, bool) {
 	switch op {
-	case isa.OpSetField, isa.OpSetFieldInt,
-		isa.OpSetStructFieldIntT0, isa.OpSetStructFieldUint,
-		isa.OpSetStructFieldFloat, isa.OpSetStructFieldBool,
+	case isa.OpSetField, isa.OpSetFieldInt64,
+		isa.OpSetStructFieldInt64, isa.OpSetStructFieldUint64,
+		isa.OpSetStructFieldFloat64, isa.OpSetStructFieldBool,
 		isa.OpSetStructFieldGeneral,
-		isa.OpIndexSet,
-		isa.OpMapSet,
-		isa.OpMapSetIntInt, isa.OpMapSetIntString,
-		isa.OpMapSetStringInt, isa.OpMapSetStringString, isa.OpMapSetStringGeneral,
-		isa.OpMapSetIntGeneral,
-		isa.OpMapAddIntInt, isa.OpMapAddStringInt:
+		isa.OpSetElement,
+		isa.OpSetMap,
+		isa.OpSetMapInt64Int64, isa.OpSetMapInt64String,
+		isa.OpSetMapStringInt64, isa.OpSetMapStringString, isa.OpSetMapStringGeneral,
+		isa.OpSetMapInt64General,
+		isa.OpAddToMapInt64Int64, isa.OpAddToMapStringInt64, isa.OpAppendStringToMapString:
 		return 0, isa.RegisterGeneral, true
 	default:
 	}
@@ -835,43 +837,31 @@ func buildParamPreCopyInstruction(pc paramPreCopy) (isa.Instruction, bool) {
 	return isa.NewInstruction(isa.OpDrillTier1, byte(subOp), pc.destination, pc.Source), true
 }
 
-// performSplice executes the actual bytecode mutation for one splice. On any failure the
-// caller state is rolled back via CaptureSpliceSnapshot/RestoreSpliceSnapshot.
+// performSplice executes the actual bytecode mutation for one splice.
+//
+// A refusal leaves the caller part rewritten. trySpliceCallAt(), which took the snapshot
+// before the registers were remapped, restores it.
 //
 // Takes ctx (*inlineContext) holding caller, callee, site, opCallPC, remap, and
 // paramPreCopies.
 //
-// Returns InlineEligible on success, or the refusal kind on rollback.
+// Returns InlineEligible on success, or the refusal kind.
 func performSplice(ctx *inlineContext) program.InlineRefusal {
-	snapshot := CaptureSpliceSnapshot(ctx.caller)
-	rollback := func() { RestoreSpliceSnapshot(ctx.caller, snapshot) }
-
 	skipJumpPC := emitSpliceSkipJump(ctx)
 	preCopyStart, ok := emitParamPreCopies(ctx)
 	if !ok {
-		rollback()
 		return program.InlineRefusalCapWatermark
 	}
 	calleeBodyStart, refusal := appendCalleeBody(ctx)
 	if refusal != program.InlineEligible {
-		rollback()
 		return refusal
 	}
 	retPrepStart := len(ctx.caller.Body)
 	if reason := emitReturnPrep(ctx, retPrepStart); reason != program.InlineEligible {
-		rollback()
 		return reason
 	}
-	if !rewriteReturnsToRetPrep(ctx, calleeBodyStart, retPrepStart) {
-		rollback()
-		return program.InlineRefusalUnknown
-	}
-	if !patchOpCallForward(ctx, preCopyStart) {
-		rollback()
-		return program.InlineRefusalUnknown
-	}
-	if !patchSkipJump(ctx, skipJumpPC) {
-		rollback()
+	if !rewriteReturnsToRetPrep(ctx, calleeBodyStart, retPrepStart) || !patchOpCallForward(ctx, preCopyStart) ||
+		!patchSkipJump(ctx, skipJumpPC) {
 		return program.InlineRefusalUnknown
 	}
 	recordSelfRecursionAnnotation(ctx, calleeBodyStart)
@@ -942,16 +932,6 @@ func emitParamPreCopies(ctx *inlineContext) (int, bool) {
 
 // appendCalleeBody appends the callee body to the caller.
 //
-// Return instructions are temporarily emitted unchanged; rewriteReturnsToRetPrep patches
-// them in a later step. Extension words (isa.OpExt) following ops marked hasExtensionWord
-// get remapped and appended alongside their main instruction, with the loop counter
-// advanced past them so they are not processed twice. isa.SubOpTailCall is rewritten to
-// isa.SubOpCall after the remap: tail-call semantics in the original callee would replace
-// the caller's frame with the tail-callee's frame, but once the callee has been inlined
-// the surrounding continuation is the outer caller, so isa.SubOpCall preserves correct
-// flow. Self-recursive tail calls are refused upstream at scanCalleeForRefusal to avoid
-// unbounded frame growth.
-//
 // Takes ctx (*inlineContext) carrying caller, callee, and remap.
 //
 // Returns int which is the PC at which the callee body starts in the caller.
@@ -975,26 +955,45 @@ func appendCalleeBody(ctx *inlineContext) (int, program.InlineRefusal) {
 		}
 		ctx.caller.Body = append(ctx.caller.Body, remapped)
 		ctx.appendCalleePosition(i)
-		shape := inlinePoolShapeFor(instr)
-		if !shape.hasExtensionWord {
-			continue
+		copied, refusal := appendExtensionWords(ctx, i, inlinePoolShapeFor(instr))
+		if refusal != program.InlineEligible {
+			return 0, refusal
 		}
-		if i+1 >= len(ctx.callee.Body) {
-			return 0, program.InlineRefusalUnknown
-		}
-		ext := ctx.callee.Body[i+1]
-		if ext.Op != isa.OpExt {
-			return 0, program.InlineRefusalUnknown
-		}
-		remappedExt, ok := remapExtensionOperands(ext, shape, ctx)
-		if !ok {
-			return 0, program.InlineRefusalUnknown
-		}
-		ctx.caller.Body = append(ctx.caller.Body, remappedExt)
-		ctx.appendCalleePosition(i + 1)
-		i++
+		i += copied
 	}
 	return calleeBodyStart, program.InlineEligible
+}
+
+// appendExtensionWords copies the extension words that follow one callee instruction.
+//
+// An operation on a hand-kept list carries exactly one word, rewritten as its entry in
+// inlinePoolShapes says. One spliced by description may carry several (see
+// appendDescribedExtensionWords).
+//
+// Takes ctx (*inlineContext) carrying caller, callee, and remap.
+// Takes ownerPC (int) which is the callee PC of the instruction.
+// Takes shape (inlinePoolShape) which is its entry in inlinePoolShapes.
+//
+// Returns int which is the number of words copied, zero when it carries none.
+// Returns program.InlineRefusal which says why a word is missing or cannot be rewritten,
+// and is InlineEligible otherwise.
+func appendExtensionWords(ctx *inlineContext, ownerPC int, shape inlinePoolShape) (int, program.InlineRefusal) {
+	if !shape.hasExtensionWord {
+		return 0, program.InlineEligible
+	}
+	if shape.describedExtension {
+		return appendDescribedExtensionWords(ctx, ownerPC, shape)
+	}
+	if ownerPC+1 >= len(ctx.callee.Body) || ctx.callee.Body[ownerPC+1].Op != isa.OpExtension {
+		return 0, program.InlineRefusalUnknown
+	}
+	remapped, ok := remapExtensionOperands(ctx.callee.Body[ownerPC+1], shape, ctx)
+	if !ok {
+		return 0, program.InlineRefusalUnknown
+	}
+	ctx.caller.Body = append(ctx.caller.Body, remapped)
+	ctx.appendCalleePosition(ownerPC + 1)
+	return 1, program.InlineEligible
 }
 
 // rewriteReturnsToRetPrep rewrites each return instruction inside the appended callee
@@ -1073,24 +1072,16 @@ func patchSkipJump(ctx *inlineContext, skipJumpPC int) bool {
 	return true
 }
 
-// emitReturnPrep appends the shared return-prep block to caller.body.
+// emitReturnPrep appends the shared return-prep block to caller.body. Cross-bank returns
+// require boxing or unboxing and are refused with InlineRefusalCapWatermark.
 //
-// Emits one typed-move sub-op per return value, copying from the callee's return-position
-// slot (bank-K, slot i_in_bank, REMAPPED to caller-side via ctx.remap) to the caller's
-// site.Returns[i] destination register. i_in_bank is a per-bank counter that matches how
-// vm_handler_calls.handleReturn reads the values at runtime. A final unconditional
-// isa.SubOpJump back to afterCallPC closes the block. Supports same-bank returns
-// (resultKinds[i] == site.Returns[i].Kind). Cross-bank returns (e.g., int callee ->
-// general interface caller) require boxing/unboxing and are refused with
-// InlineRefusalCapWatermark.
-//
-// Correctness invariant: by the time the callee's return instruction fires at runtime,
-// bank-K-slot-(i_in_bank) holds return value i. The Compiler enforces this via
-// moveLocsToReturnPositions when the result expression does not naturally land in that
-// slot. The per-bank counter mirrors handleReturn's bankCounters.
+// A general-bank result is moved in the mode that copies a struct or an array and passes
+// anything else through. A real return hands the caller a value nothing else holds,
+// because the callee's frame is gone. The spliced body's result slot lives on and is
+// stored into again on the next pass, so the caller must not be left sharing it.
 //
 // Takes ctx (*inlineContext) which carries callee, site, and ctx.remap.
-// Takes retPrepStart (int) which is unused at runtime; it names the PC where the first
+// Takes retPrepStart (int) which is unused at runtime. It names the PC where the first
 // emitted instruction lands.
 //
 // Returns InlineEligible on success, InlineRefusalUnknown when result counts disagree or
@@ -1110,27 +1101,14 @@ func emitReturnPrep(ctx *inlineContext, retPrepStart int) program.InlineRefusal 
 		if !ok {
 			return program.InlineRefusalCapWatermark
 		}
-		destination := ctx.site.Returns[i]
-		var subOp isa.SubOpcode
-		if destination.Kind != kind {
-			adapter, supported := CrossBankAdoptOrBoxSubOp(kind, destination.Kind)
-			if !supported {
-				return program.InlineRefusalCapWatermark
-			}
-			subOp = adapter
-		} else {
-			move, ok := typedMoveSubOp(kind)
-			if !ok {
-				return program.InlineRefusalCapWatermark
-			}
-			subOp = move
+		if i < len(ctx.resultInPlace) && ctx.resultInPlace[i] {
+			continue
 		}
-		ctx.caller.Body = append(ctx.caller.Body, isa.NewInstruction(
-			isa.OpDrillTier1,
-			byte(subOp),
-			destination.Register,
-			sourceRegister,
-		))
+		handOver, ok := resultHandOver(kind, ctx.site.Returns[i], sourceRegister)
+		if !ok {
+			return program.InlineRefusalCapWatermark
+		}
+		ctx.caller.Body = append(ctx.caller.Body, handOver)
 		ctx.appendSyntheticPosition()
 	}
 	afterCallPC := ctx.opCallPC + 1
@@ -1150,6 +1128,29 @@ func emitReturnPrep(ctx *inlineContext, retPrepStart int) program.InlineRefusal 
 	return program.InlineEligible
 }
 
+// resultHandOver builds the instruction that carries one result from the spliced body's
+// result slot to the register the call site names for it.
+//
+// Takes kind (isa.RegisterKind) which is the bank the callee returns the result in.
+// Takes destination (program.VarLocation) which is where the call site wants it.
+// Takes source (uint8) which is the caller register standing in for the result slot.
+//
+// Returns isa.Instruction which is the move, the boxing or the unboxing.
+// Returns bool which is false when the two banks have no conversion between them.
+func resultHandOver(kind isa.RegisterKind, destination program.VarLocation, source uint8) (isa.Instruction, bool) {
+	if destination.Kind == kind && kind == isa.RegisterGeneral {
+		return isa.NewInstruction(isa.OpMoveGeneral, destination.Register, source, engine.MoveGeneralModeDynamic), true
+	}
+	subOp, ok := typedMoveSubOp(kind)
+	if destination.Kind != kind {
+		subOp, ok = CrossBankAdoptOrBoxSubOp(kind, destination.Kind)
+	}
+	if !ok {
+		return isa.Instruction{}, false
+	}
+	return isa.NewInstruction(isa.OpDrillTier1, byte(subOp), destination.Register, source), true
+}
+
 // typedMoveSubOp returns the tier-1 register-to-register move sub-op for bank.
 //
 // Takes bank (isa.RegisterKind) which selects the move's bank.
@@ -1158,28 +1159,30 @@ func emitReturnPrep(ctx *inlineContext, retPrepStart int) program.InlineRefusal 
 // Returns false when the bank has no tier-1 move.
 func typedMoveSubOp(bank isa.RegisterKind) (isa.SubOpcode, bool) {
 	switch bank {
-	case isa.RegisterInt:
-		return isa.SubOpMoveInt, true
-	case isa.RegisterFloat:
-		return isa.SubOpMoveFloat, true
+	case isa.RegisterInt64:
+		return isa.SubOpMoveInt64, true
+	case isa.RegisterFloat64:
+		return isa.SubOpMoveFloat64, true
 	case isa.RegisterString:
 		return isa.SubOpMoveString, true
 	case isa.RegisterBool:
 		return isa.SubOpMoveBool, true
-	case isa.RegisterUint:
-		return isa.SubOpMoveUint, true
-	case isa.RegisterSliceInt:
-		return isa.SubOpMoveSliceInt, true
-	case isa.RegisterSliceFloat:
-		return isa.SubOpMoveSliceFloat, true
+	case isa.RegisterUint64:
+		return isa.SubOpMoveUint64, true
+	case isa.RegisterSliceInt64:
+		return isa.SubOpMoveSliceInt64, true
+	case isa.RegisterSliceFloat64:
+		return isa.SubOpMoveSliceFloat64, true
 	case isa.RegisterSliceString:
 		return isa.SubOpMoveSliceString, true
 	case isa.RegisterSliceBool:
 		return isa.SubOpMoveSliceBool, true
-	case isa.RegisterSliceUint:
-		return isa.SubOpMoveSliceUint, true
+	case isa.RegisterSliceUint64:
+		return isa.SubOpMoveSliceUint64, true
 	case isa.RegisterSliceByte:
 		return isa.SubOpMoveSliceByte, true
+	case isa.RegisterComplex128:
+		return isa.SubOpMoveComplex128, true
 	default:
 	}
 	return 0, false
@@ -1198,10 +1201,10 @@ func remapOperands(instr isa.Instruction, ctx *inlineContext) (isa.Instruction, 
 	if !remapPoolOperands(&out, inlinePoolShapeFor(instr), ctx) {
 		return isa.Instruction{}, false
 	}
-	if instr.Op == isa.OpDrillTier1 {
+	if operationOnASpliceList(instr) && instr.Op == isa.OpDrillTier1 {
 		return remapTier1SubOp(out, ctx)
 	}
-	if !remapRegisterOperands(&out, instr.Op, ctx) {
+	if !remapDescribedRegisters(&out, instr, ctx) {
 		return isa.Instruction{}, false
 	}
 	return out, true
@@ -1267,42 +1270,7 @@ func remapWidePoolOperand(out *isa.Instruction, pool inlinePool, ctx *inlineCont
 	return true
 }
 
-// remapRegisterOperands rewrites every register byte described by the opcode's
-// isa.OperandShapes entry, looking each callee slot up in the caller-side remap table.
-//
-// Takes out (*instruction) which is mutated in place.
-// Takes op (opcode) used to fetch the isa.OperandShapes entry.
-// Takes ctx (*inlineContext) holding the remap table.
-//
-// Returns true on success; false when the opcode lacks a `described` shape or a
-// referenced register has no remap entry.
-func remapRegisterOperands(out *isa.Instruction, op isa.Opcode, ctx *inlineContext) bool {
-	shape := isa.OperandShapeFor(op)
-	if shape.Flags&isa.ShapeFlagDescribed == 0 {
-		return false
-	}
-	bytePtrs := [instructionOperandCount]*byte{&out.A, &out.B, &out.C}
-	roles := [instructionOperandCount]isa.OperandRole{shape.A, shape.B, shape.C}
-	for pos, role := range roles {
-		bank, isReg := isa.KindForRole(role)
-		if !isReg {
-			continue
-		}
-		oldSlot := *bytePtrs[pos]
-		newSlot, ok := ctx.lookupRegister(bank, oldSlot)
-		if !ok {
-			return false
-		}
-		*bytePtrs[pos] = newSlot
-	}
-	return true
-}
-
-// remapExtensionOperands rewrites a follow-on isa.OpExt extension word.
-//
-// The extension's content is per-opcode: most carry a uint16 pool index in operands A|B,
-// some carry a register reference, and some are pure immediates. The shape parameter
-// selects which interpretation applies.
+// remapExtensionOperands rewrites a follow-on isa.OpExtension extension word.
 //
 // Takes ext (instruction) which is the extension word emitted after its parent opcode.
 // Takes shape (inlinePoolShape) describing the extension's operand layout.
@@ -1312,14 +1280,8 @@ func remapRegisterOperands(out *isa.Instruction, op isa.Opcode, ctx *inlineConte
 // Returns false on any failure (pool overflow, unmapped register).
 func remapExtensionOperands(ext isa.Instruction, shape inlinePoolShape, ctx *inlineContext) (isa.Instruction, bool) {
 	out := ext
-	if shape.extAWide16 != poolNone {
-		oldIdx := uint16(out.A) | uint16(out.B)<<program.InstructionByteShift
-		newIdx, ok := mergePoolIndex(ctx.caller, ctx.callee, shape.extAWide16, oldIdx, false)
-		if !ok {
-			return isa.Instruction{}, false
-		}
-		out.A = byte(newIdx & 0xFF)
-		out.B = byte((newIdx >> program.InstructionByteShift) & 0xFF)
+	if shape.extAWide16 != poolNone && !mergeExtensionWideIndex(ctx, shape.extAWide16, &out) {
+		return isa.Instruction{}, false
 	}
 	if shape.extARegSet {
 		newSlot, ok := ctx.lookupRegister(shape.extARegBank, out.A)
@@ -1331,54 +1293,75 @@ func remapExtensionOperands(ext isa.Instruction, shape inlinePoolShape, ctx *inl
 	return out, true
 }
 
+// mergeExtensionWideIndex merges the table index an extension word holds in bytes A and B
+// into the caller's table and writes the caller's index back.
+//
+// Takes ctx (*inlineContext) which carries the caller and the callee.
+// Takes pool (inlinePool) which is the table the index belongs to.
+// Takes word (*isa.Instruction) which is the extension word, rewritten in place.
+//
+// Returns bool which is false when the entry cannot be merged.
+func mergeExtensionWideIndex(ctx *inlineContext, pool inlinePool, word *isa.Instruction) bool {
+	merged, ok := mergePoolIndex(ctx.caller, ctx.callee, pool, isa.JoinWide(word.A, word.B), false)
+	if !ok {
+		return false
+	}
+	word.A, word.B = isa.SplitWide(merged)
+	return true
+}
+
 // remapTier1SubOp rewrites the register operands of an allow-listed tier-1 instruction
 // whose pool operands remapOperands() has already merged.
-//
-// The register-operand layout is per sub-op: the moves and the register-to-register
-// compare-and-branch fusions name two registers of one bank in B and C; the constant
-// loads and the compare-against-constant fusions name one register in B beside a constant
-// index or immediate in C; the calls name their registers only through the merged call
-// site, so their operand bytes are left as remapped; the unconditional jump carries an
-// offset. Anything else refuses, which phase2Tier1SubOpAllowList keeps unreachable.
 //
 // Takes instr (isa.Instruction) which is the tier-1 instruction with its pool operands
 // merged.
 // Takes ctx (*inlineContext) which supplies the register remap.
 //
-// Returns the rewritten instruction and true, or the zero instruction and false.
+// Returns isa.Instruction which is the rewritten instruction, or zero on refusal.
+// Returns bool which is true when the instruction was remapped.
 func remapTier1SubOp(instr isa.Instruction, ctx *inlineContext) (isa.Instruction, bool) {
 	out := instr
 	switch isa.SubOpcode(instr.A) {
 	case isa.SubOpJump, isa.SubOpCall, isa.SubOpTailCall, isa.SubOpCallScalar:
 		return out, true
-	case isa.SubOpMoveFloat:
-		return remapRegBC(&out, ctx, isa.RegisterFloat, isa.RegisterFloat)
+	case isa.SubOpMoveFloat64:
+		return remapRegBC(&out, ctx, isa.RegisterFloat64, isa.RegisterFloat64)
 	case isa.SubOpMoveString:
 		return remapRegBC(&out, ctx, isa.RegisterString, isa.RegisterString)
 	case isa.SubOpMoveBool:
 		return remapRegBC(&out, ctx, isa.RegisterBool, isa.RegisterBool)
-	case isa.SubOpMoveUint:
-		return remapRegBC(&out, ctx, isa.RegisterUint, isa.RegisterUint)
-	case isa.SubOpLoadIntConstSmall, isa.SubOpLoadBool,
-		isa.SubOpLeIntConstJumpFalse, isa.SubOpLtIntConstJumpFalse,
-		isa.SubOpEqIntConstJumpFalse, isa.SubOpEqIntConstJumpTrue,
-		isa.SubOpGeIntConstJumpFalse, isa.SubOpGtIntConstJumpFalse:
-		return remapTier1B(&out, ctx, isa.RegisterInt)
+	case isa.SubOpMoveUint64:
+		return remapRegBC(&out, ctx, isa.RegisterUint64, isa.RegisterUint64)
+	case isa.SubOpConvertBoolToInt64:
+		return remapRegBC(&out, ctx, isa.RegisterInt64, isa.RegisterBool)
+	case isa.SubOpConvertInt64ToBool:
+		return remapRegBC(&out, ctx, isa.RegisterBool, isa.RegisterInt64)
+	case isa.SubOpConvertUint64ToInt64:
+		return remapRegBC(&out, ctx, isa.RegisterInt64, isa.RegisterUint64)
+	case isa.SubOpConvertInt64ToUint64:
+		return remapRegBC(&out, ctx, isa.RegisterUint64, isa.RegisterInt64)
+	case isa.SubOpLoadInt64Immediate, isa.SubOpLoadBoolImmediateAsInt64,
+		isa.SubOpLessOrEqualInt64ConstantThenJumpIfFalse, isa.SubOpLessThanInt64ConstantThenJumpIfFalse,
+		isa.SubOpEqualInt64ConstantThenJumpIfFalse, isa.SubOpEqualInt64ConstantThenJumpIfTrue,
+		isa.SubOpGreaterOrEqualInt64ConstantThenJumpIfFalse, isa.SubOpGreaterThanInt64ConstantThenJumpIfFalse,
+		isa.SubOpIncrementInt64ThenJumpIfLessThanConstant:
+		return remapTier1B(&out, ctx, isa.RegisterInt64)
 	case isa.SubOpGetStructFieldSliceByte:
 		return remapRegBC(&out, ctx, isa.RegisterSliceByte, isa.RegisterGeneral)
-	case isa.SubOpSliceGetByteDirect:
-		return remapRegBC(&out, ctx, isa.RegisterUint, isa.RegisterSliceByte)
-	case isa.SubOpLoadUintConstSmall:
-		return remapTier1B(&out, ctx, isa.RegisterUint)
-	case isa.SubOpLoadBoolConst:
+	case isa.SubOpGetSliceByteElement:
+		return remapRegBC(&out, ctx, isa.RegisterUint64, isa.RegisterSliceByte)
+	case isa.SubOpLoadUint64Immediate:
+		return remapTier1B(&out, ctx, isa.RegisterUint64)
+	case isa.SubOpLoadBoolConstant:
 		return remapTier1B(&out, ctx, isa.RegisterBool)
-	case isa.SubOpEqStringConstJumpFalse:
+	case isa.SubOpEqualStringConstantThenJumpIfFalse:
 		return remapTier1B(&out, ctx, isa.RegisterString)
-	case isa.SubOpMoveInt,
-		isa.SubOpLtIntJumpFalse, isa.SubOpLeIntJumpFalse,
-		isa.SubOpGtIntJumpFalse, isa.SubOpGeIntJumpFalse,
-		isa.SubOpEqIntJumpFalse, isa.SubOpNeIntJumpFalse:
-		return remapRegBC(&out, ctx, isa.RegisterInt, isa.RegisterInt)
+	case isa.SubOpMoveInt64, isa.SubOpNotInt64,
+		isa.SubOpLessThanInt64ThenJumpIfFalse, isa.SubOpLessOrEqualInt64ThenJumpIfFalse,
+		isa.SubOpGreaterThanInt64ThenJumpIfFalse, isa.SubOpGreaterOrEqualInt64ThenJumpIfFalse,
+		isa.SubOpEqualInt64ThenJumpIfFalse, isa.SubOpNotEqualInt64ThenJumpIfFalse,
+		isa.SubOpIncrementInt64ThenJumpIfLessThan:
+		return remapRegBC(&out, ctx, isa.RegisterInt64, isa.RegisterInt64)
 	case isa.SubOpDrillTier2:
 		return remapTier2SubOp(&out, ctx)
 	default:
@@ -1404,9 +1387,7 @@ func remapTier1B(out *isa.Instruction, ctx *inlineContext, bank isa.RegisterKind
 	return *out, true
 }
 
-// remapTier2SubOp rewrites the register payloads of a isa.SubOpDrillTier2 instruction.
-// Operand B carries the tier-2 sub-op; operand C is its register operand (banked per
-// sub-op).
+// remapTier2SubOp rewrites the register payload of a tier-2 instruction.
 //
 // Takes out (*instruction) which is mutated in place.
 // Takes ctx (*inlineContext) holding the remap table.
@@ -1415,18 +1396,49 @@ func remapTier1B(out *isa.Instruction, ctx *inlineContext, bank isa.RegisterKind
 // Returns false on unsupported sub-ops or unresolved register lookups.
 func remapTier2SubOp(out *isa.Instruction, ctx *inlineContext) (isa.Instruction, bool) {
 	tier2 := isa.SubOpcodeTier2(out.B)
-	switch tier2 {
-	case isa.SubOpTier2DrillTier3:
+	if tier2 == isa.SubOpTier2DrillTier3 {
 		return *out, true
-	case isa.SubOpTier2IncInt, isa.SubOpTier2DecInt, isa.SubOpTier2IncInt32, isa.SubOpTier2DecInt32:
-		return remapTier2OperandC(out, ctx, isa.RegisterInt)
-	case isa.SubOpTier2IncUint, isa.SubOpTier2DecUint:
-		return remapTier2OperandC(out, ctx, isa.RegisterUint)
-	case isa.SubOpTier2LoadNil, isa.SubOpTier2SetZero:
-		return remapTier2OperandC(out, ctx, isa.RegisterGeneral)
-	default:
+	}
+	if bank, listed := tier2ListedOperandBank(tier2); listed {
+		return remapTier2OperandC(out, ctx, bank)
 	}
 	return isa.Instruction{}, false
+}
+
+// tier2ListedOperandBank names the bank of operand C for the tier-2 operations the
+// hand-kept list admits.
+//
+// Takes tier2 (isa.SubOpcodeTier2) which is the tier-2 operation.
+//
+// Returns isa.RegisterKind which is the bank operand C addresses.
+// Returns bool which is false when the operation is not on the list.
+func tier2ListedOperandBank(tier2 isa.SubOpcodeTier2) (isa.RegisterKind, bool) {
+	switch tier2 {
+	case isa.SubOpTier2IncrementInt64, isa.SubOpTier2DecrementInt64, isa.SubOpTier2IncrementInt32, isa.SubOpTier2DecrementInt32,
+		isa.SubOpTier2CheckShiftCount:
+		return isa.RegisterInt64, true
+	case isa.SubOpTier2IncrementUint64, isa.SubOpTier2DecrementUint64, isa.SubOpTier2InRangeUint64ThenJumpIfFalse:
+		return isa.RegisterUint64, true
+	case isa.SubOpTier2LoadNil, isa.SubOpTier2SetZeroGeneral:
+		return isa.RegisterGeneral, true
+	case isa.SubOpTier2JumpIfFalseBool, isa.SubOpTier2JumpIfTrueBool:
+		return isa.RegisterBool, true
+	default:
+		return 0, false
+	}
+}
+
+// tier2OperationListed reports whether the explicit splice list admits an operation.
+//
+// Takes tier2 (isa.SubOpcodeTier2) which is the tier-2 operation.
+//
+// Returns bool which is true for a listed operation.
+func tier2OperationListed(tier2 isa.SubOpcodeTier2) bool {
+	if tier2 == isa.SubOpTier2DrillTier3 || tier2 == isa.SubOpTier2Return {
+		return true
+	}
+	_, listed := tier2ListedOperandBank(tier2)
+	return listed
 }
 
 // remapTier2OperandC remaps operand C of a tier-2 sub-op as a register in the named bank.

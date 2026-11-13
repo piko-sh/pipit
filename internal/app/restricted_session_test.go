@@ -169,7 +169,7 @@ func TestRestrictedSessionSingleFlightAndTerminalClose(t *testing.T) {
 	release := make(chan struct{})
 	done := make(chan error, 1)
 	go func() {
-		_, err := SubmitRestrictedSessionPhased(context.Background(), session, "42", func() error {
+		_, err := SubmitRestrictedSessionPhased(t.Context(), session, "42", func() error {
 			close(entered)
 			<-release
 			return nil
@@ -210,7 +210,7 @@ func TestRestrictedSessionExpiryAndCallerCancellation(t *testing.T) {
 				require.ErrorIs(t, err, context.Canceled)
 			} else {
 				select {
-				case <-session.ctx.Done():
+				case <-session.closed:
 				case <-time.After(2 * time.Second):
 					require.FailNow(t, "the session expires within two seconds")
 				}
@@ -276,7 +276,7 @@ func TestRestrictedSessionIdleTimerStopsDuringSubmission(t *testing.T) {
 	session := newRestrictedSessionForTest(t, config)
 	_, err := SubmitRestrictedSessionPhased(t.Context(), session, "42", func() error {
 		select {
-		case <-session.ctx.Done():
+		case <-session.closed:
 			return errors.New("idle timer expired during active submission")
 		case <-time.After(30 * time.Millisecond):
 			return nil
@@ -284,7 +284,7 @@ func TestRestrictedSessionIdleTimerStopsDuringSubmission(t *testing.T) {
 	})
 	require.NoError(t, err)
 	select {
-	case <-session.ctx.Done():
+	case <-session.closed:
 	case <-time.After(2 * time.Second):
 		require.FailNow(t, "the idle timer restarts after a submission")
 	}
@@ -296,7 +296,7 @@ func TestRestrictedSessionLifetimeCancelsActiveSubmission(t *testing.T) {
 	config.Lifetime = 30 * time.Millisecond
 	session := newRestrictedSessionForTest(t, config)
 	result, err := SubmitRestrictedSessionPhased(t.Context(), session, "println(42)", func() error {
-		<-session.ctx.Done()
+		<-session.closed
 		return nil
 	})
 	require.ErrorIs(t, err, errRestrictedSessionExpired, "lifetime expiry stops execution")
@@ -339,7 +339,7 @@ func TestRestrictedSessionParentCancellationReleasesIdleState(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(session.Close)
 	cancel()
-	session.releaseClosed()
+	<-session.closed
 	session.mutex.Lock()
 	retained := session.session != nil || session.output != nil
 	session.mutex.Unlock()

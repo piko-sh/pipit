@@ -19,7 +19,6 @@
 package passes
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -29,25 +28,25 @@ import (
 
 func runFuseConstOperands(t *testing.T, cf *program.CompiledFunction) {
 	t.Helper()
-	require.NoError(t, (fuseConstOperandsPass{}).Run(context.Background(), &PassContext{Analysis: newFunctionAnalysis(cf)}, cf))
+	require.NoError(t, (fuseConstOperandsPass{}).Run(t.Context(), &PassContext{Analysis: newFunctionAnalysis(cf)}, cf))
 }
 
 func TestFuseConstOperandsFoldsSmallIntLoads(t *testing.T) {
 	t.Parallel()
 	cf := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			isa.NewTier1Instruction(isa.SubOpLoadIntConstSmall, 9, 1),
-			mk(isa.OpAddInt, 10, 8, 9),
-			isa.NewTier1Instruction(isa.SubOpLoadIntConstSmall, 9, 3),
-			mk(isa.OpAddInt, 11, 8, 9),
+			isa.NewTier1Instruction(isa.SubOpLoadInt64Immediate, 9, 1),
+			mk(isa.OpAddInt64, 10, 8, 9),
+			isa.NewTier1Instruction(isa.SubOpLoadInt64Immediate, 9, 3),
+			mk(isa.OpAddInt64, 11, 8, 9),
 			isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
 		},
 		IntConstants:                []int64{7, 1},
 		PrecomputedAllocCountsValid: true,
 	}
 	runFuseConstOperands(t, cf)
-	require.Equal(t, mk(isa.OpAddIntConst, 10, 8, 1), cf.Body[0], "an existing pool entry is reused")
-	require.Equal(t, mk(isa.OpAddIntConst, 11, 8, 2), cf.Body[2], "a missing value is added to the pool")
+	require.Equal(t, mk(isa.OpAddInt64Constant, 10, 8, 1), cf.Body[0], "an existing pool entry is reused")
+	require.Equal(t, mk(isa.OpAddInt64Constant, 11, 8, 2), cf.Body[2], "a missing value is added to the pool")
 	require.Equal(t, []int64{7, 1, 3}, cf.IntConstants)
 	require.False(t, cf.PrecomputedAllocCountsValid)
 }
@@ -56,23 +55,23 @@ func TestFuseConstOperandsFoldsSmallUintLoads(t *testing.T) {
 	t.Parallel()
 	cf := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			isa.NewTier1Instruction(isa.SubOpLoadUintConstSmall, 4, 127),
-			mk(isa.OpBitAndUint, 5, 6, 4),
+			isa.NewTier1Instruction(isa.SubOpLoadUint64Immediate, 4, 127),
+			mk(isa.OpBitAndUint64, 5, 6, 4),
 			isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
 		},
 	}
 	runFuseConstOperands(t, cf)
-	require.Equal(t, isa.NewTier1Instruction(isa.SubOpBitAndUintConst, 5, 6), cf.Body[0])
-	require.Equal(t, mk(isa.OpExt, 0, 0, 0), cf.Body[1])
+	require.Equal(t, isa.NewTier1Instruction(isa.SubOpBitAndUint64Constant, 5, 6), cf.Body[0])
+	require.Equal(t, mk(isa.OpExtension, 0, 0, 0), cf.Body[1])
 	require.Equal(t, []uint64{127}, cf.UintConstants)
 }
 
 func TestFuseConstOperandsKeepsLoadsStillRead(t *testing.T) {
 	t.Parallel()
 	body := []isa.Instruction{
-		isa.NewTier1Instruction(isa.SubOpLoadIntConstSmall, 9, 1),
-		mk(isa.OpAddInt, 10, 8, 9),
-		mk(isa.OpAddInt, 11, 9, 9),
+		isa.NewTier1Instruction(isa.SubOpLoadInt64Immediate, 9, 1),
+		mk(isa.OpAddInt64, 10, 8, 9),
+		mk(isa.OpAddInt64, 11, 9, 9),
 		isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
 	}
 	cf := &program.CompiledFunction{Body: append([]isa.Instruction(nil), body...)}
@@ -84,13 +83,13 @@ func TestFuseConstOperandsKeepsLoadsStillRead(t *testing.T) {
 func TestFuseConstOperandsKeepsNamedVariableWrites(t *testing.T) {
 	t.Parallel()
 	body := []isa.Instruction{
-		isa.NewTier1Instruction(isa.SubOpLoadIntConstSmall, 1, 3),
-		mk(isa.OpAddInt, 2, 0, 1),
+		isa.NewTier1Instruction(isa.SubOpLoadInt64Immediate, 1, 3),
+		mk(isa.OpAddInt64, 2, 0, 1),
 		isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
 	}
 	cf := &program.CompiledFunction{
 		Body:          append([]isa.Instruction(nil), body...),
-		DebugVarTable: &program.DebugVarTable{Entries: []program.DebugVarEntry{{Name: "i", Location: program.VarLocation{Kind: isa.RegisterInt, Register: 1}, StartPC: 1, EndPC: 3}}},
+		DebugVarTable: &program.DebugVarTable{Entries: []program.DebugVarEntry{{Name: "i", Location: program.VarLocation{Kind: isa.RegisterInt64, Register: 1}, StartPC: 1, EndPC: 3}}},
 	}
 	runFuseConstOperands(t, cf)
 	require.Equal(t, body, cf.Body)

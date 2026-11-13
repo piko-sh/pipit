@@ -19,6 +19,8 @@
 package core
 
 import (
+	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -55,4 +57,20 @@ func TestCoerceInt64ToFloat64(t *testing.T) {
 	t.Parallel()
 
 	require.InDelta(t, 7, coerce[float64](int64(7)), 0)
+}
+
+func TestValueAsGivesAYieldedValueTheTargetType(t *testing.T) {
+	t.Parallel()
+
+	stringerType := reflect.TypeFor[fmt.Stringer]()
+	held := reflect.ValueOf([]any{customStringer("x")}).Index(0)
+	require.True(t, valueAs(held, stringerType).Type().AssignableTo(stringerType))
+	require.Equal(t, customStringer("x"), valueAs(held, stringerType).Interface())
+
+	nilHeld := reflect.ValueOf([]any{nil}).Index(0)
+	require.True(t, valueAs(nilHeld, stringerType).IsNil())
+	require.Equal(t, 0, valueAs(nilHeld, reflect.TypeFor[int]()).Interface())
+	require.Equal(t, customString("k"), valueAs(reflect.ValueOf("k"), reflect.TypeFor[customString]()).Interface())
+	require.Equal(t, int64(3), valueAs(reflect.ValueOf(int64(3)), reflect.TypeFor[string]()).Interface(),
+		"an int is not converted to a string")
 }

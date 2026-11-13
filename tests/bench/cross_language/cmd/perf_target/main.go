@@ -74,6 +74,7 @@ func main() {
 	if flag.NArg() > 2 {
 		iterations, _ = strconv.Atoi(flag.Arg(2))
 	}
+
 	ctx := context.Background()
 	service, compiled := compileAndWarmup(ctx, flag.Arg(0), kInner)
 	elapsed, allocs, bytes := measureLoop(ctx, service, compiled, iterations, *cpuProfile, *memProfile)

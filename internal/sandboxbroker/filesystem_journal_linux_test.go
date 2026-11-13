@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxbroker
 
@@ -112,7 +112,7 @@ func TestJournalledClientPublishesOnlyAfterRecording(t *testing.T) {
 		stream, authority, journal, root, result := journalledBrokerFixture(t)
 		client, err := OpenJournalledFilesystemClient(t.Context(), stream, authority, journal)
 		require.NoError(t, err)
-		t.Cleanup(func() { _ = client.Close() })
+		t.Cleanup(func() { _ = client.Close(t.Context()) })
 		if failure {
 			require.NoError(t, journal.Close())
 		}
@@ -135,7 +135,7 @@ func TestJournalledClientPublishesOnlyAfterRecording(t *testing.T) {
 		response, err = client.Execute(t.Context(), []byte(readPayload))
 		require.NoError(t, err, "read after journalled write failed: %v", response)
 		require.Equal(t, "new", string(response.Data))
-		require.NoError(t, client.Close())
+		require.NoError(t, client.Close(t.Context()))
 		require.NoError(t, <-result)
 	}
 }
@@ -166,7 +166,7 @@ func journalledBrokerFixture(t *testing.T) (*clientTestTransport, *LinuxRecovery
 		result <- ServeFilesystemBroker(peer, backend)
 	}()
 	stream := &clientTestTransport{Conn: host, done: done, closes: atomic.Int32{}}
-	t.Cleanup(func() { _ = stream.Close() })
+	t.Cleanup(func() { _ = stream.Close(t.Context()) })
 	return stream, authority, journal, root, result
 }
 

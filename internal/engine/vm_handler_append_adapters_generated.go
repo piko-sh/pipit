@@ -24,26 +24,26 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-func handleSubOpAppendInt(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+func handleAppendInt64Wide(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
-	return handleAppendInt(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C, C: extensionWord.A})
+	return handleAppendInt64(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C, C: extensionWord.A})
 }
 
-func handleSubOpAppendString(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+func handleAppendStringWide(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	return handleAppendString(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C, C: extensionWord.A})
 }
 
-func handleSubOpAppendFloat(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+func handleAppendFloat64Wide(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
-	return handleAppendFloat(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C, C: extensionWord.A})
+	return handleAppendFloat64(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C, C: extensionWord.A})
 }
 
-func handleSubOpAppendBool(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+func handleAppendBoolWide(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
-	return handleAppendBool(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C, C: extensionWord.A})
+	return handleAppendBoolWideBody(vm, frame, registers, isa.Instruction{A: instr.B, B: instr.C, C: extensionWord.A})
 }

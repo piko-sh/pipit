@@ -33,10 +33,16 @@ import (
 
 func TestIsolatedLoggerContextStaysSilent(t *testing.T) {
 	t.Parallel()
-	ctx := t.Context()
-	require.False(t, logging.LoggerFrom(isolatedLoggerContext(ctx, nil)).Enabled(ctx, slog.LevelInfo), "audit logging is on for a host that configured no logger")
-	host := slog.New(slog.NewTextHandler(io.Discard, nil))
-	require.Same(t, host, logging.LoggerFrom(isolatedLoggerContext(ctx, host)), "the host's own logger survives the isolated context")
+	ctx, silent := logging.From(isolatedLoggerContext(t.Context(), nil))
+	require.False(t, silent.Enabled(ctx, slog.LevelInfo), "audit logging is on for a host that configured no logger")
+
+	configured := slog.New(slog.NewTextHandler(io.Discard, nil))
+	_, got := logging.From(isolatedLoggerContext(t.Context(), configured))
+	require.Same(t, configured, got, "the configured logger is used when the context carries none")
+
+	bound := slog.New(slog.NewTextHandler(io.Discard, nil))
+	_, got = logging.From(isolatedLoggerContext(logging.WithLogger(t.Context(), bound), configured))
+	require.Same(t, bound, got, "a logger the host bound into the context wins over the configured one")
 }
 
 func TestLaunchRecordLifecycle(t *testing.T) {

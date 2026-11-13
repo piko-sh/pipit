@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerSubOpMathSqrt sets floats[B] = math.Sqrt(floats[C]).
-TEXT ·handlerSubOpMathSqrt(SB), NOSPLIT|NOFRAME, $0
+// handlerMathSqrt sets floats[B] = math.Sqrt(floats[C]).
+TEXT ·handlerMathSqrt(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -35,8 +35,8 @@ TEXT ·handlerSubOpMathSqrt(SB), NOSPLIT|NOFRAME, $0
 	FMOVD F0, (R24)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpMathAbs sets floats[B] = math.Abs(floats[C]).
-TEXT ·handlerSubOpMathAbs(SB), NOSPLIT|NOFRAME, $0
+// handlerMathAbs sets floats[B] = math.Abs(floats[C]).
+TEXT ·handlerMathAbs(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -45,8 +45,8 @@ TEXT ·handlerSubOpMathAbs(SB), NOSPLIT|NOFRAME, $0
 	FMOVD F0, (R24)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpMathFloor sets floats[B] = math.Floor(floats[C]).
-TEXT ·handlerSubOpMathFloor(SB), NOSPLIT|NOFRAME, $0
+// handlerMathFloor sets floats[B] = math.Floor(floats[C]).
+TEXT ·handlerMathFloor(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -55,8 +55,8 @@ TEXT ·handlerSubOpMathFloor(SB), NOSPLIT|NOFRAME, $0
 	FMOVD   F0, (R24)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpMathCeil sets floats[B] = math.Ceil(floats[C]).
-TEXT ·handlerSubOpMathCeil(SB), NOSPLIT|NOFRAME, $0
+// handlerMathCeil sets floats[B] = math.Ceil(floats[C]).
+TEXT ·handlerMathCeil(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -65,8 +65,8 @@ TEXT ·handlerSubOpMathCeil(SB), NOSPLIT|NOFRAME, $0
 	FMOVD   F0, (R24)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpMathTrunc sets floats[B] = math.Trunc(floats[C]).
-TEXT ·handlerSubOpMathTrunc(SB), NOSPLIT|NOFRAME, $0
+// handlerMathTrunc sets floats[B] = math.Trunc(floats[C]).
+TEXT ·handlerMathTrunc(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -75,8 +75,8 @@ TEXT ·handlerSubOpMathTrunc(SB), NOSPLIT|NOFRAME, $0
 	FMOVD   F0, (R24)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpMathRound sets floats[B] = math.Round(floats[C]).
-TEXT ·handlerSubOpMathRound(SB), NOSPLIT|NOFRAME, $0
+// handlerMathRound sets floats[B] = math.Round(floats[C]).
+TEXT ·handlerMathRound(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4

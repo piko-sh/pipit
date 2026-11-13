@@ -56,7 +56,7 @@ func inPlaceHeaderReuseAuthorised(frame *CallFrame, header *arenaSliceHeader) bo
 	if !arenaUsesUnsafeSlabs || header.Len >= header.Cap {
 		return false
 	}
-	return frame.Function.InPlaceHeaderReusePCs[frame.ProgramCounter-1]
+	return pcGranted(frame.Function.InPlaceHeaderReusePCs, frame.ProgramCounter-1)
 }
 
 // tryReuseInPlaceHeader appends element by writing it into the header's spare capacity

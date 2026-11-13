@@ -150,8 +150,8 @@ func checkPrivateDirectory(path string) error {
 	return nil
 }
 
-// launchRecordError maps a record failure onto the public sentinels: an unusable state
-// directory is a configuration error, anything else means the host cannot isolate.
+// launchRecordError maps a record failure onto the public sentinels. An unusable state
+// directory is a configuration error, and anything else means the host cannot isolate.
 //
 // Takes err (error) which may be nil.
 //
@@ -163,10 +163,8 @@ func launchRecordError(err error) error {
 	return errors.Join(ErrIsolatedUnavailable, err)
 }
 
-// isolatedLoggerContext attaches the host's logger to ctx for one isolated API call. A
-// host that configured no logger gets a discarding one, because logging.LoggerFrom()
-// falls back to the process default and that would switch audit logging on for a security
-// boundary the host never asked to watch.
+// isolatedLoggerContext attaches the host's logger to ctx for one isolated API call,
+// unless ctx already carries a logger, which wins.
 //
 // Takes logger (*slog.Logger) which the host chose, and which may be nil.
 //
@@ -175,11 +173,12 @@ func isolatedLoggerContext(ctx context.Context, logger *slog.Logger) context.Con
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	return logging.ContextWithLogger(ctx, logger)
+	return logging.WithFallbackLogger(ctx, logger)
 }
 
-// tenantSlug names a tenant's directory under the state directory: the first characters
-// of the tenant's SHA-256 digest, so any tenant string yields a short valid name.
+// tenantSlug names a tenant's directory under the state directory. The name is the first
+// characters of the tenant's SHA-256 digest, so any tenant string yields a short valid
+// name.
 //
 // Takes tenant (string) which passed the configuration's tenant validation.
 //

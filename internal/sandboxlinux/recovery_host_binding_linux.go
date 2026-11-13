@@ -288,7 +288,7 @@ func recoveryHostExecutable(ctx context.Context, proc *os.File) (digest [sha256.
 		return digest, ErrInvalidWorker
 	}
 	hash := sha256.New()
-	count, err := io.Copy(hash, io.LimitReader(workerImageReader{context: ctx, source: file}, maximumWorkerImageBytes+1))
+	count, err := copyCancellable(ctx, hash, file, maximumWorkerImageBytes+1)
 	if err != nil {
 		return digest, err
 	}

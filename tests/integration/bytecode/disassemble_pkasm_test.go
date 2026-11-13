@@ -47,7 +47,7 @@ func TestDisassembleAssembly_singleFunction(t *testing.T) {
 	child := newBytecodeBuilder().
 		intRegisters(3).
 		stringRegisters(1).
-		Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), 0, 42).
+		Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), 0, 42).
 		Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DrillTier3), uint8(isa.SubOpTier3ReturnVoid)).
 		build()
 	child.Name = "main"
@@ -62,9 +62,9 @@ func TestDisassembleAssembly_singleFunction(t *testing.T) {
 	output := debug.DisassembleAssembly(cfs)
 
 	assert.Contains(t, output, "; function main")
-	assert.Contains(t, output, "int=3")
+	assert.Contains(t, output, "int64=3")
 	assert.Contains(t, output, "string=1")
-	assert.Contains(t, output, "LOAD_INT_CONST_SMALL")
+	assert.Contains(t, output, "LOAD_INT64_IMMEDIATE")
 	assert.Contains(t, output, "RETURN_VOID")
 	assert.Contains(t, output, "; constants:")
 	assert.Contains(t, output, "[0]=42")
@@ -208,8 +208,8 @@ func TestDisassembleAssembly_paramAndReturnKinds(t *testing.T) {
 	t.Parallel()
 	fn := &program.CompiledFunction{
 		Name:           "add",
-		ParameterKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterInt},
-		ResultKinds:    []isa.RegisterKind{isa.RegisterInt},
+		ParameterKinds: []isa.RegisterKind{isa.RegisterInt64, isa.RegisterInt64},
+		ResultKinds:    []isa.RegisterKind{isa.RegisterInt64},
 		Body: []isa.Instruction{
 			{Op: isa.OpDrillTier1, A: uint8(isa.SubOpDrillTier2), B: uint8(isa.SubOpTier2DrillTier3), C: uint8(isa.SubOpTier3ReturnVoid)},
 		},
@@ -222,8 +222,8 @@ func TestDisassembleAssembly_paramAndReturnKinds(t *testing.T) {
 
 	output := debug.DisassembleAssembly(cfs)
 
-	assert.Contains(t, output, ";   params:    (int, int)")
-	assert.Contains(t, output, ";   returns:   (int)")
+	assert.Contains(t, output, ";   params:    (int64, int64)")
+	assert.Contains(t, output, ";   returns:   (int64)")
 }
 
 func TestDisassembleAssembly_variadic(t *testing.T) {
@@ -252,7 +252,7 @@ func TestDisassembleAssembly_varInitFunction(t *testing.T) {
 	varInit := &program.CompiledFunction{
 		Name: "<varinit>",
 		Body: []isa.Instruction{
-			{Op: isa.OpDrillTier1, A: uint8(isa.SubOpLoadIntConstSmall), B: 0, C: 10},
+			{Op: isa.OpDrillTier1, A: uint8(isa.SubOpLoadInt64Immediate), B: 0, C: 10},
 			{Op: isa.OpDrillTier1, A: uint8(isa.SubOpDrillTier2), B: uint8(isa.SubOpTier2DrillTier3), C: uint8(isa.SubOpTier3ReturnVoid)},
 		},
 	}
@@ -263,7 +263,7 @@ func TestDisassembleAssembly_varInitFunction(t *testing.T) {
 	output := debug.DisassembleAssembly(cfs)
 
 	assert.Contains(t, output, "; function <varinit>")
-	assert.Contains(t, output, "LOAD_INT_CONST_SMALL")
+	assert.Contains(t, output, "LOAD_INT64_IMMEDIATE")
 }
 
 func TestDisassembleAssembly_sourceLineAnnotations(t *testing.T) {
@@ -272,7 +272,7 @@ func TestDisassembleAssembly_sourceLineAnnotations(t *testing.T) {
 	fn := &program.CompiledFunction{
 		Name: "main",
 		Body: []isa.Instruction{
-			{Op: isa.OpDrillTier1, A: uint8(isa.SubOpLoadIntConstSmall), B: 0, C: 42},
+			{Op: isa.OpDrillTier1, A: uint8(isa.SubOpLoadInt64Immediate), B: 0, C: 42},
 			{Op: isa.OpDrillTier1, A: uint8(isa.SubOpDrillTier2), B: uint8(isa.SubOpTier2DrillTier3), C: uint8(isa.SubOpTier3ReturnVoid)},
 		},
 		DebugSourceMap: &program.SourceMap{
@@ -302,7 +302,7 @@ func TestDisassembleFunctionAssembly_standalone(t *testing.T) {
 	t.Parallel()
 	fn := newBytecodeBuilder().
 		intRegisters(2).
-		Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), 0, 1).
+		Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), 0, 1).
 		Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DrillTier3), uint8(isa.SubOpTier3ReturnVoid)).
 		build()
 	fn.Name = "helper"
@@ -310,7 +310,7 @@ func TestDisassembleFunctionAssembly_standalone(t *testing.T) {
 	output := debug.DisassembleFunctionAssembly(fn)
 
 	assert.Contains(t, output, "; function helper")
-	assert.Contains(t, output, "LOAD_INT_CONST_SMALL")
+	assert.Contains(t, output, "LOAD_INT64_IMMEDIATE")
 	assert.Contains(t, output, "RETURN_VOID")
 }
 
@@ -471,7 +471,7 @@ func TestDisassembleAssembly_existingCommentsPreserved(t *testing.T) {
 	t.Parallel()
 	b := newBytecodeBuilder()
 	b.addIntConst(100)
-	b.Emit(isa.OpLoadIntConst, 0, 0, 0)
+	b.Emit(isa.OpLoadInt64Constant, 0, 0, 0)
 	b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DrillTier3), uint8(isa.SubOpTier3ReturnVoid))
 	b.intRegisters(2)
 

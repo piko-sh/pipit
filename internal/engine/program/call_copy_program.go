@@ -208,9 +208,9 @@ func buildOneArgCopyEntry(argumentLocation VarLocation, destinationKind isa.Regi
 // Returns bool which is false when no per-bank opcode exists (e.g. UpvalueKindAsPointer).
 func sameKindCopyOp(kind isa.RegisterKind) (callArgCopyOp, bool) {
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return CopyIntToInt, true
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return CopyFloatToFloat, true
 	case isa.RegisterString:
 		return CopyStringToString, true
@@ -218,19 +218,19 @@ func sameKindCopyOp(kind isa.RegisterKind) (callArgCopyOp, bool) {
 		return CopyGeneralToGeneral, true
 	case isa.RegisterBool:
 		return CopyBoolToBool, true
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return CopyUintToUint, true
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return CopyComplexToComplex, true
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		return CopySliceIntToSliceInt, true
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		return CopySliceFloatToSliceFloat, true
 	case isa.RegisterSliceString:
 		return CopySliceStringToSliceString, true
 	case isa.RegisterSliceBool:
 		return CopySliceBoolToSliceBool, true
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		return CopySliceUintToSliceUint, true
 	case isa.RegisterSliceByte:
 		return CopySliceByteToSliceByte, true

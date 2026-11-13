@@ -7,37 +7,26 @@ linkobj.go drives the go toolchain through os/exec to inspect export data
 fixedbugs/issue21317.go drives the go toolchain through os/exec to check a diagnostic
 fixedbugs/bug369.go drives the go toolchain through os/exec to compare binaries
 fixedbugs/issue9355.go drives the go toolchain through os/exec to inspect object files
-fixedbugs/bug347.go receives in a select from a channel field of a nil pointer, which must panic; pipit selects on the nil channel and blocks
-fixedbugs/issue24488.go takes a method value of a named func type, which pipit does not model
 fixedbugs/issue58300.go maps a function value's code pointer (reflect.ValueOf(f).Pointer()) back through runtime.FuncForPC; interpreted functions have no code address
 fixedbugs/issue58300b.go maps a function value's code pointer (reflect.ValueOf(f).Pointer()) back through runtime.FuncForPC; interpreted functions have no code address
-fixedbugs/issue75764.go binds a method value promoted through an embedded interface on a nil pointer, which pipit dereferences
-inline_literal.go maps a function value's code pointer (reflect.ValueOf(f).Pointer()) back through runtime.FuncForPC; interpreted functions have no code address
+inline_literal.go walks runtime.FuncForPC over the PCs from reflect.ValueOf(f).Pointer(); interpreted functions have no code address, so FuncForPC is nil at every PC and the walk never ends
 chan/select2.go measures the Go heap through runtime.ReadMemStats
 closure.go measures the Go heap through runtime.ReadMemStats
 fixedbugs/issue15277.go measures the Go heap through runtime.ReadMemStats
 fixedbugs/issue15281.go measures the Go heap through runtime.ReadMemStats
-fixedbugs/issue9110.go measures the Go heap through runtime.ReadMemStats
-deferfin.go relies on runtime.SetFinalizer or AddCleanup timing
 finprofiled.go relies on runtime.SetFinalizer or AddCleanup timing
-fixedbugs/issue24491a.go relies on runtime.SetFinalizer or AddCleanup timing
-fixedbugs/issue24491b.go relies on runtime.SetFinalizer or AddCleanup timing
+fixedbugs/issue24491a.go passes uintptr(unsafe.Pointer(p)) arguments that //go:uintptrescapes must keep alive; pipit does not honour the directive, so the strings' finalisers run while the arguments are in use
+fixedbugs/issue24491b.go waits for the finaliser of a value whose last use was a //go:uintptrescapes argument; pipit keeps a value a frame's register last held reachable until the frame returns, so the finaliser never runs
 fixedbugs/issue27518b.go relies on runtime.SetFinalizer or AddCleanup timing
 fixedbugs/issue32477.go relies on runtime.SetFinalizer or AddCleanup timing
-fixedbugs/issue45045.go relies on runtime.SetFinalizer or AddCleanup timing
+fixedbugs/issue45045.go sets finalisers on &b[0] of a []byte, interior pointers into arena byte storage that cannot carry a finaliser (the registration is dropped with a warning), so it waits for them forever
 fixedbugs/issue46725.go relies on runtime.SetFinalizer or AddCleanup timing
 fixedbugs/issue5493.go relies on runtime.SetFinalizer or AddCleanup timing
-fixedbugs/issue57823.go relies on runtime.SetFinalizer or AddCleanup timing
-gcstring.go relies on runtime.SetFinalizer or AddCleanup timing
-mallocfin.go relies on runtime.SetFinalizer or AddCleanup timing
+fixedbugs/issue57823.go sets a finaliser on unsafe.SliceData of a []byte, an interior pointer into arena byte storage that cannot carry one (the registration is dropped with a warning)
 stackobj.go relies on runtime.SetFinalizer or AddCleanup timing
 stackobj3.go relies on runtime.SetFinalizer or AddCleanup timing
-typeparam/chans.go relies on runtime.SetFinalizer or AddCleanup timing
-typeparam/orderedmap.go relies on runtime.SetFinalizer or AddCleanup timing
-uintptrescapes3.go relies on runtime.SetFinalizer or AddCleanup timing
-gcgort.go GC torture test: goroutines mutating shared data under runtime.GC and Gosched
-fixedbugs/issue4618.go measures allocations through testing.AllocsPerRun, which pipit does not model
-fixedbugs/issue4667.go measures allocations through testing.AllocsPerRun, which pipit does not model
+typeparam/chans.go TestRanger waits for the finaliser of a receiver that main's frame still holds after the goroutine using it exits; pipit keeps a frame's captured variables reachable until the frame returns
+gcgort.go starts goroutines in nested loops (64 for each of 8 x 20 modifiers, some starting more) and exceeds pipit's default limit of 10,000 concurrent goroutines; how many are live at once depends on the scheduler
+fixedbugs/issue4667.go counts allocations through testing.AllocsPerRun, which sees the interpreter's own allocations (2 where Go makes 1)
 fixedbugs/issue9862_run.go drives the go toolchain through os/exec to run a second program
-fixedbugs/bug260.go compares %p pointer text arithmetically, which depends on the host allocator layout
 fixedbugs/issue5963.go races runtime.Goexit in init against a goroutine that calls os.Exit on the deferred send; which one ends the process first is scheduler-order dependent

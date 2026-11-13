@@ -33,11 +33,11 @@ const (
 	dispatchBenchInstructionCount = 1000
 )
 
-func BenchmarkDispatchOpNopMainTier(b *testing.B) {
+func BenchmarkDispatchOpNoOperationMainTier(b *testing.B) {
 	builder := newBytecodeBuilder()
 	builder.intRegisters(1).returnInt()
 	for range dispatchBenchInstructionCount {
-		builder.Emit(isa.OpNop, 0, 0, 0)
+		builder.Emit(isa.OpNoOperation, 0, 0, 0)
 	}
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	compiled := builder.build()
@@ -51,11 +51,11 @@ func BenchmarkDispatchOpNopMainTier(b *testing.B) {
 	}
 }
 
-func BenchmarkDispatchOpNopTier3Form(b *testing.B) {
+func BenchmarkDispatchOpNoOperationTier3Form(b *testing.B) {
 	builder := newBytecodeBuilder()
 	builder.intRegisters(1).returnInt()
 	for range dispatchBenchInstructionCount {
-		builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DrillTier3), uint8(isa.SubOpTier3Nop))
+		builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DrillTier3), uint8(isa.SubOpTier3NoOperation))
 	}
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	compiled := builder.build()
@@ -69,15 +69,15 @@ func BenchmarkDispatchOpNopTier3Form(b *testing.B) {
 	}
 }
 
-func BenchmarkDispatchTier0SliceGetIntDirect(b *testing.B) {
+func BenchmarkDispatchTier0GetSliceInt64Element(b *testing.B) {
 	builder := newBytecodeBuilder()
 	builder.intRegisters(4).sliceIntRegisters(1).returnInt()
-	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), 1, 8)
-	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpMakeSliceInt), 0, 1)
-	builder.Emit(isa.OpExt, 1, 0, 0)
-	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), 2, 3)
+	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), 1, 8)
+	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpMakeSliceInt64), 0, 1)
+	builder.Emit(isa.OpExtension, 1, 0, 0)
+	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), 2, 3)
 	for range dispatchBenchInstructionCount {
-		builder.Emit(isa.OpSliceGetIntDirect, 3, 0, 2)
+		builder.Emit(isa.OpGetSliceInt64Element, 3, 0, 2)
 	}
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	compiled := builder.build()
@@ -91,13 +91,13 @@ func BenchmarkDispatchTier0SliceGetIntDirect(b *testing.B) {
 	}
 }
 
-func BenchmarkDispatchTier0AddInt(b *testing.B) {
+func BenchmarkDispatchTier0AddInt64(b *testing.B) {
 	builder := newBytecodeBuilder()
 	builder.intRegisters(3).returnInt()
-	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), 1, 1)
-	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), 2, 1)
+	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), 1, 1)
+	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), 2, 1)
 	for range dispatchBenchInstructionCount {
-		builder.Emit(isa.OpAddInt, 1, 1, 2)
+		builder.Emit(isa.OpAddInt64, 1, 1, 2)
 	}
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	compiled := builder.build()

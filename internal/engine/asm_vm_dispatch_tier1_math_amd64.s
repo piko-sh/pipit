@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerSubOpMathSin sets floats[B] = math.Sin(floats[C]) via asmCallMathSin.
-TEXT ·handlerSubOpMathSin(SB), NOSPLIT|NOFRAME, $0
+// handlerMathSin sets floats[B] = math.Sin(floats[C]) via asmCallMathSin.
+TEXT ·handlerMathSin(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -50,8 +50,8 @@ TEXT ·handlerSubOpMathSin(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpMathCos sets floats[B] = math.Cos(floats[C]) via asmCallMathCos.
-TEXT ·handlerSubOpMathCos(SB), NOSPLIT|NOFRAME, $0
+// handlerMathCos sets floats[B] = math.Cos(floats[C]) via asmCallMathCos.
+TEXT ·handlerMathCos(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -75,8 +75,8 @@ TEXT ·handlerSubOpMathCos(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpMathExp sets floats[B] = math.Exp(floats[C]) via asmCallMathExp.
-TEXT ·handlerSubOpMathExp(SB), NOSPLIT|NOFRAME, $0
+// handlerMathExp sets floats[B] = math.Exp(floats[C]) via asmCallMathExp.
+TEXT ·handlerMathExp(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -100,8 +100,8 @@ TEXT ·handlerSubOpMathExp(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpMathTan sets floats[B] = math.Tan(floats[C]) via asmCallMathTan.
-TEXT ·handlerSubOpMathTan(SB), NOSPLIT|NOFRAME, $0
+// handlerMathTan sets floats[B] = math.Tan(floats[C]) via asmCallMathTan.
+TEXT ·handlerMathTan(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -125,8 +125,8 @@ TEXT ·handlerSubOpMathTan(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpMathMod sets floats[B] = math.Mod(floats[C], floats[ext.A]) via asmCallMathMod.
-TEXT ·handlerSubOpMathMod(SB), NOSPLIT|NOFRAME, $0
+// handlerMathMod sets floats[B] = math.Mod(floats[C], floats[ext.A]) via asmCallMathMod.
+TEXT ·handlerMathMod(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX

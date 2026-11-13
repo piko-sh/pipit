@@ -21,7 +21,6 @@
 package bench
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -92,7 +91,7 @@ recurse(1000)`,
 			b.ReportAllocs()
 			for b.Loop() {
 				service := app.NewService()
-				_, err := service.Eval(context.Background(), d.code)
+				_, err := service.Eval(b.Context(), d.code)
 				if err != nil {
 					require.NoError(b, err)
 				}

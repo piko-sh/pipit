@@ -23,21 +23,21 @@ import (
 )
 
 const (
-	// goSymbolIncStructFieldInt names the Go trampoline target the inc-int-struct-field
-	// handler CALLs.
-	goSymbolIncStructFieldInt = "·asmCallIncStructFieldInt(SB)"
+	// goSymbolIncrementStructFieldInt64 names the Go trampoline target the
+	// inc-int-struct-field handler CALLs.
+	goSymbolIncrementStructFieldInt64 = "·asmCallIncrementStructFieldInt64(SB)"
 
-	// goSymbolDecStructFieldInt names the Go trampoline target the dec-int-struct-field
-	// handler CALLs.
-	goSymbolDecStructFieldInt = "·asmCallDecStructFieldInt(SB)"
+	// goSymbolDecrementStructFieldInt64 names the Go trampoline target the
+	// dec-int-struct-field handler CALLs.
+	goSymbolDecrementStructFieldInt64 = "·asmCallDecrementStructFieldInt64(SB)"
 
-	// goSymbolIncStructFieldUint names the Go trampoline target the inc-uint-struct-field
-	// handler CALLs.
-	goSymbolIncStructFieldUint = "·asmCallIncStructFieldUint(SB)"
+	// goSymbolIncrementStructFieldUint64 names the Go trampoline target the
+	// inc-uint-struct-field handler CALLs.
+	goSymbolIncrementStructFieldUint64 = "·asmCallIncrementStructFieldUint64(SB)"
 
-	// goSymbolDecStructFieldUint names the Go trampoline target the dec-uint-struct-field
-	// handler CALLs.
-	goSymbolDecStructFieldUint = "·asmCallDecStructFieldUint(SB)"
+	// goSymbolDecrementStructFieldUint64 names the Go trampoline target the
+	// dec-uint-struct-field handler CALLs.
+	goSymbolDecrementStructFieldUint64 = "·asmCallDecrementStructFieldUint64(SB)"
 )
 
 // tier1StructFieldIncDecHandlers returns the four single-level handler definitions for
@@ -46,53 +46,53 @@ const (
 // Returns the inc/dec int and uint struct-field handler definitions.
 func tier1StructFieldIncDecHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		handlerSubOpIncStructFieldInt(),
-		handlerSubOpDecStructFieldInt(),
-		handlerSubOpIncStructFieldUint(),
-		handlerSubOpDecStructFieldUint(),
+		handlerIncrementStructFieldInt64(),
+		handlerDecrementStructFieldInt64(),
+		handlerIncrementStructFieldUint64(),
+		handlerDecrementStructFieldUint64(),
 	}
 }
 
-// handlerSubOpIncStructFieldInt builds the tier-1 inc-int-struct-field handler.
+// handlerIncrementStructFieldInt64 builds the tier-1 inc-int-struct-field handler.
 //
-// Returns the handler definition that calls asmCallIncStructFieldInt.
-func handlerSubOpIncStructFieldInt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+// Returns the handler definition that calls asmCallIncrementStructFieldInt64.
+func handlerIncrementStructFieldInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return inlineGoTwoOperandShim(
-		"handlerSubOpIncStructFieldInt",
-		"handlerSubOpIncStructFieldInt increments the int field on the struct at ints[B] by one via asmCallIncStructFieldInt.",
-		goSymbolIncStructFieldInt,
+		"handlerIncrementStructFieldInt64",
+		"handlerIncrementStructFieldInt64 increments the int field on the struct at ints[B] by one via asmCallIncrementStructFieldInt64.",
+		goSymbolIncrementStructFieldInt64,
 	)
 }
 
-// handlerSubOpDecStructFieldInt builds the tier-1 dec-int-struct-field handler.
+// handlerDecrementStructFieldInt64 builds the tier-1 dec-int-struct-field handler.
 //
-// Returns the handler definition that calls asmCallDecStructFieldInt.
-func handlerSubOpDecStructFieldInt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+// Returns the handler definition that calls asmCallDecrementStructFieldInt64.
+func handlerDecrementStructFieldInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return inlineGoTwoOperandShim(
-		"handlerSubOpDecStructFieldInt",
-		"handlerSubOpDecStructFieldInt decrements the int field on the struct at ints[B] by one via asmCallDecStructFieldInt.",
-		goSymbolDecStructFieldInt,
+		"handlerDecrementStructFieldInt64",
+		"handlerDecrementStructFieldInt64 decrements the int field on the struct at ints[B] by one via asmCallDecrementStructFieldInt64.",
+		goSymbolDecrementStructFieldInt64,
 	)
 }
 
-// handlerSubOpIncStructFieldUint builds the tier-1 inc-uint-struct-field handler.
+// handlerIncrementStructFieldUint64 builds the tier-1 inc-uint-struct-field handler.
 //
-// Returns the handler definition that calls asmCallIncStructFieldUint.
-func handlerSubOpIncStructFieldUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+// Returns the handler definition that calls asmCallIncrementStructFieldUint64.
+func handlerIncrementStructFieldUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return inlineGoTwoOperandShim(
-		"handlerSubOpIncStructFieldUint",
-		"handlerSubOpIncStructFieldUint increments the uint field on the struct at ints[B] by one via asmCallIncStructFieldUint.",
-		goSymbolIncStructFieldUint,
+		"handlerIncrementStructFieldUint64",
+		"handlerIncrementStructFieldUint64 increments the uint field on the struct at ints[B] by one via asmCallIncrementStructFieldUint64.",
+		goSymbolIncrementStructFieldUint64,
 	)
 }
 
-// handlerSubOpDecStructFieldUint builds the tier-1 dec-uint-struct-field handler.
+// handlerDecrementStructFieldUint64 builds the tier-1 dec-uint-struct-field handler.
 //
-// Returns the handler definition that calls asmCallDecStructFieldUint.
-func handlerSubOpDecStructFieldUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+// Returns the handler definition that calls asmCallDecrementStructFieldUint64.
+func handlerDecrementStructFieldUint64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return inlineGoTwoOperandShim(
-		"handlerSubOpDecStructFieldUint",
-		"handlerSubOpDecStructFieldUint single-level shim wrapping asmCallDecStructFieldUint.",
-		goSymbolDecStructFieldUint,
+		"handlerDecrementStructFieldUint64",
+		"handlerDecrementStructFieldUint64 single-level shim wrapping asmCallDecrementStructFieldUint64.",
+		goSymbolDecrementStructFieldUint64,
 	)
 }

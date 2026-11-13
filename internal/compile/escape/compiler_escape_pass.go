@@ -103,168 +103,241 @@ var (
 
 	// tier1SafeComplexOps carries complex/float-bank complex-number sub-ops.
 	tier1SafeComplexOps = []isa.SubOpcode{
-		isa.SubOpRealComplex, isa.SubOpImagComplex, isa.SubOpNegComplex, isa.SubOpMoveComplex,
+		isa.SubOpRealPartComplex128, isa.SubOpImaginaryPartComplex128, isa.SubOpNegateComplex128, isa.SubOpMoveComplex128,
 	}
 
 	// tier1SafeTypedSliceMakes carries typed-slice constructors that write to the
 	// typed-slice bank from typed int args.
 	tier1SafeTypedSliceMakes = []isa.SubOpcode{
-		isa.SubOpMakeSliceInt, isa.SubOpMakeSliceFloat, isa.SubOpMakeSliceString,
-		isa.SubOpMakeSliceBool, isa.SubOpMakeSliceUint, isa.SubOpMakeSliceByte, isa.SubOpMakeSliceHeap,
+		isa.SubOpMakeSliceInt64, isa.SubOpMakeSliceFloat64, isa.SubOpMakeSliceString,
+		isa.SubOpMakeSliceBool, isa.SubOpMakeSliceUint64, isa.SubOpMakeSliceByte, isa.SubOpMakeSliceHeap,
 	}
 
 	// tier1SafeTypedSliceLengths carries typed-slice length and capacity sub-ops.
 	tier1SafeTypedSliceLengths = []isa.SubOpcode{
-		isa.SubOpLenSliceIntDirect, isa.SubOpLenSliceFloatDirect, isa.SubOpLenSliceStringDirect,
-		isa.SubOpLenSliceBoolDirect, isa.SubOpLenSliceUintDirect, isa.SubOpLenSliceByteDirect,
-		isa.SubOpCapSliceIntDirect, isa.SubOpCapSliceFloatDirect, isa.SubOpCapSliceStringDirect,
-		isa.SubOpCapSliceBoolDirect, isa.SubOpCapSliceUintDirect, isa.SubOpCapSliceByteDirect,
+		isa.SubOpLengthSliceInt64, isa.SubOpLengthSliceFloat64, isa.SubOpLengthSliceString,
+		isa.SubOpLengthSliceBool, isa.SubOpLengthSliceUint64, isa.SubOpLengthSliceByte,
+		isa.SubOpCapacitySliceInt64, isa.SubOpCapacitySliceFloat64, isa.SubOpCapacitySliceString,
+		isa.SubOpCapacitySliceBool, isa.SubOpCapacitySliceUint64, isa.SubOpCapacitySliceByte,
 	}
 
 	// tier1SafeTypedSliceGetSet carries typed-slice get/set sub-ops.
 	tier1SafeTypedSliceGetSet = []isa.SubOpcode{
-		isa.SubOpSliceGetFloatDirect, isa.SubOpSliceSetFloatDirect,
-		isa.SubOpSliceGetStringDirect, isa.SubOpSliceSetStringDirect,
-		isa.SubOpSliceGetBoolDirect, isa.SubOpSliceSetBoolDirect,
-		isa.SubOpSliceGetUintDirect, isa.SubOpSliceSetUintDirect,
-		isa.SubOpSliceGetByteDirect, isa.SubOpSliceSetByteDirect,
+		isa.SubOpGetSliceFloat64Element, isa.SubOpSetSliceFloat64Element,
+		isa.SubOpGetSliceStringElement, isa.SubOpSetSliceStringElement,
+		isa.SubOpGetSliceBoolElement, isa.SubOpSetSliceBoolElement,
+		isa.SubOpGetSliceUint64Element, isa.SubOpSetSliceUint64Element,
+		isa.SubOpGetSliceByteElement, isa.SubOpSetSliceByteElement, isa.SubOpSetSliceByteElementRun,
+		isa.SubOpGetSliceByteElementInt64,
 	}
 
 	// tier1SafeByteSliceOps carries byte-slice helpers.
 	tier1SafeByteSliceOps = []isa.SubOpcode{
-		isa.SubOpSliceByteSlice, isa.SubOpSliceByteToString,
+		isa.SubOpSliceSliceByte, isa.SubOpConvertSliceByteToString,
 	}
 
 	// tier1SafeTypedBankMoves carries typed-bank-only move sub-ops that never touch general
 	// registers.
 	tier1SafeTypedBankMoves = []isa.SubOpcode{
-		isa.SubOpMoveInt, isa.SubOpMoveFloat, isa.SubOpMoveString, isa.SubOpMoveBool, isa.SubOpMoveUint,
+		isa.SubOpMoveInt64, isa.SubOpMoveFloat64, isa.SubOpMoveString, isa.SubOpMoveBool, isa.SubOpMoveUint64,
 	}
 
 	// tier1SafeTypedBankUnary carries typed-bank unary / conversion sub-ops.
 	tier1SafeTypedBankUnary = []isa.SubOpcode{
-		isa.SubOpNegInt, isa.SubOpNegFloat, isa.SubOpBitNot, isa.SubOpBitNotUint,
-		isa.SubOpIntToFloat, isa.SubOpFloatToInt, isa.SubOpIntToUint, isa.SubOpUintToInt,
-		isa.SubOpUintToFloat, isa.SubOpFloatToUint,
-		isa.SubOpNot, isa.SubOpBoolToInt, isa.SubOpIntToBool,
+		isa.SubOpNegateInt64, isa.SubOpNegateFloat64, isa.SubOpBitNotInt64, isa.SubOpBitNotUint64,
+		isa.SubOpConvertInt64ToFloat64, isa.SubOpConvertFloat64ToInt64, isa.SubOpConvertInt64ToUint64, isa.SubOpConvertUint64ToInt64,
+		isa.SubOpConvertUint64ToFloat64, isa.SubOpConvertFloat64ToUint64,
+		isa.SubOpNotInt64, isa.SubOpConvertBoolToInt64, isa.SubOpConvertInt64ToBool,
 	}
 
 	// tier1SafeStringMisc carries string length / construction sub-ops in typed banks.
 	tier1SafeStringMisc = []isa.SubOpcode{
-		isa.SubOpLenString, isa.SubOpRuneToString,
+		isa.SubOpLengthString, isa.SubOpConvertRuneToString,
 	}
 
 	// tier1SafeStringCaseTrim carries string case / trim sub-ops in typed banks.
 	tier1SafeStringCaseTrim = []isa.SubOpcode{
-		isa.SubOpStrToUpper, isa.SubOpStrToLower, isa.SubOpStrTrimSpace,
+		isa.SubOpStringsToUpper, isa.SubOpStringsToLower, isa.SubOpStringsTrimSpace,
 	}
 
 	// tier1SafeConstantLoadsAndJump carries the constant-load and unconditional jump sub-ops
 	// (no general-bank effect).
 	tier1SafeConstantLoadsAndJump = []isa.SubOpcode{
-		isa.SubOpLoadIntConstSmall, isa.SubOpLoadBool, isa.SubOpLoadZero,
-		isa.SubOpLoadUintConstSmall, isa.SubOpLoadBoolConst, isa.SubOpJump,
+		isa.SubOpLoadInt64Immediate, isa.SubOpLoadBoolImmediateAsInt64, isa.SubOpLoadZero,
+		isa.SubOpLoadUint64Immediate, isa.SubOpLoadBoolConstant, isa.SubOpJump,
 	}
 
 	// tier1SafeGeneralInspection carries sub-ops that read a general register only to
 	// inspect it or that fill a register from a global, neither of which moves a pointer
 	// anywhere that outlives the frame.
 	tier1SafeGeneralInspection = []isa.SubOpcode{
-		isa.SubOpEqInterfaceNil, isa.SubOpNeInterfaceNil, isa.SubOpGetGlobalWide,
+		isa.SubOpEqualInterfaceNil, isa.SubOpNotEqualInterfaceNil, isa.SubOpGetGlobalWide,
 	}
 
 	// tier1SafeFusedJumpArith carries the int/uint-bank fused jump-arith sub-ops. Listed so
 	// the conservative operand taint test does not misread a constant-pool index as a
 	// register number.
 	tier1SafeFusedJumpArith = []isa.SubOpcode{
-		isa.SubOpIncIntJumpLt, isa.SubOpLenStringLtJumpFalse,
-		isa.SubOpEqUintConstJumpFalse, isa.SubOpEqStringConstJumpFalse,
-		isa.SubOpLtIntJumpFalse, isa.SubOpLeIntJumpFalse,
-		isa.SubOpGtIntJumpFalse, isa.SubOpGeIntJumpFalse,
-		isa.SubOpEqIntJumpFalse, isa.SubOpNeIntJumpFalse,
-		isa.SubOpLeIntConstJumpFalse, isa.SubOpLtIntConstJumpFalse,
-		isa.SubOpEqIntConstJumpFalse, isa.SubOpEqIntConstJumpTrue,
-		isa.SubOpGeIntConstJumpFalse, isa.SubOpGtIntConstJumpFalse,
+		isa.SubOpIncrementInt64ThenJumpIfLessThan, isa.SubOpIncrementInt64ThenJumpIfLessThanConstant,
+		isa.SubOpIncrementInt64ThenJumpIfLessOrEqual, isa.SubOpEqualUint64ThenJumpIfFalse, isa.SubOpNotEqualUint64ThenJumpIfFalse,
+		isa.SubOpLessThanLengthStringThenJumpIfFalse,
+		isa.SubOpEqualUint64ImmediateThenJumpIfFalse, isa.SubOpEqualStringConstantThenJumpIfFalse,
+		isa.SubOpLessThanInt64ThenJumpIfFalse, isa.SubOpLessOrEqualInt64ThenJumpIfFalse,
+		isa.SubOpGreaterThanInt64ThenJumpIfFalse, isa.SubOpGreaterOrEqualInt64ThenJumpIfFalse,
+		isa.SubOpEqualInt64ThenJumpIfFalse, isa.SubOpNotEqualInt64ThenJumpIfFalse,
+		isa.SubOpLessOrEqualInt64ConstantThenJumpIfFalse, isa.SubOpLessThanInt64ConstantThenJumpIfFalse,
+		isa.SubOpEqualInt64ConstantThenJumpIfFalse, isa.SubOpEqualInt64ConstantThenJumpIfTrue,
+		isa.SubOpGreaterOrEqualInt64ConstantThenJumpIfFalse, isa.SubOpGreaterThanInt64ConstantThenJumpIfFalse,
 	}
 
 	// tier1SafeUintArithConst carries uint-bank const-fused arithmetic sub-ops.
 	tier1SafeUintArithConst = []isa.SubOpcode{
-		isa.SubOpAddUintConst, isa.SubOpSubUintConst, isa.SubOpBitAndUintConst,
+		isa.SubOpAddUint64Constant, isa.SubOpSubtractUint64Constant, isa.SubOpBitAndUint64Constant,
+		isa.SubOpAddUint32Constant, isa.SubOpSubtractUint32Constant,
 	}
 
 	// tier1SafeStructFieldGet carries the typed-output struct-field get sub-ops. The
 	// receiver pointer is dereferenced for the field load (not propagated); the loaded value
 	// lands in a typed bank that cannot carry pointer-ness.
 	tier1SafeStructFieldGet = []isa.SubOpcode{
-		isa.SubOpGetStructFieldInt, isa.SubOpGetStructFieldUint,
-		isa.SubOpGetStructFieldFloat, isa.SubOpGetStructFieldBool,
-		isa.SubOpGetStructFieldString,
+		isa.SubOpGetStructFieldInt64Wide, isa.SubOpGetStructFieldUint64Wide,
+		isa.SubOpGetStructFieldFloat64Wide, isa.SubOpGetStructFieldBoolWide,
+		isa.SubOpGetStructFieldStringWide,
 	}
 
 	// tier1SafeStructFieldSet carries the typed-input struct-field set sub-ops. Same logic
 	// as the get variants: the pointer receiver is dereferenced, and the typed value cannot
 	// carry pointer-ness.
 	tier1SafeStructFieldSet = []isa.SubOpcode{
-		isa.SubOpSetStructFieldInt, isa.SubOpSetStructFieldUint,
-		isa.SubOpSetStructFieldFloat, isa.SubOpSetStructFieldBool,
-		isa.SubOpSetStructFieldString,
+		isa.SubOpSetStructFieldInt64Wide, isa.SubOpSetStructFieldUint64Wide,
+		isa.SubOpSetStructFieldFloat64Wide, isa.SubOpSetStructFieldBoolWide,
+		isa.SubOpSetStructFieldStringWide,
 	}
 
 	// tier1SafeStructFieldIncDec carries in-place increment/decrement sub-ops through a
 	// struct receiver (no value flow at all - the field is both read and written in-place).
 	tier1SafeStructFieldIncDec = []isa.SubOpcode{
-		isa.SubOpIncStructFieldInt, isa.SubOpDecStructFieldInt,
-		isa.SubOpIncStructFieldUint, isa.SubOpDecStructFieldUint,
+		isa.SubOpIncrementStructFieldInt64, isa.SubOpDecrementStructFieldInt64,
+		isa.SubOpIncrementStructFieldUint64, isa.SubOpDecrementStructFieldUint64,
 	}
 
 	// tier1SafeAppendTypedValue carries append-typed-value sub-ops. The general slice
 	// receiver is dereferenced; the typed value cannot carry pointer-ness.
 	tier1SafeAppendTypedValue = []isa.SubOpcode{
-		isa.SubOpAppendInt, isa.SubOpAppendString, isa.SubOpAppendFloat,
-		isa.SubOpAppendBool, isa.SubOpAppendUint,
+		isa.SubOpAppendInt64Wide, isa.SubOpAppendStringWide, isa.SubOpAppendFloat64Wide,
+		isa.SubOpAppendBoolWide, isa.SubOpAppendUint64Wide,
 	}
 
 	// tier1SafeStarAppendByte carries *general[B] = append(*general[B], uints[C]) sub-ops.
 	// The pointer is dereferenced (not escaped) and the appended value comes from the uint
 	// bank.
 	tier1SafeStarAppendByte = []isa.SubOpcode{
-		isa.SubOpStarAppendByteFast, isa.SubOpStarAppendByteSpread,
+		isa.SubOpAppendByteViaPointer, isa.SubOpAppendSpreadByteViaPointer,
 	}
 
 	// tier1SafeReadOnlyInspection carries len/cap/bytes-to-string sub-ops that read general
 	// registers without propagating their pointer value.
 	tier1SafeReadOnlyInspection = []isa.SubOpcode{
-		isa.SubOpLen, isa.SubOpCap, isa.SubOpBytesToString,
+		isa.SubOpLengthGeneral, isa.SubOpCapacityGeneral, isa.SubOpConvertBytesToString,
 	}
 
 	// tier1SafeCrossBankMoves carries the unbox/box cross-bank moves. Both are read/value
 	// operations that cannot let a tainted general pointer reach a heap-anchored slot.
 	tier1SafeCrossBankMoves = []isa.SubOpcode{
-		isa.SubOpMoveGeneralToInt, isa.SubOpMoveIntToGeneral,
-		isa.SubOpMoveGeneralToFloat, isa.SubOpMoveFloatToGeneral,
-		isa.SubOpMoveGeneralToString, isa.SubOpMoveStringToGeneral,
+		isa.SubOpUnboxInt64, isa.SubOpBoxInt64,
+		isa.SubOpUnboxFloat64, isa.SubOpBoxFloat64,
+		isa.SubOpUnboxString, isa.SubOpBoxString,
 	}
 )
 
 // opcodePublishesGeneral lists the opcodes that do move a general-bank register somewhere
 // outliving the frame, with the sink that makes each one an escape.
 var opcodePublishesGeneral = map[int]string{
-	isa.FlatIndexOfSub1(isa.SubOpWriteSharedCell): "stores into a heap-anchored cell shared with closures",
+	isa.FlatIndexOfSub1(isa.SubOpSetSharedCell): "stores into a heap-anchored cell shared with closures",
 }
 
 // opcodeCannotPublishGeneral lists the opcodes that cannot move a general-bank register
 // anywhere that outlives the frame. Every other opcode reaching escapesAtUnclassifiedOp()
 // without an operand shape is treated as an escape.
 var opcodeCannotPublishGeneral = map[int]string{
-	isa.FlatIndexOfSub1(isa.SubOpRangeInit):                "reads the collection in C to build the iterator in B; publishes nothing",
-	isa.FlatIndexOfSub1(isa.SubOpRangeNext):                "advances the iterator in B; C is a done flag, not a general register",
-	isa.FlatIndexOfSub1(isa.SubOpResetSharedCell):          "clears the cell, storing no value into it",
-	isa.FlatIndexOfSub2(isa.SubOpTier2SyncClosureUpvalues): "copies upvalue cells into frame registers, which moves values inward",
-	isa.FlatIndexOfSub3(isa.SubOpTier3SyncIIFEUpvalues):    "copies the returned callee's upvalue cells into frame registers, which moves values inward",
+	isa.FlatIndexOfSub1(isa.SubOpRangeInitialise):                          "reads the collection in C to build the iterator in B; publishes nothing",
+	isa.FlatIndexOfSub1(isa.SubOpRangeNext):                                "advances the iterator in B; C is a done flag, not a general register",
+	isa.FlatIndexOfSub1(isa.SubOpResetSharedCell):                          "clears the cell, storing no value into it",
+	isa.FlatIndexOfSub2(isa.SubOpTier2SynchroniseClosureCapturedVariables): "copies upvalue cells into frame registers, which moves values inward",
+	isa.FlatIndexOfSub3(isa.SubOpTier3SynchroniseIIFECapturedVariables):    "copies the returned callee's upvalue cells into frame registers, which moves values inward",
+}
+
+// PassOptions selects the optional work of RunEscapeAnalysisPassWithOptions().
+type PassOptions struct {
+	// ArenaPromotion enables the arena annotations (ArenaSafeAllocPCs,
+	// FieldStoreArenaSafePCs and the in-place header reuse marks).
+	ArenaPromotion bool
+}
+
+// escapeWalk is the taint state of one linear escape scan.
+type escapeWalk struct {
+	// compiledFunction is the function being scanned.
+	compiledFunction *program.CompiledFunction
+
+	// jumpTargets marks every PC that is the target of a branch.
+	jumpTargets map[int]bool
+
+	// tainted tracks the registers holding the value at the current instruction.
+	tainted [isa.GeneralRegisterBankSize]bool
+
+	// ever tracks every register that has held the value at any point during the scan.
+	ever [isa.GeneralRegisterBankSize]bool
+}
+
+// step classifies one instruction and updates the tainted registers.
+//
+// Takes pc (int) which is the instruction's program counter.
+//
+// Returns true when the instruction may escape the value.
+func (w *escapeWalk) step(pc int) bool {
+	inst := w.compiledFunction.Body[pc]
+	if isa.InstrIsTier1SubOp(inst, isa.SubOpRangeInitialise) {
+		if w.tainted[inst.C] {
+			w.hold(inst.B)
+		}
+		return false
+	}
+	if inst.Op == isa.OpMoveGeneral {
+		w.tainted[inst.A] = w.tainted[inst.B]
+		if w.tainted[inst.B] {
+			w.hold(inst.A)
+		}
+		return false
+	}
+	before := w.tainted
+	if escapesAtInstruction(w.compiledFunction, pc, &w.tainted) {
+		return true
+	}
+	var writes [isa.NumInstructionOperands]uint8
+	for _, register := range appendDefiniteGeneralWrites(writes[:0], w.compiledFunction, inst) {
+		if w.tainted[register] && !before[register] {
+			continue
+		}
+		w.tainted[register] = false
+	}
+	for register, holds := range w.tainted {
+		if holds {
+			w.ever[register] = true
+		}
+	}
+	return false
+}
+
+// hold marks register as holding the value now and as having held it.
+//
+// Takes register (uint8) which is the general register.
+func (w *escapeWalk) hold(register uint8) {
+	w.tainted[register] = true
+	w.ever[register] = true
 }
 
 // RunEscapeAnalysisPass computes parameterEscapes for every reachable function and
-// arenaSafeAllocPCs for every isa.OpAllocIndirect site whose output is non-escaping.
+// arenaSafeAllocPCs for every isa.OpAllocateIndirect site whose output is non-escaping.
 //
 // Takes root (*CompiledFunction) which is the program's top-level compiled function whose
 // nested functions are walked.
@@ -274,20 +347,12 @@ func RunEscapeAnalysisPass(ctx context.Context, root *program.CompiledFunction) 
 	return RunEscapeAnalysisPassWithOptions(ctx, root, PassOptions{ArenaPromotion: true})
 }
 
-// PassOptions selects the optional work of RunEscapeAnalysisPassWithOptions().
-type PassOptions struct {
-	// ArenaPromotion enables the arena annotations (ArenaSafeAllocPCs,
-	// FieldStoreArenaSafePCs and the in-place header reuse marks). The parameter-escape
-	// fixpoint always runs because later passes read parameterEscapes.
-	ArenaPromotion bool
-}
-
 // RunEscapeAnalysisPassWithOptions is RunEscapeAnalysisPass() with the arena annotations
 // optional.
 //
 // Takes root (*CompiledFunction) which is the program's top-level compiled function whose
 // nested functions are walked.
-// Takes options (PassOptions) which selects the annotations; with ArenaPromotion off
+// Takes options (PassOptions) which selects the annotations. With ArenaPromotion off
 // every allocation takes the heap path at run time.
 //
 // Returns error when the context is cancelled before completion.
@@ -303,7 +368,9 @@ func RunEscapeAnalysisPassWithOptions(ctx context.Context, root *program.Compile
 		return nil
 	}
 	initialiseParameterEscapes(all)
-	runEscapeFixpoint(all)
+	if err := runEscapeFixpoint(ctx, all); err != nil {
+		return err
+	}
 	if !options.ArenaPromotion {
 		return nil
 	}
@@ -327,7 +394,7 @@ func RunEscapeAnalysisPassWithOptions(ctx context.Context, root *program.Compile
 //
 // Returns true for the in-place append family and the plain single-element append.
 func IsSameSlotAppendOp(op isa.Opcode) bool {
-	return op == isa.OpAppendInPlace || op == isa.OpAppendByteFastInPlace || op == isa.OpAppendSpreadInPlace || op == isa.OpAppend || op == isa.OpAppendStructFast
+	return op == isa.OpAppendInPlace || op == isa.OpAppendByteInPlace || op == isa.OpAppendSpreadInPlace || op == isa.OpAppend || op == isa.OpAppendStruct
 }
 
 // AnalyseGeneralRegisterAliasFree reports whether the general register slot holds the
@@ -372,21 +439,28 @@ func initialiseParameterEscapes(functions []*program.CompiledFunction) {
 }
 
 // runEscapeFixpoint runs the bounded monotonic fixpoint that demotes general-bank
-// parameters to "escapes" when analyseParameterEscape reports any unmodelled use. Loops
-// up to maxEscapeFixpointIter passes.
+// parameters to "escapes" when analyseParameterEscape reports any unmodelled use.
 //
 // If the fixpoint does not converge within the cap, forceAllParametersEscaping marks all
 // parameters as escaping to prevent unsound arena allocations.
 //
 // Takes functions ([]*CompiledFunction) which are the reachable compiled functions whose
 // parameterEscapes are computed.
-func runEscapeFixpoint(functions []*program.CompiledFunction) {
+//
+// Returns error when cancellation stops the fixpoint, in which case every parameter is
+// left escaping, as when it does not converge.
+func runEscapeFixpoint(ctx context.Context, functions []*program.CompiledFunction) error {
 	for range maxEscapeFixpointIter {
+		if err := ctx.Err(); err != nil {
+			forceAllParametersEscaping(functions)
+			return fmt.Errorf("runEscapeFixpoint cancelled: %w", err)
+		}
 		if !classifyEscapingParameters(functions) {
-			return
+			return nil
 		}
 	}
 	forceAllParametersEscaping(functions)
+	return nil
 }
 
 // forceAllParametersEscaping marks every general-bank parameter of every function as
@@ -529,9 +603,29 @@ func analyseGeneralRegisterEscapeRange(compiledFunction *program.CompiledFunctio
 func analyseGeneralRegisterEscapeSeeded(
 	compiledFunction *program.CompiledFunction, seed *[isa.GeneralRegisterBankSize]bool, startPC, endPC int,
 ) (escapes bool, ever [isa.GeneralRegisterBankSize]bool) {
+	return analyseGeneralRegisterEscapeWithTargets(compiledFunction, program.JumpTargetsOf(compiledFunction.Body), seed, startPC, endPC)
+}
+
+// analyseGeneralRegisterEscapeWithTargets is analyseGeneralRegisterEscapeSeeded with the
+// body's jump targets already computed, for callers that walk one body many times.
+//
+// Takes compiledFunction (*CompiledFunction) whose body is walked.
+// Takes jumpTargets (map[int]bool) which is program.JumpTargetsOf of the body; it is
+// read, never written.
+// Takes seed (*[isa.GeneralRegisterBankSize]bool) which marks the registers holding the
+// value on entry; it is read, never written.
+// Takes startPC (int) which is the first instruction inspected.
+// Takes endPC (int) which is the instruction after the last one inspected.
+//
+// Returns escapes (bool) which is true when any use may escape.
+// Returns ever ([isa.GeneralRegisterBankSize]bool) which marks every register that held
+// the value at some point of the walk, seed included.
+func analyseGeneralRegisterEscapeWithTargets(
+	compiledFunction *program.CompiledFunction, jumpTargets map[int]bool, seed *[isa.GeneralRegisterBankSize]bool, startPC, endPC int,
+) (escapes bool, ever [isa.GeneralRegisterBankSize]bool) {
 	walk := escapeWalk{
 		compiledFunction: compiledFunction,
-		jumpTargets:      program.JumpTargetsOf(compiledFunction.Body),
+		jumpTargets:      jumpTargets,
 		tainted:          *seed,
 		ever:             *seed,
 	}
@@ -546,88 +640,25 @@ func analyseGeneralRegisterEscapeSeeded(
 	return false, walk.ever
 }
 
-// escapeWalk is the taint state of one linear escape scan: tainted is the set of
-// registers holding the value at the current instruction, ever the set that has held it
-// anywhere in the scan so far, which a jump target restores.
-type escapeWalk struct {
-	// compiledFunction is the function being scanned.
-	compiledFunction *program.CompiledFunction
-
-	// jumpTargets marks every PC that is the target of a branch.
-	jumpTargets map[int]bool
-
-	// tainted tracks the registers holding the value at the current instruction.
-	tainted [isa.GeneralRegisterBankSize]bool
-
-	// ever tracks every register that has held the value at any point during the scan.
-	ever [isa.GeneralRegisterBankSize]bool
-}
-
-// step classifies the instruction at pc: copies move the taint, every other instruction
-// is checked for an escape with the current taint and then kills the registers it
-// definitely overwrites.
+// appendDefiniteGeneralWrites appends the general registers inst overwrites
+// unconditionally: a call's plain general results, read through its call site, or the
+// general-role operands the shape table marks as written for a described operation
+// without opaque writes. Anything the table cannot pin down writes nothing here, which
+// only keeps registers tainted longer.
 //
-// Takes pc (int) which is the instruction's program counter.
-//
-// Returns true when the instruction may escape the value.
-func (w *escapeWalk) step(pc int) bool {
-	inst := w.compiledFunction.Body[pc]
-	if isa.InstrIsTier1SubOp(inst, isa.SubOpRangeInit) {
-		if w.tainted[inst.C] {
-			w.hold(inst.B)
-		}
-		return false
-	}
-	if inst.Op == isa.OpMoveGeneral {
-		w.tainted[inst.A] = w.tainted[inst.B]
-		if w.tainted[inst.B] {
-			w.hold(inst.A)
-		}
-		return false
-	}
-	before := w.tainted
-	if escapesAtInstruction(w.compiledFunction, pc, &w.tainted) {
-		return true
-	}
-	for _, register := range definiteGeneralWrites(w.compiledFunction, inst) {
-		if w.tainted[register] && !before[register] {
-			continue
-		}
-		w.tainted[register] = false
-	}
-	for register, holds := range w.tainted {
-		if holds {
-			w.ever[register] = true
-		}
-	}
-	return false
-}
-
-// hold marks register as holding the value now and as having held it.
-//
-// Takes register (uint8) which is the general register.
-func (w *escapeWalk) hold(register uint8) {
-	w.tainted[register] = true
-	w.ever[register] = true
-}
-
-// definiteGeneralWrites lists the general registers inst overwrites unconditionally: a
-// call's plain general results, read through its call site, or the general-role operands
-// the shape table marks as written for a described operation without opaque writes.
-// Anything the table cannot pin down writes nothing here, which only keeps registers
-// tainted longer.
-//
+// Takes written ([]uint8) which receives the registers; the escape walk passes a buffer
+// on its stack, so a step allocates nothing unless a call has more general results than
+// the buffer holds.
 // Takes compiledFunction (*CompiledFunction) which owns the call-site table.
 // Takes inst (isa.Instruction) which is the instruction.
 //
-// Returns the overwritten general registers; nil when there are none.
-func definiteGeneralWrites(compiledFunction *program.CompiledFunction, inst isa.Instruction) []uint8 {
+// Returns []uint8 which is written extended by the overwritten general registers.
+func appendDefiniteGeneralWrites(written []uint8, compiledFunction *program.CompiledFunction, inst isa.Instruction) []uint8 {
 	if isCallSiteInstruction(inst) {
 		siteIndex := int(inst.WideIndex())
 		if siteIndex >= len(compiledFunction.CallSites) {
-			return nil
+			return written
 		}
-		var written []uint8
 		for _, result := range compiledFunction.CallSites[siteIndex].Returns {
 			if result.Kind != isa.RegisterGeneral || result.IsSpilled || result.IsIndirect || result.IsUpvalue {
 				continue
@@ -638,11 +669,10 @@ func definiteGeneralWrites(compiledFunction *program.CompiledFunction, inst isa.
 	}
 	shape := isa.ShapeForInstruction(inst)
 	if shape.Flags&isa.ShapeFlagDescribed == 0 || shape.Flags&isa.ShapeFlagOpaqueWrites != 0 {
-		return nil
+		return written
 	}
 	roles := [isa.NumInstructionOperands]isa.OperandRole{shape.A, shape.B, shape.C}
 	operands := [isa.NumInstructionOperands]uint8{inst.A, inst.B, inst.C}
-	var written []uint8
 	for position, role := range roles {
 		if shape.Writes[position] && role == isa.RoleRegGeneral {
 			written = append(written, operands[position])
@@ -652,15 +682,15 @@ func definiteGeneralWrites(compiledFunction *program.CompiledFunction, inst isa.
 }
 
 // advancePastExtensions advances pc past the current instruction and any following
-// isa.OpExt extension words.
+// isa.OpExtension extension words.
 //
 // Takes compiledFunction (*CompiledFunction) whose body holds the instruction sequence.
 // Takes pc (int) which is the current instruction position.
 //
-// Returns pc+1 at minimum, advanced further past trailing isa.OpExt words.
+// Returns pc+1 at minimum, advanced further past trailing isa.OpExtension words.
 func advancePastExtensions(compiledFunction *program.CompiledFunction, pc int) int {
 	pc++
-	for pc < len(compiledFunction.Body) && compiledFunction.Body[pc].Op == isa.OpExt {
+	for pc < len(compiledFunction.Body) && compiledFunction.Body[pc].Op == isa.OpExtension {
 		pc++
 	}
 	return pc
@@ -679,13 +709,13 @@ func advancePastExtensions(compiledFunction *program.CompiledFunction, pc int) i
 func escapesAtInstruction(compiledFunction *program.CompiledFunction, pc int, tainted *[isa.GeneralRegisterBankSize]bool) bool {
 	inst := compiledFunction.Body[pc]
 	switch inst.Op {
-	case isa.OpAllocIndirect, isa.OpAddr:
+	case isa.OpAllocateIndirect, isa.OpAddress:
 		if tainted[inst.B] && isArenaCandidateSite(inst) && compiledFunction.ArenaSafeAllocPCs[pc] {
 			tainted[inst.A] = true
 			return false
 		}
 		return tainted[inst.B]
-	case isa.OpGetField, isa.OpDeref, isa.OpMoveGeneral:
+	case isa.OpGetField, isa.OpDereference, isa.OpMoveGeneral:
 		return false
 	case isa.OpSetField:
 		return tainted[inst.C]
@@ -785,7 +815,7 @@ func spawnedArgumentsEscape(compiledFunction *program.CompiledFunction, pc int, 
 	if tainted[compiledFunction.Body[pc].A] {
 		return true
 	}
-	for ext := pc + 1; ext < len(compiledFunction.Body) && compiledFunction.Body[ext].Op == isa.OpExt; ext++ {
+	for ext := pc + 1; ext < len(compiledFunction.Body) && compiledFunction.Body[ext].Op == isa.OpExtension; ext++ {
 		word := compiledFunction.Body[ext]
 		if isa.RegisterKind(word.C) == isa.RegisterGeneral && tainted[word.B] {
 			return true
@@ -806,14 +836,14 @@ func spawnedArgumentsEscape(compiledFunction *program.CompiledFunction, pc int, 
 func selectSendsEscape(compiledFunction *program.CompiledFunction, pc int, tainted *[isa.GeneralRegisterBankSize]bool) bool {
 	ext := pc + 1
 	for caseIndex := 0; caseIndex < int(compiledFunction.Body[pc].B); caseIndex++ {
-		if ext >= len(compiledFunction.Body) || compiledFunction.Body[ext].Op != isa.OpExt {
+		if ext >= len(compiledFunction.Body) || compiledFunction.Body[ext].Op != isa.OpExtension {
 			return true
 		}
 		if compiledFunction.Body[ext].A == isa.SelectDirectionDefault {
 			ext++
 			continue
 		}
-		if ext+1 >= len(compiledFunction.Body) || compiledFunction.Body[ext+1].Op != isa.OpExt {
+		if ext+1 >= len(compiledFunction.Body) || compiledFunction.Body[ext+1].Op != isa.OpExtension {
 			return true
 		}
 		payload := compiledFunction.Body[ext+1]
@@ -895,7 +925,7 @@ func tier1SubOpEscapes(sub isa.SubOpcode, inst isa.Instruction, tainted *[isa.Ge
 		return false
 	}
 	switch sub {
-	case isa.SubOpWriteSharedCell, isa.SubOpSetGlobalWide:
+	case isa.SubOpSetSharedCell, isa.SubOpSetGlobalWide:
 
 		return isa.RegisterKind(inst.C) == isa.RegisterGeneral && tainted[inst.B]
 	default:
@@ -961,11 +991,11 @@ func tier2SubOpEscapes(compiledFunction *program.CompiledFunction, sub isa.SubOp
 }
 
 // tier3SubOpEscapes classifies a tier-3 sub-op. Tier-3 holds zero-operand ops
-// (isa.SubOpTier3Nop, isa.SubOpTier3ReturnVoid, isa.SubOpTier3SyncIIFEUpvalues) that read
-// no registers, so no tainted value can escape through them; the upvalue sync only moves
-// values inward, as its opcodeCannotPublishGeneral entry records.
+// (isa.SubOpTier3NoOperation, isa.SubOpTier3ReturnVoid,
+// isa.SubOpTier3SynchroniseIIFECapturedVariables) that read no registers, so no tainted
+// value can escape through them.
 //
-// Returns false unconditionally; tier-3 sub-ops have no general-bank effect.
+// Returns false unconditionally.
 func tier3SubOpEscapes(_ *program.CompiledFunction, _ isa.SubOpcodeTier3, _ isa.Instruction, _ *[isa.GeneralRegisterBankSize]bool) bool {
 	return false
 }
@@ -1027,7 +1057,7 @@ func callSiteTargetTainted(site *program.CallSite, tainted *[isa.GeneralRegister
 // Returns true when any general-bank argument is tainted.
 func builtinArgumentsEscape(compiledFunction *program.CompiledFunction, pc int, tainted *[isa.GeneralRegisterBankSize]bool) bool {
 	body := compiledFunction.Body
-	for ext := pc + 1; ext < len(body) && body[ext].Op == isa.OpExt; ext++ {
+	for ext := pc + 1; ext < len(body) && body[ext].Op == isa.OpExtension; ext++ {
 		word := body[ext]
 		if isa.RegisterKind(word.B) == isa.RegisterGeneral && tainted[word.A] {
 			return true
@@ -1089,25 +1119,26 @@ func anyGeneralTainted(inst isa.Instruction, tainted *[isa.GeneralRegisterBankSi
 	return tainted[inst.A] || tainted[inst.B] || tainted[inst.C]
 }
 
-// annotateArenaSafeAllocs scans compiledFunction.body for isa.OpAllocIndirect and
-// address-taking isa.OpAddr sites whose output pointer cannot escape compiledFunction's
-// frame and records each in compiledFunction.ArenaSafeAllocPCs, so the handlers may place
-// the pointee in the arena.
+// annotateArenaSafeAllocs scans compiledFunction.body for isa.OpAllocateIndirect and
+// address-taking isa.OpAddress sites whose output pointer cannot escape
+// compiledFunction's frame and records each in compiledFunction.ArenaSafeAllocPCs, so the
+// handlers may place the pointee in the arena.
 //
 // Takes compiledFunction (*CompiledFunction) whose body is scanned.
 func annotateArenaSafeAllocs(compiledFunction *program.CompiledFunction) {
-	annotateArenaSafeSites(compiledFunction, false)
-	annotateArenaSafeSites(compiledFunction, true)
+	scan := newSiteScan(compiledFunction)
+	annotateArenaSafeSites(scan, false)
+	annotateArenaSafeSites(scan, true)
 }
 
 // annotateArenaSafeSites runs one phase of annotateArenaSafeAllocs() over the sites of
 // one family, in program-counter order.
 //
-// Takes compiledFunction (*CompiledFunction) whose ArenaSafeAllocPCs receives the
-// verdicts.
+// Takes scan (*siteScan) whose function's ArenaSafeAllocPCs receives the verdicts.
 // Takes structLiterals (bool) which selects the tier-2 struct-literal sites; false
 // selects the pointer-producing tier-0 sites.
-func annotateArenaSafeSites(compiledFunction *program.CompiledFunction, structLiterals bool) {
+func annotateArenaSafeSites(scan *siteScan, structLiterals bool) {
+	compiledFunction := scan.compiledFunction
 	pc := 0
 	for pc < len(compiledFunction.Body) {
 		afterSite := advancePastExtensions(compiledFunction, pc)
@@ -1116,7 +1147,7 @@ func annotateArenaSafeSites(compiledFunction *program.CompiledFunction, structLi
 			pc = afterSite
 			continue
 		}
-		if !outputEscapesFromSite(compiledFunction, outputSlot, pc, afterSite) {
+		if !scan.outputEscapesFromSite(outputSlot, pc, afterSite) {
 			if compiledFunction.ArenaSafeAllocPCs == nil {
 				compiledFunction.ArenaSafeAllocPCs = make(map[int]bool)
 			}
@@ -1161,13 +1192,14 @@ func aliasFreeAtInstruction(compiledFunction *program.CompiledFunction, inst isa
 	switch inst.Op {
 	case isa.OpMoveGeneral:
 		return inst.B != slot
-	case isa.OpAppendInPlace, isa.OpAppendByteFastInPlace, isa.OpAppendSpreadInPlace, isa.OpAppend, isa.OpAppendByteFast, isa.OpAppendSpread,
-		isa.OpAppendStructFast, isa.OpAppendIntFast, isa.OpAppendFloatFast, isa.OpAppendStringFast:
+	case isa.OpAppendInPlace, isa.OpAppendByteInPlace, isa.OpAppendSpreadInPlace, isa.OpAppend, isa.OpAppendByte, isa.OpAppendSpread,
+		isa.OpAppendStruct, isa.OpAppendInt64, isa.OpAppendFloat64, isa.OpAppendString:
 		return inst.B != slot || inst.A == slot
-	case isa.OpIndex, isa.OpSliceIndexStructFieldInt, isa.OpSliceIndexStructFieldUint,
-		isa.OpSliceIndexStructFieldFloat, isa.OpSliceIndexStructFieldBool, isa.OpSliceIndexStructFieldString:
+	case isa.OpGetElement, isa.OpGetElementFieldInt64, isa.OpGetElementFieldUint64,
+		isa.OpGetElementFieldFloat64, isa.OpGetElementFieldBool, isa.OpGetElementFieldString,
+		isa.OpSetElementFieldInt64, isa.OpSetElementFieldFloat64:
 		return true
-	case isa.OpIndexSet:
+	case isa.OpSetElement:
 		return inst.C != slot
 	default:
 	}
@@ -1216,11 +1248,11 @@ func shapeReadsGeneralSlot(inst isa.Instruction, shape isa.OperandShape, slot ui
 // Returns the receiver's operand position and true, or false for any other opcode.
 func structFieldReceiverOperand(op isa.Opcode) (int, bool) {
 	switch op {
-	case isa.OpSetStructFieldIntT0, isa.OpSetStructFieldUint, isa.OpSetStructFieldFloat,
-		isa.OpSetStructFieldBool, isa.OpSetStructFieldGeneral, isa.OpSetField, isa.OpSetFieldInt:
+	case isa.OpSetStructFieldInt64, isa.OpSetStructFieldUint64, isa.OpSetStructFieldFloat64,
+		isa.OpSetStructFieldBool, isa.OpSetStructFieldGeneral, isa.OpSetField, isa.OpSetFieldInt64:
 		return 0, true
-	case isa.OpGetStructFieldIntT0, isa.OpGetStructFieldUint, isa.OpGetStructFieldFloat,
-		isa.OpGetStructFieldBool, isa.OpGetStructFieldGeneral, isa.OpGetField, isa.OpGetFieldInt:
+	case isa.OpGetStructFieldInt64, isa.OpGetStructFieldUint64, isa.OpGetStructFieldFloat64,
+		isa.OpGetStructFieldBool, isa.OpGetStructFieldGeneral, isa.OpGetField, isa.OpGetFieldInt64:
 		return 1, true
 	default:
 		return 0, false
@@ -1239,7 +1271,7 @@ func tier1InspectsWithoutCopying(inst isa.Instruction) bool {
 		return false
 	}
 	switch isa.SubOpcode(inst.A) {
-	case isa.SubOpLen, isa.SubOpCap, isa.SubOpEqInterfaceNil, isa.SubOpNeInterfaceNil:
+	case isa.SubOpLengthGeneral, isa.SubOpCapacityGeneral, isa.SubOpEqualInterfaceNil, isa.SubOpNotEqualInterfaceNil:
 		return true
 	default:
 		return false
@@ -1285,7 +1317,7 @@ func callAliasFreeForSlot(compiledFunction *program.CompiledFunction, inst isa.I
 			return !callSitePassesGeneralSlot(compiledFunction, inst, slot), true
 		case isa.SubOpCallBuiltin:
 			return false, true
-		case isa.SubOpSliceOp:
+		case isa.SubOpSliceGeneral:
 
 			return true, true
 		default:
@@ -1307,7 +1339,7 @@ func callAliasFreeForSlot(compiledFunction *program.CompiledFunction, inst isa.I
 //
 // Returns true when the sub-op cannot move a general-bank pointer out of the frame.
 func tier2SubOpSafe(sub isa.SubOpcodeTier2) bool {
-	return sub == isa.SubOpTier2RangeCheckUintJumpFalse
+	return sub == isa.SubOpTier2InRangeUint64ThenJumpIfFalse
 }
 
 // tier1OrDrilledEscapes classifies a tier-1 instruction, routing the operations whose

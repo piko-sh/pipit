@@ -29,11 +29,8 @@ import (
 )
 
 const (
-	// maxLicmHoistsPerFunction caps the number of struct-field reads that the loop-invariant
-	// code motion pass will lift per CompiledFunction. Each hoist allocates one instruction
-	// word in the body and may inflate register lifetimes; capping the count bounds the
-	// cost.
-	maxLicmHoistsPerFunction = 8
+	// maxLicmHoistsPerFunction caps field-read and global-load hoists per function.
+	maxLicmHoistsPerFunction = 32
 
 	// initialLoopCapacity is the initial size of the loops slice used by identifyLoops. Most
 	// functions in practice contain a small number of loops, so pre-allocating four avoids
@@ -61,7 +58,7 @@ type loopRange struct {
 //
 // Returns error when cancellation interrupts the pass.
 func HoistLoopInvariantStructFieldReads(ctx context.Context, compiledFunction *program.CompiledFunction) error {
-	return hoistLoopInvariantStructFieldReads(ctx, compiledFunction, nil)
+	return hoistLoopInvariantStructFieldReads(ctx, compiledFunction, nil, false)
 }
 
 // loopHeaderReachableByFallThrough reports whether linear fall-through enters the loop
@@ -88,66 +85,99 @@ func BuildAllJumpTargets(body []isa.Instruction) map[int]bool {
 	return program.JumpTargetsOf(body)
 }
 
-// hoistLoopInvariantStructFieldReads is HoistLoopInvariantStructFieldReads with an
-// optional shared analysis supplying the loop list; every hoist invalidates it because
-// the insertion shifts every later PC.
+// hoistLoopInvariantStructFieldReads hoists field reads using an optional shared
+// analysis.
+//
+// Each hoist invalidates the analysis because later PCs move.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
 // Takes analysis (*functionAnalysis) which is the pipeline's shared analysis, or nil.
+// Takes elementStoresKeepFields (bool) which is ProgramFacts.ElementStoresKeepFields.
 //
 // Returns error when cancellation interrupts the pass.
-func hoistLoopInvariantStructFieldReads(ctx context.Context, compiledFunction *program.CompiledFunction, analysis *functionAnalysis) error {
+func hoistLoopInvariantStructFieldReads(ctx context.Context, compiledFunction *program.CompiledFunction, analysis *functionAnalysis, elementStoresKeepFields bool) error {
 	if analysis == nil {
 		analysis = newFunctionAnalysis(compiledFunction)
 	}
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("hoistLoopInvariantStructFieldReads cancelled: %w", err)
-	}
+	var visits loopVisits
 	for range maxLicmHoistsPerFunction {
-		if !tryOneStructFieldHoist(compiledFunction, analysis) {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("hoistLoopInvariantStructFieldReads cancelled: %w", err)
+		}
+		if !tryOneStructFieldHoist(compiledFunction, analysis, &visits, elementStoresKeepFields) {
 			return nil
 		}
 	}
 	return nil
 }
 
-// tryOneStructFieldHoist performs at most one hoist on compiledFunction.body.
+// tryOneStructFieldHoist performs at most one hoist on compiledFunction.body, or one
+// rename that makes a read hoistable the next time round.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
 // Takes analysis (*FunctionAnalysis) which supplies the loop list when non-nil.
+// Takes visits (*loopVisits) which holds the loops already searched to the end.
+// Takes elementStoresKeepFields (bool) which is ProgramFacts.ElementStoresKeepFields.
 //
-// Returns true when a hoist was applied, false when no hoistable read is found anywhere
-// in the body.
-func tryOneStructFieldHoist(compiledFunction *program.CompiledFunction, analysis *functionAnalysis) bool {
+// Returns true when a hoist or a rename was applied, false when no read anywhere in the
+// body can be lifted or made liftable.
+func tryOneStructFieldHoist(
+	compiledFunction *program.CompiledFunction, analysis *functionAnalysis, visits *loopVisits, elementStoresKeepFields bool,
+) bool {
 	loops := mergeLoopsSharingHeader(loopsFor(analysis, compiledFunction.Body))
 	for _, loop := range loops {
-		if !loopHeaderReachableByFallThrough(compiledFunction.Body, loop) {
+		if visits.finished(loop) || !loopOpenToHoisting(compiledFunction.Body, loop) {
 			continue
 		}
-		readPC, ok := findHoistableReadInLoop(compiledFunction, loop, analysis)
-		if !ok {
+		if !loopHoldsAHoistableRead(compiledFunction.Body, loop) {
+			visits.finish(loop)
 			continue
 		}
-		applyLoopHoist(compiledFunction, analysis, loop.header, readPC)
-		return true
+		readPC, ok := findHoistableReadInLoop(compiledFunction, loop, analysis, elementStoresKeepFields)
+		if ok {
+			width := hoistedReadWordCount(compiledFunction.Body, readPC)
+			applyLoopHoistWords(compiledFunction, analysis, loop.header, readPC, width)
+			visits.lifted(loop.header, readPC, width)
+			return true
+		}
+		if renameReadWithAReusedDestination(compiledFunction, loop, analysis, elementStoresKeepFields) {
+			return true
+		}
+		visits.finish(loop)
 	}
 	return false
 }
 
-// findHoistableReadInLoop locates the first hoistable read that dominates the back-edge,
-// is loop-invariant and is safe to run on the entry path.
+// loopHoldsAHoistableRead reports whether the loop contains a candidate read.
+//
+// Takes body ([]isa.Instruction) which is the instruction stream.
+// Takes loop (loopRange) which is the loop to scan.
+//
+// Returns bool which is true when the loop has a candidate.
+func loopHoldsAHoistableRead(body []isa.Instruction, loop loopRange) bool {
+	for pc := loop.header; pc <= loop.latch; pc++ {
+		if isHoistableReadAt(body, pc) {
+			return true
+		}
+	}
+	return false
+}
+
+// findHoistableReadInLoop locates the first hoistable read that is loop-invariant and
+// safe to run on the entry path.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
 // Takes loop (loopRange) which is the natural loop within which to search for a hoistable
 // read.
 // Takes analysis (*functionAnalysis) which supplies the dominator and loop information.
+// Takes elementStoresKeepFields (bool) which is ProgramFacts.ElementStoresKeepFields.
 //
-// Returns int which is the first dominating read's PC, or zero when none is found.
+// Returns int which is the first hoistable read's PC, or zero when none is found.
 // Returns bool which is true when a hoistable read is found.
-func findHoistableReadInLoop(compiledFunction *program.CompiledFunction, loop loopRange, analysis *functionAnalysis) (int, bool) {
+func findHoistableReadInLoop(compiledFunction *program.CompiledFunction, loop loopRange, analysis *functionAnalysis, elementStoresKeepFields bool) (int, bool) {
 	body := compiledFunction.Body
 	facts := newLoopFacts(analysis, loop)
 	for pc := loop.header; pc <= loop.latch; pc++ {
@@ -158,12 +188,42 @@ func findHoistableReadInLoop(compiledFunction *program.CompiledFunction, loop lo
 		if len(members) == 0 {
 			return 0, false
 		}
-		if readIsLoopInvariant(compiledFunction, members, pc) && facts.dominatesLatch(pc) &&
-			hoistSafeAcrossLoopEntry(compiledFunction, loop, pc, facts.dominators()) {
+		if !readIsLoopInvariant(compiledFunction, members, pc, elementStoresKeepFields, false) {
+			continue
+		}
+		if facts.dominatesLatch(pc) && hoistSafeAcrossLoopEntry(compiledFunction, loop, pc, facts.dominators()) {
+			return pc, true
+		}
+		if readHoistsFromAnArm(compiledFunction, facts, pc) {
 			return pc, true
 		}
 	}
 	return 0, false
+}
+
+// readHoistsFromAnArm reports whether a loop-invariant read that does not run on every
+// traversal may still move to the pre-header.
+//
+// It may when a dereference of the same receiver ahead of the loop proves the receiver
+// non-nil, so the read cannot fault where the loop would not have run it, and when the
+// destination is dead at the header, so writing it early changes nothing. The read must
+// be a loop member, since invariance was judged against the members alone.
+//
+// Takes compiledFunction (*program.CompiledFunction) whose body holds the loop.
+// Takes facts (*loopFacts) which supplies the loop, its members and the dominators.
+// Takes readPC (int) which is the candidate read.
+//
+// Returns true when the read may be lifted.
+func readHoistsFromAnArm(compiledFunction *program.CompiledFunction, facts *loopFacts, readPC int) bool {
+	body := compiledFunction.Body
+	destKind, ok := isa.KindForRole(hoistedReadDestBank(body, readPC))
+	if !ok || !facts.isMember(readPC) {
+		return false
+	}
+	if !receiverProvenNonNilAtHeader(compiledFunction, facts.loop.header, hoistedReadReceiverRegister(body, readPC), facts.dominators()) {
+		return false
+	}
+	return registerDeadFrom(compiledFunction, body, facts.loop.header, destKind, hoistedReadDestRegister(body, readPC))
 }
 
 // readIsLoopInvariant reports whether a struct-field read is loop-invariant, meaning no
@@ -174,29 +234,90 @@ func findHoistableReadInLoop(compiledFunction *program.CompiledFunction, loop lo
 // optimised.
 // Takes members ([]int) which lists every PC in the natural loop.
 // Takes readPC (int) which is the PC of the candidate read.
+// Takes elementStoresKeepFields (bool) which is ProgramFacts.ElementStoresKeepFields.
+// Takes apartFromItsDestination (bool) which leaves writes of the destination register
+// out of account, to find a read that a rename would make invariant.
 //
 // Returns true when the read is loop-invariant and safe to hoist.
-func readIsLoopInvariant(compiledFunction *program.CompiledFunction, members []int, readPC int) bool {
+func readIsLoopInvariant(
+	compiledFunction *program.CompiledFunction, members []int, readPC int, elementStoresKeepFields, apartFromItsDestination bool,
+) bool {
 	body := compiledFunction.Body
 	receiverReg := hoistedReadReceiverRegister(body, readPC)
 	destReg := hoistedReadDestRegister(body, readPC)
 	destBank := hoistedReadDestBank(body, readPC)
+	writtenBank := destBank
+	if apartFromItsDestination {
+		writtenBank = isa.RoleNone
+	}
 	width := hoistedReadWordCount(body, readPC)
 	for _, pc := range members {
 		if pc >= readPC && pc < readPC+width {
 			continue
 		}
-		if !loopBodyInstructionPreservesRead(compiledFunction, pc, receiverReg, destReg, destBank) {
+		if elementStoresKeepFields && unsignedElementStoreKeepsRead(body[pc], destBank) {
+			continue
+		}
+		if !loopBodyInstructionPreservesRead(compiledFunction, pc, receiverReg, destReg, writtenBank) {
 			return false
 		}
 	}
 	return true
 }
 
-// loopBodyInstructionPreservesRead reports whether the instruction at pc keeps a hoisted
-// struct-field read valid. The instruction must not mutate the read's heap state, must
-// have a described operand shape, and must not clobber the receiver or destination
-// register.
+// renameReadWithAReusedDestination gives a field read its own destination register.
+//
+// Only single-word reads are renamed.
+//
+// Takes compiledFunction (*program.CompiledFunction) which is the function being
+// optimised.
+// Takes loop (loopRange) which is the natural loop to search.
+// Takes analysis (*functionAnalysis) which supplies the loop and reachability facts.
+// Takes elementStoresKeepFields (bool) which is ProgramFacts.ElementStoresKeepFields.
+//
+// Returns true when a read was renamed.
+func renameReadWithAReusedDestination(
+	compiledFunction *program.CompiledFunction, loop loopRange, analysis *functionAnalysis, elementStoresKeepFields bool,
+) bool {
+	body := compiledFunction.Body
+	facts := newLoopFacts(analysis, loop)
+	members := facts.loopMembers()
+	for pc := loop.header; pc <= loop.latch && len(members) != 0; pc++ {
+		if !isHoistableReadAt(body, pc) || hoistedReadWordCount(body, pc) != 1 || !facts.isMember(pc) {
+			continue
+		}
+		destKind, ok := isa.KindForRole(hoistedReadDestBank(body, pc))
+		if !ok || readIsLoopInvariant(compiledFunction, members, pc, elementStoresKeepFields, false) ||
+			!readIsLoopInvariant(compiledFunction, members, pc, elementStoresKeepFields, true) {
+			continue
+		}
+		if renameDefinition(compiledFunction, facts.analysis, pc, 1, destKind, hoistedReadDestRegister(body, pc)) {
+			return true
+		}
+	}
+	return false
+}
+
+// unsignedElementStoreKeepsRead reports whether an unsigned element store preserves a
+// read.
+//
+// Reads into the general bank are not excused because they may hold the very elements
+// written. The caller must hold ProgramFacts.ElementStoresKeepFields, since the unsafe
+// package can lay a slice over anything.
+//
+// Takes instruction (isa.Instruction) which is the loop instruction.
+// Takes destBank (isa.OperandRole) which is the bank the read writes.
+//
+// Returns true when the store leaves the read's value as it was.
+func unsignedElementStoreKeepsRead(instruction isa.Instruction, destBank isa.OperandRole) bool {
+	if instruction.Op != isa.OpSetElementUint64 && !isa.InstrIsTier1SubOp(instruction, isa.SubOpSetSliceByteElement) {
+		return false
+	}
+	return destBank != isa.RoleRegGeneral && destBank != isa.RoleNone
+}
+
+// loopBodyInstructionPreservesRead checks for mutation or register writes that invalidate
+// a read.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
@@ -208,17 +329,17 @@ func readIsLoopInvariant(compiledFunction *program.CompiledFunction, members []i
 //
 // Returns true when the instruction at pc preserves the hoisted read.
 func loopBodyInstructionPreservesRead(compiledFunction *program.CompiledFunction, pc int, receiverReg, destReg uint8, destBank isa.OperandRole) bool {
-	inst := compiledFunction.Body[pc]
-	if invalidatesCachedFieldReads(compiledFunction, inst) && !structFieldWriteWithKnownReceiverDistinct(compiledFunction, pc, inst, receiverReg) {
+	instruction := compiledFunction.Body[pc]
+	if invalidatesCachedFieldReads(compiledFunction, instruction) && !structFieldWriteWithKnownReceiverDistinct(compiledFunction, pc, instruction, receiverReg) {
 		return false
 	}
-	if !instructionShapeAllowsCseScan(inst) {
+	if !instructionShapeAllowsCseScan(instruction) {
 		return false
 	}
-	if instructionWritesRegisterInBank(inst, isa.RoleRegGeneral, receiverReg) {
+	if instructionWritesRegisterInBank(instruction, isa.RoleRegGeneral, receiverReg) {
 		return false
 	}
-	if destBank != isa.RoleNone && instructionWritesRegisterInBank(inst, destBank, destReg) {
+	if destBank != isa.RoleNone && instructionWritesRegisterInBank(instruction, destBank, destReg) {
 		return false
 	}
 	return true
@@ -253,43 +374,41 @@ func sortLoopRangesAscendingSpan(loops []loopRange) {
 	})
 }
 
-// isLinearFallThroughFrom reports whether inst falls through to the next PC. Conditional
-// jumps return true because they fall through on the not-taken side.
+// isLinearFallThroughFrom reports whether an instruction can fall through to the next PC.
 //
-// Takes inst (isa.Instruction) which is the instruction whose control-flow behaviour is
-// being classified.
-//
-// Returns true when inst falls through to the next sequential PC.
-func isLinearFallThroughFrom(inst isa.Instruction) bool {
-	if inst.Op != isa.OpDrillTier1 {
-		return true
-	}
-	if isa.SubOpcode(inst.A) == isa.SubOpTailCall {
-		return false
-	}
-	return !tier1RedirectsControlFlow(inst)
-}
-
-// tier1RedirectsControlFlow reports whether a tier-1 instruction transfers control rather
-// than falling through: direct jumps, returns, and the return-void tier-3 sub-op.
-//
-// Takes inst (isa.Instruction) which is the tier-1 instruction whose control-flow
+// Takes instruction (isa.Instruction) which is the instruction whose control-flow
 // behaviour is being classified.
 //
-// Returns true when inst redirects control rather than falling through.
-func tier1RedirectsControlFlow(inst isa.Instruction) bool {
-	sub := isa.SubOpcode(inst.A)
+// Returns true when instruction falls through to the next sequential PC.
+func isLinearFallThroughFrom(instruction isa.Instruction) bool {
+	if instruction.Op != isa.OpDrillTier1 {
+		return true
+	}
+	if isa.SubOpcode(instruction.A) == isa.SubOpTailCall {
+		return false
+	}
+	return !tier1RedirectsControlFlow(instruction)
+}
+
+// tier1RedirectsControlFlow reports whether a tier-1 instruction transfers control.
+//
+// Takes instruction (isa.Instruction) which is the tier-1 instruction whose control-flow
+// behaviour is being classified.
+//
+// Returns true when instruction redirects control rather than falling through.
+func tier1RedirectsControlFlow(instruction isa.Instruction) bool {
+	sub := isa.SubOpcode(instruction.A)
 	if sub == isa.SubOpJump || sub == isa.SubOpTypeSwitchJump {
 		return true
 	}
 	if sub != isa.SubOpDrillTier2 {
 		return false
 	}
-	tier2 := isa.SubOpcodeTier2(inst.B)
+	tier2 := isa.SubOpcodeTier2(instruction.B)
 	if tier2 == isa.SubOpTier2Return {
 		return true
 	}
-	return tier2 == isa.SubOpTier2DrillTier3 && isa.SubOpcodeTier3(inst.C) == isa.SubOpTier3ReturnVoid
+	return tier2 == isa.SubOpTier2DrillTier3 && isa.SubOpcodeTier3(instruction.C) == isa.SubOpTier3ReturnVoid
 }
 
 // isHoistableReadAt reports whether body[pc] is a struct-field read eligible for LICM.
@@ -302,18 +421,54 @@ func isHoistableReadAt(body []isa.Instruction, pc int) bool {
 	if pc >= len(body) {
 		return false
 	}
-	if isTier0StructFieldRead(body[pc].Op) {
+	if isTier0StructFieldRead(body[pc].Op) || body[pc].Op == isa.OpLengthStructField {
 		return true
 	}
-	if isTier1StructFieldReadAt(body, pc) {
-		return true
+	return isTier1StructFieldReadAt(body, pc) || isSliceFieldReadAt(body, pc)
+}
+
+// isSliceFieldReadAt reports whether body[pc] and the extension word after it read a
+// slice field of a struct into a typed-slice register.
+//
+// Takes body ([]isa.Instruction) which is the compiled function's instruction stream.
+// Takes pc (int) which is the candidate PC to classify.
+//
+// Returns true for such a read.
+func isSliceFieldReadAt(body []isa.Instruction, pc int) bool {
+	if pc+1 >= len(body) || body[pc].Op != isa.OpDrillTier1 || body[pc+1].Op != isa.OpExtension {
+		return false
 	}
-	return false
+	_, ok := sliceFieldReadBank(isa.SubOpcode(body[pc].A))
+	return ok
+}
+
+// sliceFieldReadBank returns the typed-slice bank a slice-field read writes.
+//
+// Takes sub (isa.SubOpcode) which is the tier-1 operation.
+//
+// Returns isa.RegisterKind which is the bank.
+// Returns bool which is false when sub is not a slice-field read.
+func sliceFieldReadBank(sub isa.SubOpcode) (isa.RegisterKind, bool) {
+	switch sub {
+	case isa.SubOpGetStructFieldSliceInt64:
+		return isa.RegisterSliceInt64, true
+	case isa.SubOpGetStructFieldSliceFloat64:
+		return isa.RegisterSliceFloat64, true
+	case isa.SubOpGetStructFieldSliceUint64:
+		return isa.RegisterSliceUint64, true
+	case isa.SubOpGetStructFieldSliceString:
+		return isa.RegisterSliceString, true
+	case isa.SubOpGetStructFieldSliceBool:
+		return isa.RegisterSliceBool, true
+	case isa.SubOpGetStructFieldSliceByte:
+		return isa.RegisterSliceByte, true
+	default:
+		return 0, false
+	}
 }
 
 // hoistedReadWordCount returns the number of instruction words a hoistable read at pc
-// occupies in the body. Tier-0 reads are one word; tier-1 reads are two (the
-// isa.OpDrillTier1 umbrella plus the isa.OpExt layout extension).
+// occupies in the body. Tier-0 reads are one word.
 //
 // Behaviour is undefined when isHoistableReadAt(body, pc) is false.
 //
@@ -322,7 +477,7 @@ func isHoistableReadAt(body []isa.Instruction, pc int) bool {
 //
 // Returns the instruction-word width of the read.
 func hoistedReadWordCount(body []isa.Instruction, pc int) int {
-	if isTier1StructFieldReadAt(body, pc) {
+	if isTier1StructFieldReadAt(body, pc) || isSliceFieldReadAt(body, pc) {
 		return 2
 	}
 	return 1
@@ -341,6 +496,13 @@ func hoistedReadDestBank(body []isa.Instruction, pc int) isa.OperandRole {
 	if isTier1StructFieldReadAt(body, pc) {
 		return tier1FieldReadDestRole(isa.SubOpcode(body[pc].A))
 	}
+	if isSliceFieldReadAt(body, pc) {
+		bank, _ := sliceFieldReadBank(isa.SubOpcode(body[pc].A))
+		return isa.RoleForKind(bank)
+	}
+	if body[pc].Op == isa.OpLengthStructField {
+		return isa.RoleRegInt
+	}
 	return tier0FieldReadDestRole(body[pc].Op)
 }
 
@@ -353,7 +515,7 @@ func hoistedReadDestBank(body []isa.Instruction, pc int) isa.OperandRole {
 //
 // Returns the destination register index.
 func hoistedReadDestRegister(body []isa.Instruction, pc int) uint8 {
-	if isTier1StructFieldReadAt(body, pc) {
+	if isTier1StructFieldReadAt(body, pc) || isSliceFieldReadAt(body, pc) {
 		return body[pc].B
 	}
 	return body[pc].A
@@ -368,7 +530,7 @@ func hoistedReadDestRegister(body []isa.Instruction, pc int) uint8 {
 //
 // Returns the receiver register index.
 func hoistedReadReceiverRegister(body []isa.Instruction, pc int) uint8 {
-	if isTier1StructFieldReadAt(body, pc) {
+	if isTier1StructFieldReadAt(body, pc) || isSliceFieldReadAt(body, pc) {
 		return body[pc].C
 	}
 	return body[pc].B

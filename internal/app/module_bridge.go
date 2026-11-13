@@ -71,8 +71,11 @@ func (s *Service) bridgeBytecodeModule(entry module.TypesExportEntry, cfs *progr
 		}
 	}
 
+	s.symbols.MarkScriptPackage(entry.ImportPath)
 	s.symbols.RegisterPackage(entry.ImportPath, exports)
-	s.symbols.RegisterTypesPackage(entry.ImportPath, typesPkg)
+	if err := s.symbols.RegisterTypesPackage(entry.ImportPath, typesPkg); err != nil {
+		return fmt.Errorf("app: registering TypesExport for %q: %w", entry.ImportPath, err)
+	}
 	publishExternalMethods(s.globals, cfs.Root())
 	return nil
 }

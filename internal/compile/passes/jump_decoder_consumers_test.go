@@ -29,18 +29,18 @@ import (
 
 func fusedExt(offset int16) isa.Instruction {
 	lo, hi := isa.SplitOffset(offset)
-	return mk(isa.OpExt, lo, hi, 0)
+	return mk(isa.OpExtension, lo, hi, 0)
 }
 
 func TestIdentifyLoopsSeesFusedLatch(t *testing.T) {
 	t.Parallel()
 
 	body := []isa.Instruction{
-		mk(isa.OpLoadIntConst, 1, 0, 0),
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
-		isa.NewTier1Instruction(isa.SubOpIncIntJumpLt, 3, 6),
+		isa.NewTier1Instruction(isa.SubOpIncrementInt64ThenJumpIfLessThan, 3, 6),
 		fusedExt(-4),
-		mk(isa.OpNop, 0, 0, 0),
+		mk(isa.OpNoOperation, 0, 0, 0),
 	}
 
 	loops := identifyLoops(body)
@@ -51,19 +51,19 @@ func TestApplyLoopHoistKeepsFusedJumpOperands(t *testing.T) {
 	t.Parallel()
 
 	body := []isa.Instruction{
-		mk(isa.OpLoadIntConst, 1, 0, 0),
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
-		isa.NewTier1Instruction(isa.SubOpIncIntJumpLt, 3, 6),
+		isa.NewTier1Instruction(isa.SubOpIncrementInt64ThenJumpIfLessThan, 3, 6),
 		fusedExt(-4),
-		mk(isa.OpNop, 0, 0, 0),
+		mk(isa.OpNoOperation, 0, 0, 0),
 	}
 	compiledFunction := &program.CompiledFunction{Body: body}
 	applyLoopHoist(compiledFunction, nil, 0, 1)
 
 	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[0].Op)
-	require.Equal(t, isa.OpLoadIntConst, compiledFunction.Body[1].Op)
+	require.Equal(t, isa.OpLoadInt64Constant, compiledFunction.Body[1].Op)
 	latch := compiledFunction.Body[2]
-	require.Equal(t, isa.NewTier1Instruction(isa.SubOpIncIntJumpLt, 3, 6), latch, "the latch's register operands must survive the repoint")
+	require.Equal(t, isa.NewTier1Instruction(isa.SubOpIncrementInt64ThenJumpIfLessThan, 3, 6), latch, "the latch's register operands must survive the repoint")
 	target, ok := program.JumpTargetAt(compiledFunction.Body, 2)
 	require.True(t, ok)
 	require.Equal(t, 1, target, "the back edge skips the hoisted read and lands on the shifted header word")
@@ -73,10 +73,10 @@ func TestApplyLoopHoistShiftsForwardFusedJumpIntoRotatedSegment(t *testing.T) {
 	t.Parallel()
 
 	body := []isa.Instruction{
-		isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 1, 2),
+		isa.NewTier1Instruction(isa.SubOpLessThanInt64ThenJumpIfFalse, 1, 2),
 		fusedExt(1),
-		mk(isa.OpLoadIntConst, 7, 0, 0),
-		mk(isa.OpLoadIntConst, 8, 0, 0),
+		mk(isa.OpLoadInt64Constant, 7, 0, 0),
+		mk(isa.OpLoadInt64Constant, 8, 0, 0),
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
 		tier1Jump(-4),
 	}
@@ -90,7 +90,7 @@ func TestApplyLoopHoistShiftsForwardFusedJumpIntoRotatedSegment(t *testing.T) {
 	after, ok := program.JumpTargetAt(compiledFunction.Body, 0)
 	require.True(t, ok)
 	require.Equal(t, 4, after, "a forward jump into the rotated segment moves by the hoisted width")
-	require.Equal(t, isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 1, 2), compiledFunction.Body[0])
+	require.Equal(t, isa.NewTier1Instruction(isa.SubOpLessThanInt64ThenJumpIfFalse, 1, 2), compiledFunction.Body[0])
 	require.Equal(t, uint8(8), compiledFunction.Body[4].A, "the jump still lands on the same word")
 	backEdge, ok := program.JumpTargetAt(compiledFunction.Body, 5)
 	require.True(t, ok)
@@ -102,12 +102,12 @@ func TestLoopRemainderIsHeapPureIgnoresNonJumpExtensions(t *testing.T) {
 
 	compiledFunction := &program.CompiledFunction{Body: []isa.Instruction{
 		mk(isa.OpMoveGeneral, 1, 0, 0),
-		isa.NewTier1Instruction(isa.SubOpMakeSliceInt, 0, 1),
-		mk(isa.OpExt, 0xFD, 0xFF, 0),
+		isa.NewTier1Instruction(isa.SubOpMakeSliceInt64, 0, 1),
+		mk(isa.OpExtension, 0xFD, 0xFF, 0),
 		isa.NewTier2Instruction(isa.SubOpTier2Return, 0),
 	}}
 
-	require.False(t, loopRemainderIsHeapPure(compiledFunction, 0),
+	require.False(t, loopRemainderIsHeapPure(compiledFunction, controlFlowListsOf(compiledFunction.Body), 0),
 		"no back edge exists, so there is no loop remainder to call pure")
 }
 
@@ -115,14 +115,14 @@ func TestScanAndEliminateMoveKeepsMoveReadByFusedJump(t *testing.T) {
 	t.Parallel()
 
 	body := []isa.Instruction{
-		isa.NewTier1Instruction(isa.SubOpMoveInt, 2, 1),
-		isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 2, 3),
+		isa.NewTier1Instruction(isa.SubOpMoveInt64, 2, 1),
+		isa.NewTier1Instruction(isa.SubOpLessThanInt64ThenJumpIfFalse, 2, 3),
 		fusedExt(1),
-		mk(isa.OpNop, 0, 0, 0),
+		mk(isa.OpNoOperation, 0, 0, 0),
 		isa.NewTier2Instruction(isa.SubOpTier2Return, 0),
 	}
 	original := body[0]
-	candidate := MoveCandidate{Kind: isa.RegisterInt, Destination: 2, Source: 1}
+	candidate := MoveCandidate{Kind: isa.RegisterInt64, Destination: 2, Source: 1}
 
 	eliminated := ScanAndEliminateMove(body, 0, len(body), BuildAllJumpTargets(body), candidate)
 
@@ -133,23 +133,23 @@ func TestScanAndEliminateMoveKeepsMoveReadByFusedJump(t *testing.T) {
 func mapBranch(okRegister uint8, offset int16) []isa.Instruction {
 	lo, hi := isa.SplitOffset(offset)
 	return []isa.Instruction{
-		mk(isa.OpMapIndexOkJumpIfFalseIntInt, 8, 0, 9),
-		mk(isa.OpExt, okRegister, lo, hi),
+		mk(isa.OpGetMapInt64Int64OkThenJumpIfFalse, 8, 0, 9),
+		mk(isa.OpExtension, okRegister, lo, hi),
 	}
 }
 
-func TestApplyLoopHoistRetargetsAMapIndexOkBranch(t *testing.T) {
+func TestApplyLoopHoistRetargetsAGetMapOkBranch(t *testing.T) {
 	t.Parallel()
 
 	const okRegister = 6
 	branch := mapBranch(okRegister, 3)
 	body := []isa.Instruction{
-		mk(isa.OpLoadIntConst, 7, 0, 0),
+		mk(isa.OpLoadInt64Constant, 7, 0, 0),
 		branch[0],
 		branch[1],
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
 		tier1Jump(-5),
-		mk(isa.OpNop, 0, 0, 0),
+		mk(isa.OpNoOperation, 0, 0, 0),
 		returnVoid(),
 	}
 	before, ok := program.JumpTargetAt(body, 1)
@@ -159,24 +159,24 @@ func TestApplyLoopHoistRetargetsAMapIndexOkBranch(t *testing.T) {
 	compiledFunction := &program.CompiledFunction{Body: body}
 	applyLoopHoist(compiledFunction, nil, 0, 3)
 
-	require.Equal(t, isa.OpMapIndexOkJumpIfFalseIntInt, compiledFunction.Body[2].Op)
+	require.Equal(t, isa.OpGetMapInt64Int64OkThenJumpIfFalse, compiledFunction.Body[2].Op)
 	after, ok := program.JumpTargetAt(compiledFunction.Body, 2)
 	require.True(t, ok)
 	require.Equal(t, 6, after, "a miss must still leave the loop at the same word after the rotation")
 	require.Equal(t, uint8(okRegister), compiledFunction.Body[3].A, "the repoint must keep the ok register")
 }
 
-func TestLoopExitsBeforeReadSeesAMapIndexOkBranch(t *testing.T) {
+func TestLoopExitsBeforeReadSeesAGetMapOkBranch(t *testing.T) {
 	t.Parallel()
 
 	branch := mapBranch(6, 3)
 	body := []isa.Instruction{
-		mk(isa.OpLoadIntConst, 7, 0, 0),
+		mk(isa.OpLoadInt64Constant, 7, 0, 0),
 		branch[0],
 		branch[1],
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
 		tier1Jump(-5),
-		mk(isa.OpNop, 0, 0, 0),
+		mk(isa.OpNoOperation, 0, 0, 0),
 		returnVoid(),
 	}
 
@@ -185,18 +185,18 @@ func TestLoopExitsBeforeReadSeesAMapIndexOkBranch(t *testing.T) {
 	require.Equal(t, []int{6}, exits, "a miss leaves the loop before the read")
 }
 
-func TestMoveEliminationKeepsMoveOverwrittenByAMapIndexOkBranch(t *testing.T) {
+func TestMoveEliminationKeepsMoveOverwrittenByAGetMapOkBranch(t *testing.T) {
 	t.Parallel()
 
 	branch := mapBranch(2, 3)
 	body := []isa.Instruction{
-		isa.NewTier1Instruction(isa.SubOpMoveInt, 2, 1),
+		isa.NewTier1Instruction(isa.SubOpMoveInt64, 2, 1),
 		branch[0],
 		branch[1],
-		mk(isa.OpAddInt, 4, 2, 0),
-		isa.NewTier1Instruction(isa.SubOpMoveInt, 2, 7),
+		mk(isa.OpAddInt64, 4, 2, 0),
+		isa.NewTier1Instruction(isa.SubOpMoveInt64, 2, 7),
 		returnVoid(),
-		isa.NewTier1Instruction(isa.SubOpMoveInt, 2, 7),
+		isa.NewTier1Instruction(isa.SubOpMoveInt64, 2, 7),
 		returnVoid(),
 	}
 	original := append([]isa.Instruction(nil), body...)

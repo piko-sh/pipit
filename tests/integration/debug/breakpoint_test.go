@@ -21,7 +21,6 @@
 package debug_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -52,7 +51,7 @@ func run() int {
 	dbg.SetBreakpoint("main.go", 5)
 
 	execution := debugtest.Run(t, dbg, func() (any, error) {
-		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+		return svc.ExecuteEntrypoint(t.Context(), cfs, "run")
 	})
 
 	snap := debugtest.WaitPause(t, dbg)
@@ -86,7 +85,7 @@ func run() int {
 	dbg.SetBreakpoint("main.go", 6)
 
 	execution := debugtest.Run(t, dbg, func() (any, error) {
-		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+		return svc.ExecuteEntrypoint(t.Context(), cfs, "run")
 	})
 
 	hitCount := 0
@@ -125,7 +124,7 @@ func run() int {
 	dbg.SetBreakpoint("main.go", 6)
 
 	execution := debugtest.Run(t, dbg, func() (any, error) {
-		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+		return svc.ExecuteEntrypoint(t.Context(), cfs, "run")
 	})
 
 	snap1 := debugtest.WaitPause(t, dbg)
@@ -162,7 +161,7 @@ func run() int {
 	dbg.SetBreakpoint("main.go", 5)
 
 	execution := debugtest.Run(t, dbg, func() (any, error) {
-		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+		return svc.ExecuteEntrypoint(t.Context(), cfs, "run")
 	})
 
 	snap := debugtest.WaitPause(t, dbg)

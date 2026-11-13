@@ -27,6 +27,15 @@ import (
 
 type namedStringMapKey string
 
+type namedIntMapKey int
+
+type namedIntMapValue int
+
+type generalMapRead struct {
+	handler opcodeHandler
+	name    string
+}
+
 func TestTypedMapReadsHitTheConcreteFastPath(t *testing.T) {
 	t.Parallel()
 
@@ -38,7 +47,7 @@ func TestTypedMapReadsHitTheConcreteFastPath(t *testing.T) {
 		inspect func(*testing.T, *Registers)
 	}{
 		{
-			name: "an int-keyed int map", handler: handleMapGetIntInt, source: map[int]int{1: 10},
+			name: "an int-keyed int map", handler: handleGetMapInt64Int64, source: map[int]int{1: 10},
 			load: func(r *Registers) { r.Ints[2] = 1 },
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -46,7 +55,7 @@ func TestTypedMapReadsHitTheConcreteFastPath(t *testing.T) {
 			},
 		},
 		{
-			name: "an int64-keyed int64 map", handler: handleMapGetIntInt, source: map[int64]int64{1: 10},
+			name: "an int64-keyed int64 map", handler: handleGetMapInt64Int64, source: map[int64]int64{1: 10},
 			load: func(r *Registers) { r.Ints[2] = 1 },
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -54,7 +63,7 @@ func TestTypedMapReadsHitTheConcreteFastPath(t *testing.T) {
 			},
 		},
 		{
-			name: "a missing int key yields the zero value", handler: handleMapGetIntInt, source: map[int]int{},
+			name: "a missing int key yields the zero value", handler: handleGetMapInt64Int64, source: map[int]int{},
 			load: func(r *Registers) { r.Ints[2] = 9 },
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -62,7 +71,7 @@ func TestTypedMapReadsHitTheConcreteFastPath(t *testing.T) {
 			},
 		},
 		{
-			name: "a string-keyed int map", handler: handleMapGetStringInt, source: map[string]int{"a": 3},
+			name: "a string-keyed int map", handler: handleGetMapStringInt64, source: map[string]int{"a": 3},
 			load: func(r *Registers) { r.Strings[2] = "a" },
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -70,7 +79,7 @@ func TestTypedMapReadsHitTheConcreteFastPath(t *testing.T) {
 			},
 		},
 		{
-			name: "a named string key falls to the reflect path", handler: handleMapGetStringInt,
+			name: "a named string key falls to the reflect path", handler: handleGetMapStringInt64,
 			source: map[namedStringMapKey]int{"a": 4},
 			load:   func(r *Registers) { r.Strings[2] = "a" },
 			inspect: func(t *testing.T, r *Registers) {
@@ -79,7 +88,7 @@ func TestTypedMapReadsHitTheConcreteFastPath(t *testing.T) {
 			},
 		},
 		{
-			name: "a string-keyed string map", handler: handleMapGetStringString, source: map[string]string{"a": "v"},
+			name: "a string-keyed string map", handler: handleGetMapStringString, source: map[string]string{"a": "v"},
 			load: func(r *Registers) { r.Strings[2] = "a" },
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -87,7 +96,7 @@ func TestTypedMapReadsHitTheConcreteFastPath(t *testing.T) {
 			},
 		},
 		{
-			name: "an int-keyed string map", handler: handleMapGetIntString, source: map[int]string{2: "v"},
+			name: "an int-keyed string map", handler: handleGetMapInt64String, source: map[int]string{2: "v"},
 			load: func(r *Registers) { r.Ints[2] = 2 },
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -95,7 +104,7 @@ func TestTypedMapReadsHitTheConcreteFastPath(t *testing.T) {
 			},
 		},
 		{
-			name: "an int-keyed interface map", handler: handleMapGetIntGeneral, source: map[int]any{2: "boxed"},
+			name: "an int-keyed interface map", handler: handleGetMapInt64General, source: map[int]any{2: "boxed"},
 			load: func(r *Registers) { r.Ints[2] = 2 },
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -103,7 +112,7 @@ func TestTypedMapReadsHitTheConcreteFastPath(t *testing.T) {
 			},
 		},
 		{
-			name: "a string-keyed interface map", handler: handleMapGetStringGeneral, source: map[string]any{"a": 5},
+			name: "a string-keyed interface map", handler: handleGetMapStringGeneral, source: map[string]any{"a": 5},
 			load: func(r *Registers) { r.Strings[2] = "a" },
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -137,7 +146,7 @@ func TestTypedMapWritesLandInTheSourceMap(t *testing.T) {
 		inspect func(*testing.T, any)
 	}{
 		{
-			name: "an int-keyed int map", handler: handleMapSetIntInt, source: map[int]int{},
+			name: "an int-keyed int map", handler: handleSetMapInt64Int64, source: map[int]int{},
 			load: func(r *Registers) { r.Ints[1] = 1; r.Ints[2] = 10 },
 			inspect: func(t *testing.T, m any) {
 				t.Helper()
@@ -145,7 +154,7 @@ func TestTypedMapWritesLandInTheSourceMap(t *testing.T) {
 			},
 		},
 		{
-			name: "an int64-keyed int64 map", handler: handleMapSetIntInt, source: map[int64]int64{},
+			name: "an int64-keyed int64 map", handler: handleSetMapInt64Int64, source: map[int64]int64{},
 			load: func(r *Registers) { r.Ints[1] = 1; r.Ints[2] = 10 },
 			inspect: func(t *testing.T, m any) {
 				t.Helper()
@@ -153,7 +162,7 @@ func TestTypedMapWritesLandInTheSourceMap(t *testing.T) {
 			},
 		},
 		{
-			name: "a string-keyed int map", handler: handleMapSetStringInt, source: map[string]int{},
+			name: "a string-keyed int map", handler: handleSetMapStringInt64, source: map[string]int{},
 			load: func(r *Registers) { r.Strings[1] = "a"; r.Ints[2] = 3 },
 			inspect: func(t *testing.T, m any) {
 				t.Helper()
@@ -161,7 +170,7 @@ func TestTypedMapWritesLandInTheSourceMap(t *testing.T) {
 			},
 		},
 		{
-			name: "a string-keyed string map", handler: handleMapSetStringString, source: map[string]string{},
+			name: "a string-keyed string map", handler: handleSetMapStringString, source: map[string]string{},
 			load: func(r *Registers) { r.Strings[1] = "a"; r.Strings[2] = "v" },
 			inspect: func(t *testing.T, m any) {
 				t.Helper()
@@ -169,7 +178,7 @@ func TestTypedMapWritesLandInTheSourceMap(t *testing.T) {
 			},
 		},
 		{
-			name: "an int-keyed string map", handler: handleMapSetIntString, source: map[int]string{},
+			name: "an int-keyed string map", handler: handleSetMapInt64String, source: map[int]string{},
 			load: func(r *Registers) { r.Ints[1] = 2; r.Strings[2] = "v" },
 			inspect: func(t *testing.T, m any) {
 				t.Helper()
@@ -177,7 +186,7 @@ func TestTypedMapWritesLandInTheSourceMap(t *testing.T) {
 			},
 		},
 		{
-			name: "an int-keyed interface map", handler: handleMapSetIntGeneral, source: map[int]any{},
+			name: "an int-keyed interface map", handler: handleSetMapInt64General, source: map[int]any{},
 			load: func(r *Registers) { r.Ints[1] = 2; r.General[2] = reflect.ValueOf("boxed") },
 			inspect: func(t *testing.T, m any) {
 				t.Helper()
@@ -185,7 +194,7 @@ func TestTypedMapWritesLandInTheSourceMap(t *testing.T) {
 			},
 		},
 		{
-			name: "a string-keyed interface map", handler: handleMapSetStringGeneral, source: map[string]any{},
+			name: "a string-keyed interface map", handler: handleSetMapStringGeneral, source: map[string]any{},
 			load: func(r *Registers) { r.Strings[1] = "a"; r.General[2] = reflect.ValueOf(6) },
 			inspect: func(t *testing.T, m any) {
 				t.Helper()
@@ -193,7 +202,7 @@ func TestTypedMapWritesLandInTheSourceMap(t *testing.T) {
 			},
 		},
 		{
-			name: "an int-keyed accumulate", handler: handleMapAddIntInt, source: map[int]int{1: 5},
+			name: "an int-keyed accumulate", handler: handleAddToMapInt64Int64, source: map[int]int{1: 5},
 			load: func(r *Registers) { r.Ints[1] = 1; r.Ints[2] = 4 },
 			inspect: func(t *testing.T, m any) {
 				t.Helper()
@@ -201,7 +210,7 @@ func TestTypedMapWritesLandInTheSourceMap(t *testing.T) {
 			},
 		},
 		{
-			name: "a string-keyed accumulate", handler: handleMapAddStringInt, source: map[string]int{"a": 5},
+			name: "a string-keyed accumulate", handler: handleAddToMapStringInt64, source: map[string]int{"a": 5},
 			load: func(r *Registers) { r.Strings[1] = "a"; r.Ints[2] = 4 },
 			inspect: func(t *testing.T, m any) {
 				t.Helper()
@@ -209,7 +218,7 @@ func TestTypedMapWritesLandInTheSourceMap(t *testing.T) {
 			},
 		},
 		{
-			name: "an accumulate onto a missing key starts from zero", handler: handleMapAddStringInt,
+			name: "an accumulate onto a missing key starts from zero", handler: handleAddToMapStringInt64,
 			source: map[string]int{},
 			load:   func(r *Registers) { r.Strings[1] = "new"; r.Ints[2] = 4 },
 			inspect: func(t *testing.T, m any) {
@@ -245,7 +254,7 @@ func TestTypedMapCommaOkReportsPresence(t *testing.T) {
 		inspect func(*testing.T, *Registers)
 	}{
 		{
-			name: "an int-keyed int hit", handler: handleMapIndexOkIntInt, source: map[int]int{1: 10},
+			name: "an int-keyed int hit", handler: handleGetMapInt64Int64Ok, source: map[int]int{1: 10},
 			load: func(r *Registers) { r.Ints[2] = 1 }, wantOk: 1,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -253,7 +262,7 @@ func TestTypedMapCommaOkReportsPresence(t *testing.T) {
 			},
 		},
 		{
-			name: "an int-keyed int miss", handler: handleMapIndexOkIntInt, source: map[int]int{},
+			name: "an int-keyed int miss", handler: handleGetMapInt64Int64Ok, source: map[int]int{},
 			load: func(r *Registers) { r.Ints[2] = 9 }, wantOk: 0,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -261,7 +270,7 @@ func TestTypedMapCommaOkReportsPresence(t *testing.T) {
 			},
 		},
 		{
-			name: "an int64-keyed int64 hit", handler: handleMapIndexOkIntInt, source: map[int64]int64{1: 10},
+			name: "an int64-keyed int64 hit", handler: handleGetMapInt64Int64Ok, source: map[int64]int64{1: 10},
 			load: func(r *Registers) { r.Ints[2] = 1 }, wantOk: 1,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -269,7 +278,7 @@ func TestTypedMapCommaOkReportsPresence(t *testing.T) {
 			},
 		},
 		{
-			name: "a named-key map falls to the reflect path", handler: handleMapIndexOkStringInt,
+			name: "a named-key map falls to the reflect path", handler: handleGetMapStringInt64Ok,
 			source: map[namedStringMapKey]int{"a": 4},
 			load:   func(r *Registers) { r.Strings[2] = "a" }, wantOk: 1,
 			inspect: func(t *testing.T, r *Registers) {
@@ -278,7 +287,7 @@ func TestTypedMapCommaOkReportsPresence(t *testing.T) {
 			},
 		},
 		{
-			name: "a string-keyed int hit", handler: handleMapIndexOkStringInt, source: map[string]int{"a": 3},
+			name: "a string-keyed int hit", handler: handleGetMapStringInt64Ok, source: map[string]int{"a": 3},
 			load: func(r *Registers) { r.Strings[2] = "a" }, wantOk: 1,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -286,7 +295,7 @@ func TestTypedMapCommaOkReportsPresence(t *testing.T) {
 			},
 		},
 		{
-			name: "a string-keyed string hit", handler: handleMapIndexOkStringString,
+			name: "a string-keyed string hit", handler: handleGetMapStringStringOk,
 			source: map[string]string{"a": "v"},
 			load:   func(r *Registers) { r.Strings[2] = "a" }, wantOk: 1,
 			inspect: func(t *testing.T, r *Registers) {
@@ -295,7 +304,7 @@ func TestTypedMapCommaOkReportsPresence(t *testing.T) {
 			},
 		},
 		{
-			name: "a string-keyed string miss", handler: handleMapIndexOkStringString, source: map[string]string{},
+			name: "a string-keyed string miss", handler: handleGetMapStringStringOk, source: map[string]string{},
 			load: func(r *Registers) { r.Strings[2] = "a" }, wantOk: 0,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -303,7 +312,7 @@ func TestTypedMapCommaOkReportsPresence(t *testing.T) {
 			},
 		},
 		{
-			name: "an int-keyed string hit", handler: handleMapIndexOkIntString, source: map[int]string{2: "v"},
+			name: "an int-keyed string hit", handler: handleGetMapInt64StringOk, source: map[int]string{2: "v"},
 			load: func(r *Registers) { r.Ints[2] = 2 }, wantOk: 1,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -311,7 +320,7 @@ func TestTypedMapCommaOkReportsPresence(t *testing.T) {
 			},
 		},
 		{
-			name: "an int-keyed interface hit", handler: handleMapIndexOkIntGeneral, source: map[int]any{2: "boxed"},
+			name: "an int-keyed interface hit", handler: handleGetMapInt64GeneralOk, source: map[int]any{2: "boxed"},
 			load: func(r *Registers) { r.Ints[2] = 2 }, wantOk: 1,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -319,7 +328,7 @@ func TestTypedMapCommaOkReportsPresence(t *testing.T) {
 			},
 		},
 		{
-			name: "a string-keyed interface hit", handler: handleMapIndexOkStringGeneral,
+			name: "a string-keyed interface hit", handler: handleGetMapStringGeneralOk,
 			source: map[string]any{"a": 5},
 			load:   func(r *Registers) { r.Strings[2] = "a" }, wantOk: 1,
 			inspect: func(t *testing.T, r *Registers) {
@@ -328,7 +337,7 @@ func TestTypedMapCommaOkReportsPresence(t *testing.T) {
 			},
 		},
 		{
-			name: "a string-keyed interface miss", handler: handleMapIndexOkStringGeneral, source: map[string]any{},
+			name: "a string-keyed interface miss", handler: handleGetMapStringGeneralOk, source: map[string]any{},
 			load: func(r *Registers) { r.Strings[2] = "a" }, wantOk: 0,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
@@ -362,7 +371,7 @@ func TestTypedMapWriteToANilMapSurfacesAsAnInterpretedPanic(t *testing.T) {
 	registers.Ints[1] = 1
 	registers.Ints[2] = 2
 
-	got := handleMapSetIntInt(vm, frame, registers, op(0, 1, 2))
+	got := handleSetMapInt64Int64(vm, frame, registers, op(0, 1, 2))
 	requireRuntimePanic(t, vm, got, "nil map")
 }
 
@@ -371,12 +380,8 @@ func TestTypedMapReadFromAnUnsetRegisterIsAnInvariantBreak(t *testing.T) {
 
 	vm, frame, registers := newStandardVM(t)
 
-	require.Panics(t, func() { handleMapGetIntInt(vm, frame, registers, op(0, 1, 2)) })
+	require.Panics(t, func() { handleGetMapInt64Int64(vm, frame, registers, op(0, 1, 2)) })
 }
-
-type namedIntMapKey int
-
-type namedIntMapValue int
 
 func TestTypedMapAccumulateFallsBackForNamedTypes(t *testing.T) {
 	t.Parallel()
@@ -390,7 +395,7 @@ func TestTypedMapAccumulateFallsBackForNamedTypes(t *testing.T) {
 		registers.Ints[1] = 1
 		registers.Ints[2] = 4
 
-		require.Equal(t, opContinue, handleMapAddIntInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAddToMapInt64Int64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, namedIntMapValue(9), source[1])
 	})
 
@@ -403,7 +408,7 @@ func TestTypedMapAccumulateFallsBackForNamedTypes(t *testing.T) {
 		registers.Ints[1] = 2
 		registers.Ints[2] = 7
 
-		require.Equal(t, opContinue, handleMapAddIntInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAddToMapInt64Int64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, namedIntMapValue(7), source[2])
 	})
 
@@ -416,7 +421,7 @@ func TestTypedMapAccumulateFallsBackForNamedTypes(t *testing.T) {
 		registers.Ints[1] = 1
 		registers.Ints[2] = 4
 
-		require.Equal(t, opContinue, handleMapAddIntInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAddToMapInt64Int64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, int64(9), source[1])
 	})
 
@@ -429,7 +434,7 @@ func TestTypedMapAccumulateFallsBackForNamedTypes(t *testing.T) {
 		registers.Strings[1] = "a"
 		registers.Ints[2] = 4
 
-		require.Equal(t, opContinue, handleMapAddStringInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAddToMapStringInt64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, namedIntMapValue(9), source["a"])
 	})
 
@@ -442,7 +447,7 @@ func TestTypedMapAccumulateFallsBackForNamedTypes(t *testing.T) {
 		registers.Strings[1] = "a"
 		registers.Ints[2] = 4
 
-		require.Equal(t, opContinue, handleMapAddStringInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAddToMapStringInt64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, int64(9), source["a"])
 	})
 
@@ -451,8 +456,8 @@ func TestTypedMapAccumulateFallsBackForNamedTypes(t *testing.T) {
 
 		vm, frame, registers := newStandardVM(t)
 
-		require.Panics(t, func() { handleMapAddIntInt(vm, frame, registers, op(0, 1, 2)) })
-		require.Panics(t, func() { handleMapAddStringInt(vm, frame, registers, op(0, 1, 2)) })
+		require.Panics(t, func() { handleAddToMapInt64Int64(vm, frame, registers, op(0, 1, 2)) })
+		require.Panics(t, func() { handleAddToMapStringInt64(vm, frame, registers, op(0, 1, 2)) })
 	})
 
 	t.Run("a register holding something other than a map is refused", func(t *testing.T) {
@@ -461,7 +466,74 @@ func TestTypedMapAccumulateFallsBackForNamedTypes(t *testing.T) {
 		vm, frame, registers := newStandardVM(t)
 		registers.General[0] = reflect.ValueOf(4)
 
-		require.Equal(t, opPanicError, handleMapAddIntInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opPanicError, handleAddToMapInt64Int64(vm, frame, registers, op(0, 1, 2)))
 		require.Error(t, vm.evalError)
 	})
+}
+
+func TestMapMissesYieldTheZeroOfWhicheverMapWasRead(t *testing.T) {
+	t.Parallel()
+
+	type payload struct{ value int }
+	maps := []any{map[int]*payload{}, map[int]string{}, map[int][]byte{}, map[int]*payload{}}
+	reads := generalMapReads()
+
+	for _, read := range reads {
+		t.Run(read.name, func(t *testing.T) {
+			t.Parallel()
+			vm, frame, registers := newExtWordFrame(t, op(4, 0, 0))
+			for _, source := range maps {
+				frame.ProgramCounter = 1
+				registers.General[1] = reflect.ValueOf(source)
+				registers.Ints[2] = 7
+
+				require.Equal(t, opContinue, read.handler(vm, frame, registers, op(0, 1, 2)))
+
+				elementType := reflect.TypeOf(source).Elem()
+				require.True(t, registers.General[0].IsValid(), "a miss writes the element type's zero value, not nothing")
+				require.Equal(t, elementType, registers.General[0].Type(),
+					"the zero value belongs to the map just read, not to the one the cache last saw")
+				require.True(t, registers.General[0].IsZero())
+			}
+		})
+	}
+}
+
+func TestMapReadsFindTheirKeyWhicheverKeyTypeWasReadLast(t *testing.T) {
+	t.Parallel()
+
+	type payload struct{ value int }
+	found := &payload{value: 9}
+	maps := []any{
+		map[int8]*payload{7: found},
+		map[int64]*payload{7: found},
+		map[int16]*payload{7: found},
+		map[int]*payload{7: found},
+		map[int8]*payload{7: found},
+	}
+	reads := generalMapReads()
+	for _, read := range reads {
+		t.Run(read.name, func(t *testing.T) {
+			t.Parallel()
+			vm, frame, registers := newExtWordFrame(t, op(4, 0, 0))
+			for _, source := range maps {
+				frame.ProgramCounter = 1
+				registers.General[1] = reflect.ValueOf(source)
+				registers.Ints[2] = 7
+
+				require.Equal(t, opContinue, read.handler(vm, frame, registers, op(0, 1, 2)))
+
+				require.Equal(t, reflect.Pointer, registers.General[0].Kind(), "the key is built in the key type of the map just read")
+				require.Same(t, found, registers.General[0].Interface(), "map %T", source)
+			}
+		})
+	}
+}
+
+func generalMapReads() []generalMapRead {
+	return []generalMapRead{
+		{name: "a comma-ok read", handler: handleGetMapInt64GeneralOk},
+		{name: "a plain read", handler: handleGetMapInt64General},
+		{name: "a comma-ok read fused with its branch", handler: handleGetMapInt64GeneralOkThenJumpIfFalse},
+	}
 }

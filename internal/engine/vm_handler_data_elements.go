@@ -30,22 +30,18 @@ import (
 // nilDereferenceMessage is the Go runtime's text for a nil pointer dereference.
 const nilDereferenceMessage = "runtime error: invalid memory address or nil pointer dereference"
 
-// checkSliceBounds validates that index is within [0, collection.Len()). On failure,
-// raises an interpreted-side runtime panic whose message matches Go's runtime ("runtime
-// error: index out of range [N] with length M") so interpreted defer/recover() observes
-// parity.
+// checkSliceBounds checks an index and raises a Go bounds panic when it is out of range.
 //
 // Takes vm (*VM) which is used to raise the interpreted panic on failure.
 // Takes collection (reflect.Value) which is the slice or array to check.
 // Takes index (int) which is the index to validate.
 //
-// Returns the OpResult to propagate from the caller (opContinue when the index is in
-// range; the raise result otherwise) and a boolean flagging in-range / out-of-range so
-// callers can branch.
+// Returns OpResult which is opContinue or the result of raising the panic.
+// Returns bool which is true when the index is in range.
 func checkSliceBounds(vm *VM, collection reflect.Value, index int) (OpResult, bool) {
 	length := collection.Len()
 	if index < 0 || index >= length {
-		return raiseNativePanicAsInterpreted(vm, newRuntimePanicError("runtime error: index out of range [%d] with length %d", index, length)), false
+		return raiseIndexOutOfRange(vm, index, length), false
 	}
 	return opContinue, true
 }
@@ -75,15 +71,15 @@ func resolveIndexCollection(vm *VM, collection reflect.Value) (reflect.Value, Op
 	return collection, opContinue, true
 }
 
-// handleIndex handles the isa.OpIndex instruction by reading a general element from a
-// slice or array at the given integer index.
+// handleGetElement handles the isa.OpGetElement instruction by reading a general element
+// from a slice or array at the given integer index.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes registers (*Registers) which holds the collection and index.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleIndex(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetElement(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	collection, indexPanicResult, ok := resolveIndexCollection(vm, registers.General[instruction.B])
 	if !ok {
 		return indexPanicResult
@@ -100,8 +96,8 @@ func handleIndex(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Ins
 	return opContinue
 }
 
-// handleIndexSet handles the isa.OpIndexSet instruction by writing a general value to a
-// slice or array at the given integer index.
+// handleSetElement handles the isa.OpSetElement instruction by writing a general value to
+// a slice or array at the given integer index.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -109,7 +105,7 @@ func handleIndex(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Ins
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleIndexSet(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetElement(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	collection, indexPanicResult, ok := resolveIndexCollection(vm, registers.General[instruction.A])
 	if !ok {
 		return indexPanicResult
@@ -122,9 +118,9 @@ func handleIndexSet(vm *VM, frame *CallFrame, registers *Registers, instruction 
 }
 
 // storeIndexedElement writes general[valueRegister] into the addressable element value,
-// preserving isa.OpIndexSet's coercion order: arena materialisation, the direct any-slot
-// fast path, closure-to-func coercion, convertibility widening, and the final
-// assignability check before reflect.Set (which keeps GC write barriers).
+// preserving isa.OpSetElement's coercion order, including arena materialisation, the
+// direct any-slot fast path, closure-to-func coercion, convertibility widening, and the
+// final assignability check before reflect.Set (which keeps GC write barriers).
 //
 // Takes vm (*VM) which supplies the arena and panic plumbing.
 // Takes frame (*CallFrame) which is used for panic diagnostics.
@@ -135,7 +131,20 @@ func handleIndexSet(vm *VM, frame *CallFrame, registers *Registers, instruction 
 //
 // Returns OpResult indicating the next execution step.
 func storeIndexedElement(vm *VM, frame *CallFrame, registers *Registers, target reflect.Value, valueRegister uint8, instruction isa.Instruction) OpResult {
-	value := MaterialiseArenaValue(vm.Arena, coerceValue(vm, registers.General[valueRegister], target.Type()))
+	if arena := vm.Arena; arena == nil || !arena.licensed {
+		if storePointerInAnySlotWithoutLicence(arena, target, registers.General[valueRegister]) {
+			return opContinue
+		}
+	} else if storePointerInAnySlotRevokedEpoch(arena, target, registers.General[valueRegister]) {
+		return opContinue
+	}
+	value := coerceValue(vm, registers.General[valueRegister], target.Type())
+	if optimisticStringSlotStore(vm.Arena, target, value) {
+		return opContinue
+	}
+	if !optimisticOwnValueStore(vm.Arena, target, value) {
+		value = materialiseArenaValueIntoSlot(vm.Arena, value, target.Type())
+	}
 	if writeAnyInterfaceSlotFast(target, value) {
 		return opContinue
 	}
@@ -148,7 +157,7 @@ func storeIndexedElement(vm *VM, frame *CallFrame, registers *Registers, target 
 		}
 	}
 	if value.IsValid() && !value.Type().AssignableTo(target.Type()) {
-		vMPanicTypeMismatch("handleIndexSet", target.Type(), value.Type(), instruction, frame, registers)
+		vMPanicTypeMismatch("handleSetElement", target.Type(), value.Type(), instruction, frame, registers)
 	}
 	target.Set(value)
 	return opContinue
@@ -158,13 +167,13 @@ func storeIndexedElement(vm *VM, frame *CallFrame, registers *Registers, target 
 // value (pointer, map, chan, func, unsafe. Pointer) into a `[]any` (empty-interface)
 // slot.
 //
-// reflect.Value.Convert(any) goes through cvtT2I which heap-allocates a fresh eface;
+// reflect.Value.Convert(any) goes through cvtT2I which heap-allocates a fresh eface.
 // reflect.Value.Set on an interface target is the same dance. Writing the (type, data)
 // eface pair directly into the slot via runtime.typedmemmove mirrors the pattern in
-// handleSetStructFieldGeneralT0.
+// handleSetStructFieldGeneral.
 //
 // Allocation-free int-kind cross-conversion (int64 to/from int, uint64 to/from uintptr,
-// etc.) is handled separately by fastIntKindConvert in the caller; this helper covers the
+// etc.) is handled separately by fastIntKindConvert in the caller. This helper covers the
 // orthogonal eface-target case.
 //
 // Takes target (reflect.Value) which is the destination interface slot.
@@ -288,8 +297,8 @@ func isUnsignedIntKind(kind reflect.Kind) bool {
 	}
 }
 
-// handleMapIndex handles the isa.OpMapIndex instruction by reading a value from a map
-// using a general register key.
+// handleGetMap handles the isa.OpGetMap instruction by reading a value from a map using a
+// general register key.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -297,10 +306,10 @@ func isUnsignedIntKind(kind reflect.Kind) bool {
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapIndex(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMap(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapIndex", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMap", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if m.Kind() != reflect.Map {
 		vm.evalError = newInvariantError("map index on non-map value (%s)", m.Kind())
@@ -316,7 +325,7 @@ func handleMapIndex(vm *VM, frame *CallFrame, registers *Registers, instruction 
 	return opContinue
 }
 
-// handleMapIndexOk handles the isa.OpMapIndexOk instruction by reading a map value and
+// handleGetMapOk handles the isa.OpGetMapOk instruction by reading a map value and
 // setting an ok flag indicating whether the key was found.
 //
 // Takes vm (*VM) which is the virtual machine.
@@ -325,10 +334,10 @@ func handleMapIndex(vm *VM, frame *CallFrame, registers *Registers, instruction 
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapIndexOk(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapOk(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapIndexOk", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapOk", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if m.Kind() != reflect.Map {
 		vm.evalError = newInvariantError("map index on non-map value (%s)", m.Kind())
@@ -348,7 +357,7 @@ func handleMapIndexOk(vm *VM, frame *CallFrame, registers *Registers, instructio
 	return opContinue
 }
 
-// handleMapSet handles the isa.OpMapSet instruction by writing a value to a map at the
+// handleSetMap handles the isa.OpSetMap instruction by writing a value to a map at the
 // given key with closure and type coercion.
 //
 // Takes vm (*VM) which is the executing VM.
@@ -357,16 +366,10 @@ func handleMapIndexOk(vm *VM, frame *CallFrame, registers *Registers, instructio
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-//
-// Fast path: 8-byte int-keyed map with a concrete (non-interface) element type, where the
-// value's runtime type already matches elemType. Covers the LRU `cache.lookup[key] =
-// node` pattern (map[int64]*lruNode, *lruNode source) but bails for interface{} element
-// maps where the slot needs full eface boxing that the generic reflect.Value.SetMapIndex
-// handles correctly.
-func handleMapSet(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetMap(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.A]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapSet", registerRoleMap, instruction.A, instruction, frame, registers)
+		vMPanicInvalidRegister("handleSetMap", registerRoleMap, instruction.A, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -382,7 +385,7 @@ func handleMapSet(vm *VM, frame *CallFrame, registers *Registers, instruction is
 	return mapSetReflectSlow(vm, m, keyType, elemType, registers, instruction)
 }
 
-// mapSetFast64Pointer is the 8-byte-keyed pointer-value fast path for handleMapSet.
+// mapSetFast64Pointer is the 8-byte-keyed pointer-value fast path for handleSetMap.
 //
 // Takes vm (*VM) which provides arena materialise.
 // Takes m (reflect.Value) which is the map register.
@@ -419,7 +422,7 @@ func mapKeyAsInt64(keyValue reflect.Value) (int64, bool) {
 
 // mapSetReflectSlow is the reflect-driven map-set fallback used when the fast64 path
 // bails (non-int key kind, nil map pointer, non- pointer element value, or
-// interface-typed elements). A dedicated function so handleMapSet's bail conditions are
+// interface-typed elements). A dedicated function so handleSetMap's bail conditions are
 // expressed as early returns rather than branching to a shared tail.
 //
 // Takes vm (*VM) which is the virtual machine.
@@ -431,16 +434,18 @@ func mapKeyAsInt64(keyValue reflect.Value) (int64, bool) {
 //
 // Returns OpResult indicating the next execution step.
 func mapSetReflectSlow(vm *VM, m reflect.Value, keyType, elemType reflect.Type, registers *Registers, instruction isa.Instruction) OpResult {
-	key := MaterialiseArenaValue(vm.Arena, convertMapKey(vm, registers.General[instruction.B], keyType))
-	value := MaterialiseArenaValue(vm.Arena, coerceValue(vm, registers.General[instruction.C], elemType))
+	key := materialiseArenaValueIntoSlot(vm.Arena, convertMapKey(vm, registers.General[instruction.B], keyType), keyType)
+	value := materialiseArenaValueIntoSlot(vm.Arena, coerceValue(vm, registers.General[instruction.C], elemType), elemType)
+	noteBoxedHandOff(vm.Arena, handOffUntracedContainer, key, keyType.Kind() == reflect.Interface)
+	noteBoxedHandOff(vm.Arena, handOffUntracedContainer, value, elemType.Kind() == reflect.Interface)
 	if recovered, panicked := guardChannelOp(func() { m.SetMapIndex(key, value) }); panicked {
 		return raiseNativePanicAsInterpreted(vm, recovered)
 	}
 	return opContinue
 }
 
-// handleMapDelete handles the isa.SubOpMapDelete instruction by deleting an entry from a
-// map using the given key.
+// handleDeleteFromMapBody handles the isa.SubOpDeleteFromMap instruction by deleting an
+// entry from a map using the given key.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -448,10 +453,10 @@ func mapSetReflectSlow(vm *VM, m reflect.Value, keyType, elemType reflect.Type, 
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapDelete(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleDeleteFromMapBody(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.A]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapDelete", registerRoleMap, instruction.A, instruction, frame, registers)
+		vMPanicInvalidRegister("handleDeleteFromMapBody", registerRoleMap, instruction.A, instruction, frame, registers)
 	}
 	if m.Kind() != reflect.Map {
 		vm.evalError = newInvariantError("map delete on non-map value (%s)", m.Kind())
@@ -460,7 +465,7 @@ func handleMapDelete(vm *VM, frame *CallFrame, registers *Registers, instruction
 	cacheEntry := resolveMapAccessCache(vm, m.Type())
 	if cacheEntry.fast64Eligible {
 		if key, ok := mapKeyAsInt64(registers.General[instruction.B]); ok {
-			keyScratch := mapKeyScratchFor(vm, cacheEntry.keyType)
+			keyScratch := cacheEntry.keyScratch
 			keyScratch.SetInt(key)
 			m.SetMapIndex(keyScratch, reflect.Value{})
 			return opContinue
@@ -480,12 +485,6 @@ func handleMapDelete(vm *VM, frame *CallFrame, registers *Registers, instruction
 // Takes instruction (instruction) which encodes the register and field index.
 //
 // Returns OpResult indicating the next execution step.
-//
-// Unwraps interface values that hold a concrete struct or pointer to struct. This is
-// needed when a previous step pulled the value out of a container whose element type was
-// cycle-broken to `any` (see convertFieldBreakingCycles): map[K]*Self lookup or [N]*Self
-// index returns an interface that the user expects to be a struct or *struct for the next
-// field access.
 //
 //nolint:revive // cognitive-complexity: kept whole on the field-access hot path
 func handleGetField(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
@@ -550,10 +549,6 @@ func handleGetField(vm *VM, frame *CallFrame, registers *Registers, instruction 
 // Takes instruction (instruction) which encodes the struct and field index.
 //
 // Returns OpResult indicating the next execution step.
-//
-// Note: aborts via vmPanicXxx helpers when the struct register is invalid, the deref
-// target is not a pointer or interface, the deref target is nil, or the value type is not
-// assignable to the field type.
 func handleSetField(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	s := registers.General[instruction.A]
 	if !s.IsValid() {
@@ -578,8 +573,8 @@ func handleSetField(vm *VM, frame *CallFrame, registers *Registers, instruction 
 		}
 	}
 	value := coerceValue(vm, registers.General[instruction.C], field.Type())
-	if !frame.Function.FieldStoreArenaSafePCs[frame.ProgramCounter-1] {
-		value = MaterialiseArenaValue(vm.Arena, value)
+	if !pcGranted(frame.Function.FieldStoreArenaSafePCs, frame.ProgramCounter-1) && !optimisticOwnValueStore(vm.Arena, field, value) {
+		value = materialiseArenaValueIntoSlot(vm.Arena, value, field.Type())
 	}
 	if !field.CanSet() {
 		field = unsafeNewAt(reflectValueABIType(field.Type()), ReflectValuePtr(field), field.Kind())
@@ -619,16 +614,27 @@ func handleSetFieldDeref(vm *VM, frame *CallFrame, registers *Registers, instruc
 		return raiseNilDereference(vm)
 	}
 	value := registers.General[instruction.C]
+	element := receiver.Elem()
 	if receiver.Kind() == reflect.Pointer {
-		if vm.Arena != nil && !vm.Arena.ownsIndirectCell(receiver.UnsafePointer()) {
+		if storesPointerFreeByValue(value, element.Type()) {
+			element.Set(value)
+			return opContinue
+		}
+
+		ownCell := ownCellStoreByValue(vm.Arena, receiver.UnsafePointer(), value)
+		if !ownCell && vm.Arena != nil && (!vm.Arena.ownsIndirectCell(receiver.UnsafePointer()) ||
+			vm.Arena.licenceCoveredAt(receiver.UnsafePointer())) {
 			value = escapeArenaValueForGlobal(vm.Arena, value)
 		}
 		if writeSliceHeaderThroughPointer(receiver, value) {
 			return opContinue
 		}
+		if ownCell {
+			element.Set(coerceValue(vm, value, element.Type()))
+			return opContinue
+		}
 	}
-	element := receiver.Elem()
-	element.Set(MaterialiseArenaValue(vm.Arena, coerceValue(vm, value, element.Type())))
+	element.Set(materialiseArenaValueIntoSlot(vm.Arena, coerceValue(vm, value, element.Type()), element.Type()))
 	return opContinue
 }
 
@@ -690,7 +696,7 @@ func panicSetFieldTypeMismatch(parent, field, value reflect.Value, instr isa.Ins
 	))
 }
 
-// handleGetFieldInt handles the isa.OpGetFieldInt instruction by reading an integer
+// handleGetFieldInt64 handles the isa.OpGetFieldInt64 instruction by reading an integer
 // struct field directly into an int register.
 //
 // Takes vm (*VM) which is the virtual machine.
@@ -699,7 +705,7 @@ func panicSetFieldTypeMismatch(parent, field, value reflect.Value, instr isa.Ins
 // Takes instruction (instruction) which encodes the register and field index.
 //
 // Returns OpResult indicating the next execution step.
-func handleGetFieldInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetFieldInt64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	s := registers.General[instruction.B]
 	if !s.IsValid() {
 		return raiseNilDereference(vm)
@@ -711,10 +717,10 @@ func handleGetFieldInt(vm *VM, frame *CallFrame, registers *Registers, instructi
 		s = s.Elem()
 	}
 	if s.Kind() != reflect.Struct {
-		vMPanicNotStruct("handleGetFieldInt", instruction.B, s.Kind(), instruction, frame, registers)
+		vMPanicNotStruct("handleGetFieldInt64", instruction.B, s.Kind(), instruction, frame, registers)
 	}
 	if int(instruction.C) >= s.NumField() {
-		vMPanicFieldIndex("handleGetFieldInt", s.Type(), instruction.C, instruction, frame, registers)
+		vMPanicFieldIndex("handleGetFieldInt64", s.Type(), instruction.C, instruction, frame, registers)
 	}
 	field := s.Field(int(instruction.C))
 	if !field.CanInterface() {
@@ -733,8 +739,8 @@ func handleGetFieldInt(vm *VM, frame *CallFrame, registers *Registers, instructi
 	return opContinue
 }
 
-// handleSetFieldInt handles the isa.OpSetFieldInt instruction by writing an int register
-// value directly to an integer struct field.
+// handleSetFieldInt64 handles the isa.OpSetFieldInt64 instruction by writing an int
+// register value directly to an integer struct field.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -742,7 +748,7 @@ func handleGetFieldInt(vm *VM, frame *CallFrame, registers *Registers, instructi
 // Takes instruction (instruction) which encodes the struct and field index.
 //
 // Returns OpResult indicating the next execution step.
-func handleSetFieldInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetFieldInt64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	s := registers.General[instruction.A]
 	if !s.IsValid() {
 		return raiseNilDereference(vm)
@@ -754,10 +760,10 @@ func handleSetFieldInt(vm *VM, frame *CallFrame, registers *Registers, instructi
 		s = s.Elem()
 	}
 	if s.Kind() != reflect.Struct {
-		vMPanicNotStruct("handleSetFieldInt", instruction.A, s.Kind(), instruction, frame, registers)
+		vMPanicNotStruct("handleSetFieldInt64", instruction.A, s.Kind(), instruction, frame, registers)
 	}
 	if int(instruction.B) >= s.NumField() {
-		vMPanicFieldIndex("handleSetFieldInt", s.Type(), instruction.B, instruction, frame, registers)
+		vMPanicFieldIndex("handleSetFieldInt64", s.Type(), instruction.B, instruction, frame, registers)
 	}
 	field := s.Field(int(instruction.B))
 	if !field.CanSet() {
@@ -774,10 +780,10 @@ func handleSetFieldInt(vm *VM, frame *CallFrame, registers *Registers, instructi
 
 // derefSliceHeader resolves the []int64 header a *[]T-kinded general register points at.
 //
-// Mirrors handleDeref's Pointer arm for the nil check (same panic text) and
-// resolvePointerBase for the flagIndir forms; the pointee address is the slice header
+// Mirrors handleDereference's Pointer arm for the nil check (same panic text) and
+// resolvePointerBase for the flagIndir forms. The pointee address is the slice header
 // itself. Non-pointer receivers report unsupported so callers raise the same diagnostics
-// the composed DEREF path would.
+// the composed DEREFERENCE path would.
 //
 // Takes vm (*VM) which receives the nil-dereference panic.
 // Takes registers (*Registers) which holds the pointer value.
@@ -800,8 +806,8 @@ func derefSliceHeader(vm *VM, registers *Registers, pointerRegister uint8) (*sna
 	return (*snapshotSliceHeader)(base), opContinue, true
 }
 
-// handleDerefSliceGetInt handles isa.OpDerefSliceGetInt: ints[A] = (*general[B])[ints[C]]
-// for pointers to int-kinded slices.
+// handleGetElementInt64ViaPointer handles isa.OpGetElementInt64ViaPointer computes
+// ints[A] = (*general[B])[ints[C]] for pointers to int-kinded slices.
 //
 // Reads the slice header through the pointer on every access, so aliasing and
 // append/reslice-through-pointer effects are always visible. Unsupported receiver shapes
@@ -813,7 +819,7 @@ func derefSliceHeader(vm *VM, registers *Registers, pointerRegister uint8) (*sna
 // Takes instruction (instruction) which encodes A=dest, B=pointer, C=index.
 //
 // Returns OpResult indicating the next execution step.
-func handleDerefSliceGetInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetElementInt64ViaPointer(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	header, panicResult, ok := derefSliceHeader(vm, registers, instruction.B)
 	if !ok {
 		if panicResult != opContinue {
@@ -831,8 +837,8 @@ func handleDerefSliceGetInt(vm *VM, frame *CallFrame, registers *Registers, inst
 	return opContinue
 }
 
-// derefSliceFallbackGet routes unsupported isa.OpDerefSliceGetInt receivers through
-// reflect, matching what the composed DEREF+INDEX pair produced.
+// derefSliceFallbackGet routes unsupported isa.OpGetElementInt64ViaPointer receivers
+// through reflect, matching what the composed DEREFERENCE+GET_ELEMENT pair produced.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which is the active register file.
@@ -853,16 +859,16 @@ func derefSliceFallbackGet(vm *VM, _ *CallFrame, registers *Registers, instructi
 	return opContinue
 }
 
-// handleDerefSliceSetInt handles isa.OpDerefSliceSetInt: (*general[A])[ints[B]] = ints[C]
-// for pointers to int-kinded slices. Element stores into int slices carry no pointers, so
-// no write barrier applies.
+// handleSetElementInt64ViaPointer handles isa.OpSetElementInt64ViaPointer, computing
+// (*general[A])[ints[B]] = ints[C] for pointers to int-kinded slices. Element stores into
+// int slices carry no pointers, so no write barrier applies.
 //
 // Takes vm (*VM) which supplies panic plumbing.
 // Takes registers (*Registers) which holds the operands.
 // Takes instruction (isa.Instruction) which encodes A=pointer, B=index, C=source.
 //
 // Returns OpResult indicating the next execution step.
-func handleDerefSliceSetInt(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetElementInt64ViaPointer(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	header, panicResult, ok := derefSliceHeader(vm, registers, instruction.A)
 	if !ok {
 		if panicResult != opContinue {
@@ -900,7 +906,7 @@ func raiseNilDereference(vm *VM) OpResult {
 	return raiseNativePanicAsInterpreted(vm, newRuntimePanicError(nilDereferenceMessage))
 }
 
-// handleSubOpFieldAddr stores the address of a struct field in the destination register.
+// handleAddressField stores the address of a struct field in the destination register.
 //
 // Takes vm (*VM) which handles interpreted nil-pointer panics.
 // Takes frame (*CallFrame) which supplies the extension word containing the field index.
@@ -908,7 +914,7 @@ func raiseNilDereference(vm *VM) OpResult {
 // Takes instruction (isa.Instruction) which names the destination in B and receiver in C.
 //
 // Returns OpResult indicating whether execution continues or a panic is raised.
-func handleSubOpFieldAddr(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleAddressField(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extension := readExtensionWord(frame)
 	frame.ProgramCounter++
 	receiver := registers.General[instruction.C]
@@ -925,10 +931,10 @@ func handleSubOpFieldAddr(vm *VM, frame *CallFrame, registers *Registers, instru
 		receiver = receiver.Elem()
 	}
 	if receiver.Kind() != reflect.Struct {
-		vMPanicNotStruct("handleSubOpFieldAddr", instruction.C, receiver.Kind(), instruction, frame, registers)
+		vMPanicNotStruct("handleAddressField", instruction.C, receiver.Kind(), instruction, frame, registers)
 	}
 	if int(extension.A) >= receiver.NumField() {
-		vMPanicFieldIndex("handleSubOpFieldAddr", receiver.Type(), extension.A, instruction, frame, registers)
+		vMPanicFieldIndex("handleAddressField", receiver.Type(), extension.A, instruction, frame, registers)
 	}
 	field := receiver.Field(int(extension.A))
 	if !field.CanInterface() && field.CanAddr() {

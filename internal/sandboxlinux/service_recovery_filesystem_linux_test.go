@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
@@ -30,7 +30,7 @@ import (
 
 func TestClaimedFilesystemRecoveryRequiresQuiescence(t *testing.T) {
 	var absent *ServiceRecoveryClaim
-	if err := absent.RecoverFilesystem(context.Background(), WorkerConfig{Tenant: testTenant}, nil); !errors.Is(err, errClosed) {
+	if err := absent.RecoverFilesystem(t.Context(), WorkerConfig{Tenant: testTenant}, nil); !errors.Is(err, errClosed) {
 		t.Fatal("missing claim accepted:", err)
 	}
 	owner := &ServiceRecoveryClaim{snapshot: &sandboxbroker.LinuxRecoveryClaim{}}
@@ -38,11 +38,11 @@ func TestClaimedFilesystemRecoveryRequiresQuiescence(t *testing.T) {
 	if err := owner.RecoverFilesystem(nil, WorkerConfig{Tenant: testTenant}, nil); !errors.Is(err, ErrInvalidLimits) {
 		t.Fatal("missing context accepted:", err)
 	}
-	if err := owner.RecoverFilesystem(context.Background(), WorkerConfig{Tenant: testTenant}, nil); !errors.Is(err, ErrServiceBusy) {
+	if err := owner.RecoverFilesystem(t.Context(), WorkerConfig{Tenant: testTenant}, nil); !errors.Is(err, ErrServiceBusy) {
 		t.Fatal("recovery started before termination proof:", err)
 	}
 	owner.group, owner.quiesced = &Group{}, true
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if err := owner.RecoverFilesystem(ctx, WorkerConfig{Tenant: testTenant}, nil); !errors.Is(err, context.Canceled) || owner.recovering || owner.pending {
 		t.Fatal("cancelled recovery admitted work:", err)
@@ -50,7 +50,7 @@ func TestClaimedFilesystemRecoveryRequiresQuiescence(t *testing.T) {
 	if err := owner.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := owner.RecoverFilesystem(context.Background(), WorkerConfig{Tenant: testTenant}, nil); !errors.Is(err, errClosed) {
+	if err := owner.RecoverFilesystem(t.Context(), WorkerConfig{Tenant: testTenant}, nil); !errors.Is(err, errClosed) {
 		t.Fatal("closed claim admitted recovery:", err)
 	}
 }

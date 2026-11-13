@@ -24,11 +24,12 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-// handleSubOpAllocStructLiteral allocates a zeroed struct literal into general[C].
+// handleAllocateStructLiteral allocates a zeroed struct literal into general[C].
 //
 // Reads the struct type from the TypeTable index carried by the extension word. On the
 // first execution in a function it also builds the struct-literal table so later calls
-// stay in assembly.
+// stay in assembly, unless the program calls runtime.SetFinalizer, since its literals are
+// then Go allocations (allocatesForFinalisers), which the assembly route does not make.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes frame (*CallFrame) which provides the extension word and type table.
@@ -36,7 +37,7 @@ import (
 // Takes instruction (instruction) which carries the destination register in C.
 //
 // Returns OpResult indicating whether execution continues or an error was raised.
-func handleSubOpAllocStructLiteral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleAllocateStructLiteral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	typeIndex := uint16(extensionWord.A) | uint16(extensionWord.B)<<isa.WideBitShift
@@ -49,7 +50,9 @@ func handleSubOpAllocStructLiteral(vm *VM, frame *CallFrame, registers *Register
 		vm.evalError = errStructLiteralTypeNotStruct
 		return opPanicError
 	}
-	EnsureStructLiteralTable(frame.Function)
+	if !vm.allocatesForFinalisers() {
+		EnsureStructLiteralTable(frame.Function)
+	}
 	vm.StructLiteralGoAllocations++
 	registers.General[instruction.C] = allocateStructLiteralValue(vm, reflectType)
 	return opContinue

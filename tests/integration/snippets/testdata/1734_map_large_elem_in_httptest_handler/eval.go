@@ -12,7 +12,7 @@ import (
 
 type Post struct {
 	Title, Description, Slug, Date, Story, Summary, Author, Image string
-	Series, URL, DateLabel, Year, Byline, Label, Updated, Extra    string
+	Series, URL, DateLabel, Year, Byline, Label, Updated, Extra   string
 	Related                                                       []string
 	Order                                                         int
 }

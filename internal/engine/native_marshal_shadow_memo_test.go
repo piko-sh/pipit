@@ -19,7 +19,6 @@
 package engine
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
@@ -34,24 +33,25 @@ type shadowProbe struct {
 }
 
 func TestMarshalShadowMemoLivesOnTheProgramRoot(t *testing.T) {
-	vm := NewVM(context.Background(), NewGlobalStore(), symtab.NewSymbolRegistry(nil))
+	vm := NewVM(t.Context(), NewGlobalStore(), symtab.NewSymbolRegistry(nil))
 	root := program.NewNamedFunction("root")
 	vm.rootFunction = root
 	value := reflect.ValueOf(shadowProbe{Count: 1, Name: "probe"})
 
-	require.Equal(t, value.Interface(), shadowForMarshal(vm, value).Interface())
+	require.Equal(t, value.Interface(), shadowForMarshal(vm, value, anySinkJSONEncode).Interface())
 
-	cached, ok := root.MarshalShadowMemo.Load(value.Type())
+	key := marshalShadowMemoKey{typ: value.Type(), sink: anySinkJSONEncode}
+	cached, ok := root.MarshalShadowMemo.Load(key)
 	require.True(t, ok, "the answer must be memoised on the root that asked")
 	require.Equal(t, false, cached)
 
 	other := program.NewNamedFunction("other")
-	_, leaked := other.MarshalShadowMemo.Load(value.Type())
+	_, leaked := other.MarshalShadowMemo.Load(key)
 	require.False(t, leaked, "a different program must not see the memo")
 }
 
 func TestMarshalShadowWithoutRootIsUncached(t *testing.T) {
-	vm := NewVM(context.Background(), NewGlobalStore(), symtab.NewSymbolRegistry(nil))
-	walk := marshalShadowWalk{vm: vm, budget: marshalShadowLeafCap}
+	vm := NewVM(t.Context(), NewGlobalStore(), symtab.NewSymbolRegistry(nil))
+	walk := marshalShadowWalk{vm: vm, budget: marshalShadowLeafCap, sink: anySinkJSONEncode}
 	require.False(t, walk.typeNeedsShadow(reflect.TypeFor[shadowProbe]()))
 }

@@ -89,7 +89,6 @@ func (*TengoRunner) Run(parent context.Context, spec BenchSpec, mode RunMode, be
 // runTengoScript captures the process's standard streams, swaps os.Args so the tengo
 // script's `os.args()` sees our --mode/--k flags, then compiles and runs the script.
 //
-// Takes ctx (context.Context) which bounds the run.
 // Takes source ([]byte) which is the script.
 // Takes scriptPath (string) which becomes the script's argv[1].
 // Takes mode (RunMode) which selects the script's mode flags.
@@ -110,7 +109,6 @@ func runTengoScript(ctx context.Context, source []byte, scriptPath string, mode 
 // compileAndRunTengo compiles and runs a tengo script; its output goes to os.Stdout and
 // os.Stderr, which the caller has captured.
 //
-// Takes ctx (context.Context) which bounds the run.
 // Takes source ([]byte) which is the script.
 //
 // Returns interpretedRun which holds the timings; the caller fills in the output.

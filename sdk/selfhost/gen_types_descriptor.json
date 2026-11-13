@@ -1,6 +1,7 @@
 {
   "import_paths": [
     "piko.sh/safeconv",
+    "piko.sh/stablepool",
     "pipit.sh/pipit/internal/compile/appendlower",
     "pipit.sh/pipit/internal/compile/astpattern",
     "pipit.sh/pipit/internal/compile/escape",
@@ -25,7 +26,6 @@
     "pipit.sh/pipit/internal/logging",
     "pipit.sh/pipit/internal/mem",
     "pipit.sh/pipit/internal/policy",
-    "pipit.sh/pipit/internal/stablepool",
     "pipit.sh/pipit/internal/symtab",
     "pipit.sh/pipit/internal/symtab/descriptor",
     "pipit.sh/pipit/internal/symtab/typemodel"

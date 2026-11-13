@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxworker
 
@@ -62,7 +62,7 @@ func (session *connection) exchangeFilesystem(ctx context.Context, worker transp
 	if compiled.Code != "compiled" {
 		return Response{}, sandboxwire.ErrProtocol
 	}
-	execution, cancel := context.WithTimeout(ctx, executionTimeout)
+	execution, cancel := context.WithTimeoutCause(ctx, executionTimeout, sandboxwire.ErrExecutionTimedOut)
 	defer cancel()
 	deadline, _ := execution.Deadline()
 	if err := worker.SetDeadline(deadline); err != nil {
@@ -116,6 +116,24 @@ func (session *connection) forwardFilesystemCall(ctx context.Context, broker *sa
 	return session.hostSend(sandboxwire.Reply, message.ID, response)
 }
 
+// closeFilesystemOwners closes whichever of the source worker and the broker exist, under
+// ctx's values without its cancellation and with a bound (sandboxwire.CleanupContext). A
+// caller with no context is a programming error and passes context.Background.
+//
+// Takes worker (*sandboxlinux.WorkerProcess) which may be nil.
+// Takes broker (*sandboxlinux.FilesystemBroker) which may be nil.
+//
+// Returns error which joins both closes.
+func closeFilesystemOwners(ctx context.Context, worker *sandboxlinux.WorkerProcess, broker *sandboxlinux.FilesystemBroker) error {
+	cleanupCtx, cancel := sandboxwire.CleanupContext(ctx)
+	defer cancel()
+	var workerErr error
+	if worker != nil {
+		workerErr = worker.Close(cleanupCtx)
+	}
+	return errors.Join(workerErr, broker.Close(cleanupCtx))
+}
+
 // ExchangeFilesystem runs one source submission with an independently confined broker.
 // Both process owners must be retained for cleanup retries after an error.
 //
@@ -131,24 +149,23 @@ func (session *connection) forwardFilesystemCall(ctx context.Context, broker *sa
 func ExchangeFilesystem(ctx context.Context, worker *sandboxlinux.WorkerProcess, config FilesystemConfiguration,
 	request Request, broker *sandboxlinux.FilesystemBroker,
 ) (response Response, err error) {
-	if ctx == nil || worker == nil || broker == nil {
-		var cleanupErr error
-		if worker != nil {
-			cleanupErr = worker.Close()
-		}
-		return Response{}, errors.Join(sandboxwire.ErrProtocol, cleanupErr, broker.Close())
+	if ctx == nil {
+		return Response{}, errors.Join(sandboxwire.ErrProtocol, closeFilesystemOwners(context.Background(), worker, broker))
+	}
+	if worker == nil || broker == nil {
+		return Response{}, errors.Join(sandboxwire.ErrProtocol, closeFilesystemOwners(ctx, worker, broker))
 	}
 	done := make(chan struct{})
 	var cancellationErr error
 	stop := context.AfterFunc(ctx, func() {
-		cancellationErr = errors.Join(worker.Close(), broker.Close())
+		cancellationErr = closeFilesystemOwners(ctx, worker, broker)
 		close(done)
 	})
 	defer func() {
 		if !stop() {
 			<-done
 		}
-		err = errors.Join(err, ctx.Err(), cancellationErr, worker.Close(), broker.Close())
+		err = errors.Join(err, ctx.Err(), cancellationErr, closeFilesystemOwners(ctx, worker, broker))
 		if err != nil {
 			response = Response{Output: "", Error: "", Code: "", Value: nil, CostUsed: 0, OutputTruncated: false}
 		}

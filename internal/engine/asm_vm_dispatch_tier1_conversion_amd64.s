@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerSubOpIntToFloat sets floats[B] = float64(ints[C]).
-TEXT ·handlerSubOpIntToFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerConvertInt64ToFloat64 sets floats[B] = float64(ints[C]).
+TEXT ·handlerConvertInt64ToFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -36,8 +36,8 @@ TEXT ·handlerSubOpIntToFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVSD   X0, (R9)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpFloatToInt sets ints[B] = int64(floats[C]).
-TEXT ·handlerSubOpFloatToInt(SB), NOSPLIT|NOFRAME, $0
+// handlerConvertFloat64ToInt64 sets ints[B] = int64(floats[C]).
+TEXT ·handlerConvertFloat64ToInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -47,8 +47,8 @@ TEXT ·handlerSubOpFloatToInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpUintToFloat sets floats[B] = float64(uints[C]).
-TEXT ·handlerSubOpUintToFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerConvertUint64ToFloat64 sets floats[B] = float64(uints[C]).
+TEXT ·handlerConvertUint64ToFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -71,8 +71,8 @@ unsigned_to_float_done_AX:
 	MOVSD   X0, (R9)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpFloatToUint sets uints[B] = uint64(floats[C]).
-TEXT ·handlerSubOpFloatToUint(SB), NOSPLIT|NOFRAME, $0
+// handlerConvertFloat64ToUint64 sets uints[B] = uint64(floats[C]).
+TEXT ·handlerConvertFloat64ToUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -93,4 +93,55 @@ float_to_unsigned_small_AX:
 float_to_unsigned_done_AX:
 	MOVQ    CTX_UINTS_BASE(R15), DI
 	MOVQ    SI, (DI)(AX*8)
+	DISPATCH_NEXT()
+
+// handlerConvertBoolToInt64 sets ints[B] to one when bools[C] is true and zero otherwise.
+TEXT ·handlerConvertBoolToInt64(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	MOVQ    DX, BX
+	SHRQ    $24, BX
+	MOVQ    CTX_BOOLS_BASE(R15), SI
+	MOVBQZX (SI)(BX*1), CX
+	MOVQ    CX, (R8)(AX*8)
+	DISPATCH_NEXT()
+
+// handlerConvertInt64ToBool sets bools[B] = ints[C] != 0.
+TEXT ·handlerConvertInt64ToBool(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	MOVQ    DX, BX
+	SHRQ    $24, BX
+	MOVQ    (R8)(BX*8), SI
+	TESTQ   SI, SI
+	MOVQ    $0, CX
+	SETNE   CL
+	MOVQ    CTX_BOOLS_BASE(R15), SI
+	MOVB    CL, (SI)(AX*1)
+	DISPATCH_NEXT()
+
+// handlerConvertInt64ToUint64 sets uints[B] = uint64(ints[C]).
+TEXT ·handlerConvertInt64ToUint64(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	MOVQ    DX, BX
+	SHRQ    $24, BX
+	MOVQ    (R8)(BX*8), CX
+	MOVQ    CTX_UINTS_BASE(R15), SI
+	MOVQ    CX, (SI)(AX*8)
+	DISPATCH_NEXT()
+
+// handlerConvertUint64ToInt64 sets ints[B] = int64(uints[C]).
+TEXT ·handlerConvertUint64ToInt64(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	MOVQ    DX, BX
+	SHRQ    $24, BX
+	MOVQ    CTX_UINTS_BASE(R15), SI
+	MOVQ    (SI)(BX*8), CX
+	MOVQ    CX, (R8)(AX*8)
 	DISPATCH_NEXT()

@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,11 +16,12 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -44,7 +43,7 @@ func TestStageWorkerImageCacheReuse(t *testing.T) {
 	t.Parallel()
 	data := workerELFFixture()
 	digest := sha256.Sum256(data)
-	cache, err := StageWorkerImageCache(context.Background(), t.TempDir(),
+	cache, err := StageWorkerImageCache(t.Context(), t.TempDir(),
 		[]WorkerImageRequest{{Executable: writeCacheSource(t, data), Digest: digest}})
 	if err != nil {
 		t.Fatal(err)
@@ -83,7 +82,7 @@ func TestStageWorkerImageCacheReuse(t *testing.T) {
 
 func TestStageWorkerImageCacheAbsentDigestMisses(t *testing.T) {
 	t.Parallel()
-	cache, err := StageWorkerImageCache(context.Background(), t.TempDir(), nil)
+	cache, err := StageWorkerImageCache(t.Context(), t.TempDir(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +100,7 @@ func TestStageWorkerImageCacheAbsentDigestMisses(t *testing.T) {
 func TestStageWorkerImageCacheRejectsMismatch(t *testing.T) {
 	t.Parallel()
 	data := workerELFFixture()
-	if _, err := StageWorkerImageCache(context.Background(), t.TempDir(),
+	if _, err := StageWorkerImageCache(t.Context(), t.TempDir(),
 		[]WorkerImageRequest{{Executable: writeCacheSource(t, data), Digest: sha256.Sum256([]byte("wrong"))}}); !errors.Is(err, ErrInvalidWorker) {
 		t.Fatalf("cache accepted an image that failed its approved digest: %v", err)
 	}
@@ -112,7 +111,7 @@ func TestStageWorkerImageCacheRejectsTamperedEntry(t *testing.T) {
 	data := workerELFFixture()
 	digest := sha256.Sum256(data)
 	cacheDir := t.TempDir()
-	cache, err := StageWorkerImageCache(context.Background(), cacheDir,
+	cache, err := StageWorkerImageCache(t.Context(), cacheDir,
 		[]WorkerImageRequest{{Executable: writeCacheSource(t, data), Digest: digest}})
 	if err != nil {
 		t.Fatal(err)

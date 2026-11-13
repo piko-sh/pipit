@@ -19,12 +19,17 @@
 package engine
 
 import (
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
+	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/mem"
 )
 
@@ -206,4 +211,196 @@ func TestGCShouldRun_HonoursThreshold(t *testing.T) {
 	assert.False(t, arena.gcShouldRun(), "arena below threshold should not trigger GC")
 	arena.bytesAllocated = gcInitialThreshold + 1
 	assert.True(t, arena.gcShouldRun(), "arena above threshold should trigger GC")
+}
+
+type gcSharedHolder struct {
+	pair *gcTracePair
+}
+
+func newGoroutineGCTestVM(t *testing.T) *VM {
+	t.Helper()
+	vm := newGCTestVM()
+	vm.debugKind = debugThreadGoroutine
+	vm.hasGoroutines = true
+	vm.CallStack = []CallFrame{{}}
+	arena := vm.Arena
+	arena.attachLicencePolicy(&VMLimits{})
+	setArenaBudget(t, arena, 1<<30)
+	arena.licenceAlwaysShared = true
+	arena.setLicenceVM(vm)
+	require.True(t, arena.licenceShared(0), "test harness: the arena's memory must be shared")
+	return vm
+}
+
+func retirePair(t *testing.T, arena *RegisterArena) unsafe.Pointer {
+	t.Helper()
+	pairType := reflect.TypeFor[gcTracePair]()
+	pointer, _ := retireGenericBytesAllocation(t, arena, pairType.Size(), uintptr(pairType.Align()))
+	return pointer
+}
+
+func retainsGenericSlabHolding(arena *RegisterArena, pointer unsafe.Pointer) bool {
+	for _, slab := range arena.oldGenericByteSlabs {
+		if len(slab) > 0 && uintptr(pointer) >= uintptr(unsafe.Pointer(&slab[0])) && uintptr(pointer) < uintptr(unsafe.Pointer(&slab[0]))+uintptr(len(slab)) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestMinorGCOfAGoroutineArenaReclaimsWhileItsMemoryIsShared(t *testing.T) {
+	vm := newGoroutineGCTestVM(t)
+	arena := vm.Arena
+	live := retirePair(t, arena)
+	retirePair(t, arena)
+	vm.CallStack[0].Registers.General = []reflect.Value{reflect.NewAt(reflect.TypeFor[gcTracePair](), live)}
+
+	arena.MinorGC(vm)
+
+	require.Len(t, arena.oldGenericByteSlabs, 1, "the slab no root reaches is reclaimed although another goroutine shares the VM's memory")
+	require.True(t, retainsGenericSlabHolding(arena, live), "the slab a register reaches is kept")
+}
+
+func TestMinorGCOfAGoroutineArenaFailsClosedWhileShared(t *testing.T) {
+	pairType := reflect.TypeFor[gcTracePair]()
+	for _, testCase := range []struct {
+		name  string
+		setUp func(vm *VM, live unsafe.Pointer)
+	}{
+		{"on a cell its VM made that a walk handed off", func(vm *VM, live unsafe.Pointer) {
+			cell := newCellFor(vm)
+			cell.Kind = isa.RegisterGeneral
+			cell.GeneralValue = reflect.NewAt(pairType, live)
+			cell.HandedOff.Store(1)
+			vm.CallStack[0].upvalues = []upvalue{{Value: cell}}
+		}},
+		{"on a root that reaches memory outside its own storage", func(vm *VM, live unsafe.Pointer) {
+			vm.CallStack[0].Registers.General = []reflect.Value{reflect.ValueOf(&gcSharedHolder{pair: (*gcTracePair)(live)})}
+		}},
+		{"for the VM that started the goroutines", func(vm *VM, live unsafe.Pointer) {
+			vm.CallStack[0].Registers.General = []reflect.Value{reflect.NewAt(pairType, live)}
+			vm.debugKind = 0
+			vm.spawnedGoroutines = true
+		}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			vm := newGoroutineGCTestVM(t)
+			arena := vm.Arena
+			live := retirePair(t, arena)
+			retirePair(t, arena)
+			testCase.setUp(vm, live)
+
+			arena.MinorGC(vm)
+
+			require.Len(t, arena.oldGenericByteSlabs, 2, "a mark that cannot vouch for every reference reclaims nothing")
+		})
+	}
+}
+
+func TestMinorGCOfAGoroutineArenaReadsNeitherCellsItDidNotMakeNorGlobals(t *testing.T) {
+	vm := newGoroutineGCTestVM(t)
+	arena := vm.Arena
+	cell := &program.UpvalueCell{Kind: isa.RegisterGeneral}
+	vm.CallStack[0].upvalues = []upvalue{{Value: cell}}
+	vm.Globals.general = make([]reflect.Value, 1)
+	vm.Globals.Strings = make([]string, 1)
+	stop := make(chan struct{})
+	var writer sync.WaitGroup
+	writer.Go(func() {
+		for round := 0; ; round++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			cell.GeneralValue = reflect.ValueOf(&gcTracePair{A: int64(round)})
+			vm.Globals.general[0] = reflect.ValueOf(&gcTracePair{B: int64(round)})
+			vm.Globals.Strings[0] = strings.Repeat("g", round%8)
+		}
+	})
+	defer writer.Wait()
+	defer close(stop)
+
+	for range 64 {
+		retirePair(t, arena)
+		arena.MinorGC(vm)
+		require.Empty(t, arena.oldGenericByteSlabs, "every collection reclaims while another goroutine writes the cell and the globals")
+	}
+}
+
+func TestSharedMinorGCReleasesOnlyTheChargeADroppedSlabCarries(t *testing.T) {
+	t.Run("a slab whose charge went to its replacement", func(t *testing.T) {
+		vm := newGoroutineGCTestVM(t)
+		arena := vm.Arena
+		for range 4 {
+			arena.GrowIntBackingSlab(1)
+		}
+		require.NotEmpty(t, arena.oldIntBackings)
+		held := arena.totalAllocatedBytes
+
+		arena.MinorGC(vm)
+
+		require.Empty(t, arena.oldIntBackings, "test harness: nothing reaches the retired backings")
+		require.Equal(t, held, arena.totalAllocatedBytes,
+			"the current backing holds the charge its predecessors handed on, so dropping them releases nothing")
+	})
+	t.Run("a full chunk", func(t *testing.T) {
+		vm := newGoroutineGCTestVM(t)
+		arena := vm.Arena
+		arena.recycleChunks = false
+		for len(arena.genericBytesSlab) < genericBytesSlabChunk {
+			arena.growGenericBytesSlab(1)
+		}
+		arena.growGenericBytesSlab(1)
+		held := arena.totalAllocatedBytes
+
+		arena.MinorGC(vm)
+
+		require.Empty(t, arena.oldGenericByteSlabs, "test harness: nothing reaches the retired slabs")
+		require.Equal(t, held-genericBytesSlabChunk, arena.totalAllocatedBytes,
+			"the dropped chunk was charged on its own and takes its charge with it; the smaller slabs before it took none")
+	})
+}
+
+func TestMinorGCOfAnUnlicensedArenaMarksAfterAGoroutineExportedGuestCode(t *testing.T) {
+	vm := newGCTestVM()
+	vm.CallStack = []CallFrame{{}}
+	vm.Limits.Tracker = &ResourceTracker{}
+	arena := vm.Arena
+	setArenaBudget(t, arena, 1<<30)
+	arena.setOwnerVM(vm)
+	require.False(t, arena.licensed, "test harness: the abandon fallback leaves the arena unlicensed")
+	vm.gatesForChildGoroutines()
+	require.NotNil(t, vm.exportGate, "test harness: starting a goroutine gives the VM a gate")
+	vm.exportGate.exportedBySpawned.Store(true)
+	vm.hasGoroutines, vm.spawnedGoroutines = true, true
+	vm.Limits.Tracker.GoroutineCount.Store(1)
+	live := retirePair(t, arena)
+	retirePair(t, arena)
+	vm.CallStack[0].Registers.General = []reflect.Value{reflect.NewAt(reflect.TypeFor[gcTracePair](), live)}
+
+	arena.MinorGC(vm)
+
+	require.True(t, retainsGenericSlabHolding(arena, live), "an unlicensed collection always marks, so the slab a register reaches is kept")
+	require.Len(t, arena.oldGenericByteSlabs, 1, "and the slab nothing reaches is reclaimed")
+	require.False(t, vm.exportShares, "an unlicensed collection starts no owner section")
+	require.False(t, vm.exportGate.ownerWaiting())
+}
+
+func TestCompactionReclaimsNothingAfterASkippedMarkWhateverTheLicence(t *testing.T) {
+	vm := newGCTestVM()
+	vm.CallStack = []CallFrame{{}}
+	arena := vm.Arena
+	setArenaBudget(t, arena, 1<<30)
+	require.False(t, arena.licensed)
+	retirePair(t, arena)
+	state := acquireGCMarkState(arena)
+	defer releaseGCMarkState(state)
+	state.failClose(failClosedShared)
+
+	reclaimed, recycled := arena.compactPhase(state)
+
+	require.Zero(t, reclaimed)
+	require.Zero(t, recycled)
+	require.Len(t, arena.oldGenericByteSlabs, 1, "a mark that did not run vouches for no slab, so none is dropped")
 }

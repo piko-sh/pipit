@@ -31,8 +31,8 @@ import (
 func doublingCallee() *program.CompiledFunction {
 	builder := newBytecodeBuilder()
 	builder.intRegisters(3).returnInt()
-	builder.parameterKinds = []isa.RegisterKind{isa.RegisterInt}
-	builder.Emit(isa.OpAddInt, 0, 1, 1)
+	builder.parameterKinds = []isa.RegisterKind{isa.RegisterInt64}
+	builder.Emit(isa.OpAddInt64, 0, 1, 1)
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
 	callee := builder.build()
@@ -63,7 +63,7 @@ func callingProgram(callee *program.CompiledFunction, argument int64, arguments,
 		Returns:       returns,
 	})
 
-	builder.Emit(isa.OpLoadIntConst, 2, 0, 0)
+	builder.Emit(isa.OpLoadInt64Constant, 2, 0, 0)
 	builder.body = append(builder.body, makeOpCallSlot(siteIndex))
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
@@ -73,7 +73,7 @@ func callingProgram(callee *program.CompiledFunction, argument int64, arguments,
 }
 
 func intSlot(register uint8) program.VarLocation {
-	return program.VarLocation{Kind: isa.RegisterInt, Register: register}
+	return program.VarLocation{Kind: isa.RegisterInt64, Register: register}
 }
 
 func TestCallingACompiledFunctionReturnsItsResult(t *testing.T) {
@@ -172,14 +172,14 @@ func TestNestedCallsUnwindInOrder(t *testing.T) {
 
 	outerBuilder := newBytecodeBuilder()
 	outerBuilder.intRegisters(4).returnInt()
-	outerBuilder.parameterKinds = []isa.RegisterKind{isa.RegisterInt}
+	outerBuilder.parameterKinds = []isa.RegisterKind{isa.RegisterInt64}
 	innerSite := outerBuilder.AddCallSite(&program.CallSite{
 		FunctionIndex: innerIndex,
 		Arguments:     []program.VarLocation{intSlot(1)},
 		Returns:       []program.VarLocation{intSlot(2)},
 	})
 	outerBuilder.body = append(outerBuilder.body, makeOpCallSlot(innerSite))
-	outerBuilder.Emit(isa.OpAddInt, 0, 2, 2)
+	outerBuilder.Emit(isa.OpAddInt64, 0, 2, 2)
 	outerBuilder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	outer := outerBuilder.build()
 	outer.Name = "outer"
@@ -194,7 +194,7 @@ func TestNestedCallsUnwindInOrder(t *testing.T) {
 		Arguments:     []program.VarLocation{intSlot(2)},
 		Returns:       []program.VarLocation{intSlot(0)},
 	})
-	rootBuilder.Emit(isa.OpLoadIntConst, 2, 0, 0)
+	rootBuilder.Emit(isa.OpLoadInt64Constant, 2, 0, 0)
 	rootBuilder.body = append(rootBuilder.body, makeOpCallSlot(outerSite))
 	rootBuilder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	root := rootBuilder.build()

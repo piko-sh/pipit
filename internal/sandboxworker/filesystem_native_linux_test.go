@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxworker
 
@@ -66,12 +66,12 @@ func exerciseFilesystemRelay(t *testing.T, workerConfig, brokerConfig sandboxlin
 	t.Helper()
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600))
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
 	aggregate, err := sandboxlinux.NewFilesystemAggregate(ctx, workerConfig.CgroupParent, workerConfig.Limits, workerConfig.Tenant)
 	if aggregate != nil {
 		defer func() {
-			cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
+			cleanup, stop := context.WithTimeout(t.Context(), 5*time.Second)
 			defer stop()
 			assert.NoError(t, aggregate.Close(cleanup))
 		}()
@@ -110,12 +110,12 @@ func exerciseFilesystemRelay(t *testing.T, workerConfig, brokerConfig sandboxlin
 	workerConfig.ImageStore = nativeImageStoreWithGrants(t, grants)
 	broker, err := sandboxlinux.OpenCheckpointedFilesystemBrokerInGroup(ctx, brokerConfig, grants, sandboxbroker.FilesystemLimits{}, storage, aggregate.Group)
 	if broker != nil {
-		defer broker.Close()
+		defer broker.Close(t.Context())
 	}
 	require.NoError(t, err)
 	worker, err := sandboxlinux.LaunchWorkerInGroup(ctx, workerConfig, aggregate.Group)
 	if worker != nil {
-		defer worker.Close()
+		defer worker.Close(t.Context())
 	}
 	require.NoError(t, err)
 	config := FilesystemConfiguration{

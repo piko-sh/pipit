@@ -113,7 +113,7 @@ func MainContext(ctx context.Context, args []string, opts ...Option) int {
 	if config.logger == nil {
 		config.logger = newStderrLogger(level, streams.Stderr)
 	}
-	return dispatch(withConfig(ctx, config), rest, streams)
+	return dispatch(invocationContext(ctx, config), rest, streams)
 }
 
 // armExecutionWatchdog ends the process with the timeout status when an execution

@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerGetUpvalueScalar sets bank(C)[A] = upvalues[B].scalarField(C) for direct scalar cells; other shapes fall back to handlerPathBShimGetUpvalue.
-TEXT ·handlerGetUpvalueScalar(SB), NOSPLIT|NOFRAME, $0
+// handlerGetCapturedVariable sets bank(C)[A] = upvalues[B].scalarField(C) for direct scalar cells. Other shapes fall back to handlerPathBShimGetCapturedVariable.
+TEXT ·handlerGetCapturedVariable(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $16, BX
 	MOVBLZX BL, BX
@@ -74,4 +74,4 @@ gu_not_uint:
 gu_done:
 	DISPATCH_NEXT()
 gu_shim:
-	JMP     ·handlerPathBShimGetUpvalue(SB)
+	JMP     ·handlerPathBShimGetCapturedVariable(SB)

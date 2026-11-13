@@ -4,8 +4,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function <varinit>
-;   registers: uint=1
-;   dispatch:  asm=2 shim=1 exit=0 go=0
+;   registers: uint64=1
+;   dispatch:  asm=3 shim=0 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (none)
 ; ═════════════════════════════════════════════════════════════
@@ -13,27 +13,27 @@
 ; constants:
 ;   uints:   [0]=10
 
-0000 A 0:LOAD_UINT_CONST            0   0   0
-0001 S 0:SET_GLOBAL                 0   0   5
-0002 A 3:TIER3_RETURN_VOID          0   0   1
+0000 A 0:LOAD_UINT64_CONSTANT                                 0   0   0
+0001 A 0:SET_GLOBAL                                           0   0   5
+0002 A 3:RETURN_VOID                                          0   0   1
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=1 uint=1
-;   dispatch:  asm=4 shim=7 exit=0 go=1
+;   registers: int64=1 uint64=1
+;   dispatch:  asm=12 shim=0 exit=0 go=0
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
-0000 S 0:GET_GLOBAL                 0   0   5
-0001 A 2:TIER2_INC_UINT             0   3   0
-0002 S 0:SET_GLOBAL                 0   0   5
-0003 S 0:GET_GLOBAL                 0   0   5
-0004 A 2:TIER2_INC_UINT             0   3   0
-0005 S 0:SET_GLOBAL                 0   0   5
-0006 S 0:GET_GLOBAL                 0   0   5
-0007 A 2:TIER2_DEC_UINT             0   4   0
-0008 S 0:SET_GLOBAL                 0   0   5
-0009 S 0:GET_GLOBAL                 0   0   5
-0010 G 1:UINT_TO_INT               56   0   0
-0011 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 0:GET_GLOBAL                                           0   0   5
+0001 A 2:INCREMENT_UINT64                                     0   3   0
+0002 A 0:SET_GLOBAL                                           0   0   5
+0003 A 0:GET_GLOBAL                                           0   0   5
+0004 A 2:INCREMENT_UINT64                                     0   3   0
+0005 A 0:SET_GLOBAL                                           0   0   5
+0006 A 0:GET_GLOBAL                                           0   0   5
+0007 A 2:DECREMENT_UINT64                                     0   4   0
+0008 A 0:SET_GLOBAL                                           0   0   5
+0009 A 0:GET_GLOBAL                                           0   0   5
+0010 A 1:CONVERT_UINT64_TO_INT64                             56   0   0
+0011 A 2:RETURN                                               0  10   1    ; 1 values

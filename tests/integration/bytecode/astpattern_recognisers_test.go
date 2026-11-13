@@ -73,7 +73,7 @@ func EntrypointRun() float64 {
 	}
 	return sum
 }`,
-			contains: []string{"SIMD_SUM_SLICE_FLOAT64"},
+			contains: []string{"SIMD_SUM_FLOAT64"},
 		},
 		{
 			name: "add slice",
@@ -91,7 +91,7 @@ func EntrypointRun() float64 {
 	}
 	return destination[0] + destination[1] + destination[2] + destination[3]
 }`,
-			contains: []string{"SIMD_ADD_SLICE_FLOAT64"},
+			contains: []string{"SIMD_ADD_FLOAT64"},
 		},
 		{
 			name: "scale slice",
@@ -107,7 +107,7 @@ func EntrypointRun() float64 {
 	}
 	return a[0] + a[1] + a[2] + a[3]
 }`,
-			contains: []string{"SIMD_SCALE_SLICE_FLOAT64"},
+			contains: []string{"SIMD_SCALE_FLOAT64"},
 		},
 		{
 			name: "refuses non float64",
@@ -178,7 +178,7 @@ func EntrypointRun() float64 {
 	}
 	return sum
 }`,
-			contains: []string{"SIMD_SUM_SLICE_FLOAT64"},
+			contains: []string{"SIMD_SUM_FLOAT64"},
 		},
 		{
 			name: "adopts general bank operands",
@@ -192,7 +192,7 @@ func EntrypointRun() float64 {
 	}
 	return sum
 }`,
-			contains: []string{"ADOPT_GENERAL_TO_SLICES_FLOAT", "SIMD_DOT_PRODUCT_FLOAT64"},
+			contains: []string{"UNBOX_SLICE_FLOAT64", "SIMD_DOT_PRODUCT_FLOAT64"},
 		},
 		{
 			name: "fires on function parameter slices",
@@ -258,7 +258,7 @@ func EntrypointRun() int {
 	}
 	return total
 }`,
-			contains: []string{"JUMP "},
+			contains: []string{"INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN"},
 		},
 		{
 			name: "refuses break",
@@ -273,7 +273,7 @@ func EntrypointRun() int {
 	}
 	return total
 }`,
-			contains: []string{"JUMP "},
+			contains: []string{"INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN", "EQUAL_INT64_CONSTANT_THEN_JUMP_IF_TRUE"},
 		},
 	})
 }

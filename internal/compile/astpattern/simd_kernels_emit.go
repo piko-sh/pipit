@@ -31,7 +31,7 @@ import (
 
 // resolvedSliceOperand pairs an operand's source expression with the typed-bank register
 // resolveFloat64SliceOperand assigned it. emitSimdCountRegister uses these to Emit
-// LEN_SLICE_FLOAT_DIRECT against the operand named in the loop's len() bound rather than
+// LENGTH_SLICE_FLOAT64 against the operand named in the loop's len() bound rather than
 // assuming the bound is always sliceA.
 type resolvedSliceOperand struct {
 	// expr is the operand's source-level identifier expression.
@@ -81,20 +81,20 @@ func emitSimdDotProductFloat64(c patterns.Emitter, match simdKernelMatch) (progr
 		return program.VarLocation{}, false, err
 	}
 	program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpSimdDotProductFloat64), destLocation.Register, sliceALocation.Register)
-	program.Emit(c.CurrentFunction(), isa.OpExt, sliceBLocation.Register, countRegister, 0)
+	program.Emit(c.CurrentFunction(), isa.OpExtension, sliceBLocation.Register, countRegister, 0)
 	return program.VarLocation{}, true, nil
 }
 
-// emitSimdSumSliceFloat64 emits one tier-1 SIMD opcode (with one extension word for
-// count) that computes `destinationScalar += sum(sliceA[:count])`. Refuses when sliceA is
-// not on the typed slicesFloat bank.
+// emitSimdSumFloat64 emits one tier-1 SIMD opcode (with one extension word for count)
+// that computes `destinationScalar += sum(sliceA[:count])`. Refuses when sliceA is not on
+// the typed slicesFloat bank.
 //
 // Takes c (patterns.Emitter).
 // Takes match (simdKernelMatch).
 //
 // Returns the zero VarLocation, ok=true when the SIMD opcode was emitted, and any
 // compilation error.
-func emitSimdSumSliceFloat64(c patterns.Emitter, match simdKernelMatch) (program.VarLocation, bool, error) {
+func emitSimdSumFloat64(c patterns.Emitter, match simdKernelMatch) (program.VarLocation, bool, error) {
 	destLocation, ok := resolveScalarDestination(c, match.destinationScalar)
 	if !ok {
 		return program.VarLocation{}, false, nil
@@ -107,12 +107,12 @@ func emitSimdSumSliceFloat64(c patterns.Emitter, match simdKernelMatch) (program
 	if !ok || err != nil {
 		return program.VarLocation{}, false, err
 	}
-	program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpSimdSumSliceFloat64), destLocation.Register, sliceALocation.Register)
-	program.Emit(c.CurrentFunction(), isa.OpExt, countRegister, 0, 0)
+	program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpSimdSumFloat64), destLocation.Register, sliceALocation.Register)
+	program.Emit(c.CurrentFunction(), isa.OpExtension, countRegister, 0, 0)
 	return program.VarLocation{}, true, nil
 }
 
-// emitSimdAddSliceFloat64 emits one tier-1 SIMD opcode (with one extension word carrying
+// emitSimdAddFloat64 emits one tier-1 SIMD opcode (with one extension word carrying
 // sliceB and count) that computes `destinationSlice[i] = sliceA[i] + sliceB[i]` for the
 // first `count` indices. All three slices must be on the typed slicesFloat bank.
 //
@@ -121,7 +121,7 @@ func emitSimdSumSliceFloat64(c patterns.Emitter, match simdKernelMatch) (program
 //
 // Returns the zero VarLocation, ok=true when the SIMD opcode was emitted, and any
 // compilation error.
-func emitSimdAddSliceFloat64(c patterns.Emitter, match simdKernelMatch) (program.VarLocation, bool, error) {
+func emitSimdAddFloat64(c patterns.Emitter, match simdKernelMatch) (program.VarLocation, bool, error) {
 	destLocation, ok, err := resolveFloat64SliceOperand(c, match.destinationSlice)
 	if !ok || err != nil {
 		return program.VarLocation{}, false, err
@@ -143,21 +143,21 @@ func emitSimdAddSliceFloat64(c patterns.Emitter, match simdKernelMatch) (program
 	if !ok || err != nil {
 		return program.VarLocation{}, false, err
 	}
-	program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpSimdAddSliceFloat64), destLocation.Register, sliceALocation.Register)
-	program.Emit(c.CurrentFunction(), isa.OpExt, sliceBLocation.Register, countRegister, 0)
+	program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpSimdAddFloat64), destLocation.Register, sliceALocation.Register)
+	program.Emit(c.CurrentFunction(), isa.OpExtension, sliceBLocation.Register, countRegister, 0)
 	return program.VarLocation{}, true, nil
 }
 
-// emitSimdScaleSliceFloat64 emits one tier-1 SIMD opcode (with one extension word for
-// count) that multiplies the first `count` elements of sliceA in place by scalarOperand.
-// Refuses when sliceA is not on the typed slicesFloat bank.
+// emitSimdScaleFloat64 emits one tier-1 SIMD opcode (with one extension word for count)
+// that multiplies the first `count` elements of sliceA in place by scalarOperand. Refuses
+// when sliceA is not on the typed slicesFloat bank.
 //
 // Takes c (patterns.Emitter).
 // Takes match (simdKernelMatch).
 //
 // Returns the zero VarLocation, ok=true when the SIMD opcode was emitted, and any
 // compilation error.
-func emitSimdScaleSliceFloat64(ctx context.Context, c patterns.Emitter, match simdKernelMatch) (program.VarLocation, bool, error) {
+func emitSimdScaleFloat64(ctx context.Context, c patterns.Emitter, match simdKernelMatch) (program.VarLocation, bool, error) {
 	sliceLocation, ok, err := resolveFloat64SliceOperand(c, match.sliceA)
 	if !ok || err != nil {
 		return program.VarLocation{}, false, err
@@ -166,15 +166,15 @@ func emitSimdScaleSliceFloat64(ctx context.Context, c patterns.Emitter, match si
 	if err != nil {
 		return program.VarLocation{}, false, err
 	}
-	if scalarLocation.Kind != isa.RegisterFloat {
+	if scalarLocation.Kind != isa.RegisterFloat64 {
 		return program.VarLocation{}, false, nil
 	}
 	countRegister, ok, err := emitSimdCountRegister(c, match, resolvedSliceOperand{expr: match.sliceA, register: sliceLocation.Register})
 	if !ok || err != nil {
 		return program.VarLocation{}, false, err
 	}
-	program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpSimdScaleSliceFloat64), sliceLocation.Register, scalarLocation.Register)
-	program.Emit(c.CurrentFunction(), isa.OpExt, countRegister, 0, 0)
+	program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpSimdScaleFloat64), sliceLocation.Register, scalarLocation.Register)
+	program.Emit(c.CurrentFunction(), isa.OpExtension, countRegister, 0, 0)
 	return program.VarLocation{}, true, nil
 }
 
@@ -199,7 +199,7 @@ func resolveOuterLoopVarWriteTarget(c patterns.Emitter, statement *ast.ForStmt) 
 		return program.VarLocation{}, false, true
 	}
 	location, found := c.ScopeStack().LookupVar(ident.Name)
-	if !found || location.Kind != isa.RegisterInt || location.IsSpilled || location.IsIndirect || location.IsCaptured {
+	if !found || location.Kind != isa.RegisterInt64 || location.IsSpilled || location.IsIndirect || location.IsCaptured {
 		return program.VarLocation{}, false, false
 	}
 	return location, true, true
@@ -220,20 +220,20 @@ func emitSimdLoopVarWriteback(c patterns.Emitter, match simdKernelMatch, outerRe
 		if err != nil || !ok {
 			return err
 		}
-		program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpLenSliceFloatDirect), outerRegister, boundLocation.Register)
+		program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpLengthSliceFloat64), outerRegister, boundLocation.Register)
 	case simdBoundConst:
 		if match.boundConstValue < 0 {
 			return nil
 		}
 		if match.boundConstValue <= maxUint8Value {
-			program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), outerRegister, uint8(match.boundConstValue))
+			program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), outerRegister, uint8(match.boundConstValue))
 			return nil
 		}
 		constantIndex, err := program.AddIntConstant(c.CurrentFunction(), match.boundConstValue)
 		if err != nil {
 			return err
 		}
-		program.EmitWide(c.CurrentFunction(), isa.OpLoadIntConst, outerRegister, constantIndex)
+		program.EmitWide(c.CurrentFunction(), isa.OpLoadInt64Constant, outerRegister, constantIndex)
 	default:
 	}
 	return nil
@@ -276,28 +276,28 @@ func selectBoundSliceRegister(match simdKernelMatch, operands []resolvedSliceOpe
 // Returns bool which is true when emission succeeded.
 // Returns error when constant pool allocation fails.
 func emitSimdCountRegister(c patterns.Emitter, match simdKernelMatch, operands ...resolvedSliceOperand) (uint8, bool, error) {
-	countRegister := c.ScopeStack().Alloc.Alloc(isa.RegisterInt)
+	countRegister := c.ScopeStack().Alloc.Alloc(isa.RegisterInt64)
 	switch match.boundShape {
 	case simdBoundLenSlice:
 		boundRegister, ok := selectBoundSliceRegister(match, operands)
 		if !ok {
 			return 0, false, nil
 		}
-		program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpLenSliceFloatDirect), countRegister, boundRegister)
+		program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpLengthSliceFloat64), countRegister, boundRegister)
 		return countRegister, true, nil
 	case simdBoundConst:
 		if match.boundConstValue < 0 {
 			return 0, false, nil
 		}
 		if match.boundConstValue <= maxUint8Value {
-			program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), countRegister, uint8(match.boundConstValue))
+			program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), countRegister, uint8(match.boundConstValue))
 			return countRegister, true, nil
 		}
 		constantIndex, err := program.AddIntConstant(c.CurrentFunction(), match.boundConstValue)
 		if err != nil {
 			return 0, false, err
 		}
-		program.EmitWide(c.CurrentFunction(), isa.OpLoadIntConst, countRegister, constantIndex)
+		program.EmitWide(c.CurrentFunction(), isa.OpLoadInt64Constant, countRegister, constantIndex)
 		return countRegister, true, nil
 	default:
 	}
@@ -320,7 +320,7 @@ func resolveScalarDestination(c patterns.Emitter, destinationExpression ast.Expr
 	if !found {
 		return program.VarLocation{}, false
 	}
-	if location.Kind != isa.RegisterFloat {
+	if location.Kind != isa.RegisterFloat64 {
 		return program.VarLocation{}, false
 	}
 	return location, true
@@ -348,12 +348,12 @@ func resolveFloat64SliceOperand(c patterns.Emitter, operandExpression ast.Expr) 
 		return program.VarLocation{}, false, nil
 	}
 	switch location.Kind {
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		return location, true, nil
 	case isa.RegisterGeneral:
-		adoptedRegister := c.ScopeStack().Alloc.Alloc(isa.RegisterSliceFloat)
-		program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpAdoptGeneralToSlicesFloat), adoptedRegister, location.Register)
-		return program.VarLocation{Register: adoptedRegister, Kind: isa.RegisterSliceFloat}, true, nil
+		adoptedRegister := c.ScopeStack().Alloc.Alloc(isa.RegisterSliceFloat64)
+		program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpUnboxSliceFloat64), adoptedRegister, location.Register)
+		return program.VarLocation{Register: adoptedRegister, Kind: isa.RegisterSliceFloat64}, true, nil
 	default:
 	}
 	return program.VarLocation{}, false, nil

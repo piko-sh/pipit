@@ -84,7 +84,7 @@ func compileTarget(ctx context.Context, target, out string, _ output.IO) error {
 		return fmt.Errorf("cannot prepare output directory: %w", err)
 	}
 	interpreter := runner.New(runner.Limits{
-		BytecodeStore: store, Symbols: ExtraSymbols(ctx), Logger: loggerFromContext(ctx),
+		BytecodeStore: store, Symbols: ExtraSymbols(ctx),
 		Timeout: 0, MaxAlloc: 0, MaxCallDepth: 0, MaxOutputSize: 0, CostBudget: 0, MaxGoroutines: 0})
 
 	compiled, err := interpreter.CompileFileSet(ctx, sources)

@@ -28,9 +28,7 @@ import (
 	"pipit.sh/pipit/sdk/module"
 )
 
-// capabilityRules is the import-path to capability-axis map used by InferCapabilities. It
-// is conservative: a network-shaped import declares network, and touching os.* declares
-// filesystem/exec axes.
+// capabilityRules is the import-path to capability-axis map used by InferCapabilities.
 var capabilityRules = map[string][]string{
 	"net":           {"network.dial", "network.listen"},
 	"net/http":      {"network.dial", "network.listen"},

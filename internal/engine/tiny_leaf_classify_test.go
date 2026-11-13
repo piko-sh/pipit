@@ -58,7 +58,7 @@ func receiverOnly() ([]isa.RegisterKind, []uint8) {
 }
 
 func intFieldLayouts() []program.StructFieldLayout {
-	return []program.StructFieldLayout{{Offset: 8, PathLength: 1, Kind: uint8(reflect.Int64), RegisterKind: uint8(isa.RegisterInt)}}
+	return []program.StructFieldLayout{{Offset: 8, PathLength: 1, Kind: uint8(reflect.Int64), RegisterKind: uint8(isa.RegisterInt64)}}
 }
 
 func TestClassifyTinyLeafRecognisesTheReturnFieldShapes(t *testing.T) {
@@ -73,27 +73,27 @@ func TestClassifyTinyLeafRecognisesTheReturnFieldShapes(t *testing.T) {
 	}{
 		{
 			name: "an unsigned field read followed by a return",
-			body: []isa.Instruction{{Op: isa.OpGetStructFieldUint, A: 0, B: 0, C: 0}, tier2Return(1)},
+			body: []isa.Instruction{{Op: isa.OpGetStructFieldUint64, A: 0, B: 0, C: 0}, tier2Return(1)},
 			want: program.TinyLeafReturnUintField,
 		},
 		{
 			name: "a signed field read followed by a return",
-			body: []isa.Instruction{{Op: isa.OpGetStructFieldIntT0, A: 0, B: 0, C: 0}, tier2Return(1)},
+			body: []isa.Instruction{{Op: isa.OpGetStructFieldInt64, A: 0, B: 0, C: 0}, tier2Return(1)},
 			want: program.TinyLeafReturnIntField,
 		},
 		{
 			name: "leading padding before the field read is skipped",
-			body: []isa.Instruction{nop(), {Op: isa.OpGetStructFieldUint, A: 0, B: 0, C: 0}, tier2Return(1)},
+			body: []isa.Instruction{nop(), {Op: isa.OpGetStructFieldUint64, A: 0, B: 0, C: 0}, tier2Return(1)},
 			want: program.TinyLeafReturnUintField,
 		},
 		{
 			name: "padding between the read and the return is skipped",
-			body: []isa.Instruction{{Op: isa.OpGetStructFieldUint, A: 0, B: 0, C: 0}, nop(), tier2Return(1)},
+			body: []isa.Instruction{{Op: isa.OpGetStructFieldUint64, A: 0, B: 0, C: 0}, nop(), tier2Return(1)},
 			want: program.TinyLeafReturnUintField,
 		},
 		{
 			name: "trailing padding after the return is skipped",
-			body: []isa.Instruction{{Op: isa.OpGetStructFieldIntT0, A: 0, B: 0, C: 0}, tier2Return(1), nop(), nop()},
+			body: []isa.Instruction{{Op: isa.OpGetStructFieldInt64, A: 0, B: 0, C: 0}, tier2Return(1), nop(), nop()},
 			want: program.TinyLeafReturnIntField,
 		},
 	}
@@ -115,7 +115,7 @@ func TestClassifyTinyLeafRefusesBodiesThatOnlyLookLikeALeaf(t *testing.T) {
 	t.Parallel()
 
 	kinds, regs := receiverOnly()
-	read := isa.Instruction{Op: isa.OpGetStructFieldUint, A: 0, B: 0, C: 0}
+	read := isa.Instruction{Op: isa.OpGetStructFieldUint64, A: 0, B: 0, C: 0}
 
 	tests := []struct {
 		name    string
@@ -139,17 +139,17 @@ func TestClassifyTinyLeafRefusesBodiesThatOnlyLookLikeALeaf(t *testing.T) {
 		},
 		{
 			name:    "a destination register other than zero is refused",
-			body:    []isa.Instruction{{Op: isa.OpGetStructFieldUint, A: 1, B: 0, C: 0}, tier2Return(1)},
+			body:    []isa.Instruction{{Op: isa.OpGetStructFieldUint64, A: 1, B: 0, C: 0}, tier2Return(1)},
 			layouts: intFieldLayouts(),
 		},
 		{
 			name:    "a receiver register other than zero is refused",
-			body:    []isa.Instruction{{Op: isa.OpGetStructFieldUint, A: 0, B: 1, C: 0}, tier2Return(1)},
+			body:    []isa.Instruction{{Op: isa.OpGetStructFieldUint64, A: 0, B: 1, C: 0}, tier2Return(1)},
 			layouts: intFieldLayouts(),
 		},
 		{
 			name:    "a layout index past the table is refused",
-			body:    []isa.Instruction{{Op: isa.OpGetStructFieldUint, A: 0, B: 0, C: 3}, tier2Return(1)},
+			body:    []isa.Instruction{{Op: isa.OpGetStructFieldUint64, A: 0, B: 0, C: 3}, tier2Return(1)},
 			layouts: intFieldLayouts(),
 		},
 		{
@@ -164,12 +164,12 @@ func TestClassifyTinyLeafRefusesBodiesThatOnlyLookLikeALeaf(t *testing.T) {
 		},
 		{
 			name:    "real work after the return is refused",
-			body:    []isa.Instruction{read, tier2Return(1), {Op: isa.OpAddInt, A: 0, B: 1, C: 2}},
+			body:    []isa.Instruction{read, tier2Return(1), {Op: isa.OpAddInt64, A: 0, B: 1, C: 2}},
 			layouts: intFieldLayouts(),
 		},
 		{
 			name:    "an unrecognised opening opcode is refused",
-			body:    []isa.Instruction{{Op: isa.OpAddInt, A: 0, B: 1, C: 2}, tier2Return(1)},
+			body:    []isa.Instruction{{Op: isa.OpAddInt64, A: 0, B: 1, C: 2}, tier2Return(1)},
 			layouts: intFieldLayouts(),
 		},
 	}
@@ -197,8 +197,8 @@ func TestClassifyTinyLeafRecognisesTheFieldIncrementShapes(t *testing.T) {
 		subOp isa.SubOpcode
 		want  program.TinyLeafShape
 	}{
-		{name: "a signed field increment", subOp: isa.SubOpIncStructFieldInt, want: program.TinyLeafIncIntField},
-		{name: "an unsigned field increment", subOp: isa.SubOpIncStructFieldUint, want: program.TinyLeafIncUintField},
+		{name: "a signed field increment", subOp: isa.SubOpIncrementStructFieldInt64, want: program.TinyLeafIncrementIntField},
+		{name: "an unsigned field increment", subOp: isa.SubOpIncrementStructFieldUint64, want: program.TinyLeafIncrementUintField},
 	}
 
 	for _, tt := range tests {
@@ -222,7 +222,7 @@ func TestClassifyTinyLeafRefusesIncrementsThatAreNotLoneLeaves(t *testing.T) {
 	t.Parallel()
 
 	kinds, regs := receiverOnly()
-	increment := isa.NewTier1Instruction(isa.SubOpIncStructFieldInt, 0, 0)
+	increment := isa.NewTier1Instruction(isa.SubOpIncrementStructFieldInt64, 0, 0)
 
 	tests := []struct {
 		name       string
@@ -232,18 +232,18 @@ func TestClassifyTinyLeafRefusesIncrementsThatAreNotLoneLeaves(t *testing.T) {
 	}{
 		{
 			name:       "a non-zero receiver operand is refused",
-			body:       []isa.Instruction{isa.NewTier1Instruction(isa.SubOpIncStructFieldInt, 1, 0)},
+			body:       []isa.Instruction{isa.NewTier1Instruction(isa.SubOpIncrementStructFieldInt64, 1, 0)},
 			paramKinds: kinds, paramRegs: regs,
 		},
 		{
 			name:       "a second parameter is refused",
 			body:       []isa.Instruction{increment},
-			paramKinds: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt}, paramRegs: []uint8{0, 1},
+			paramKinds: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt64}, paramRegs: []uint8{0, 1},
 		},
 		{
 			name:       "a receiver outside the general bank is refused",
 			body:       []isa.Instruction{increment},
-			paramKinds: []isa.RegisterKind{isa.RegisterInt}, paramRegs: []uint8{0},
+			paramKinds: []isa.RegisterKind{isa.RegisterInt64}, paramRegs: []uint8{0},
 		},
 		{
 			name:       "a receiver in a register other than zero is refused",
@@ -252,12 +252,12 @@ func TestClassifyTinyLeafRefusesIncrementsThatAreNotLoneLeaves(t *testing.T) {
 		},
 		{
 			name:       "real work after the increment is refused",
-			body:       []isa.Instruction{increment, {Op: isa.OpAddInt, A: 0, B: 1, C: 2}},
+			body:       []isa.Instruction{increment, {Op: isa.OpAddInt64, A: 0, B: 1, C: 2}},
 			paramKinds: kinds, paramRegs: regs,
 		},
 		{
 			name:       "an unrelated tier-one sub-op is refused",
-			body:       []isa.Instruction{isa.NewTier1Instruction(isa.SubOpNegInt, 0, 0)},
+			body:       []isa.Instruction{isa.NewTier1Instruction(isa.SubOpNegateInt64, 0, 0)},
 			paramKinds: kinds, paramRegs: regs,
 		},
 	}
@@ -283,9 +283,9 @@ func TestClassifyTinyLeafRecognisesScalarFieldAssignment(t *testing.T) {
 		valueBank isa.RegisterKind
 		fieldKind reflect.Kind
 	}{
-		{name: "a signed field assigned from the second parameter", opcode: isa.OpSetStructFieldIntT0, valueBank: isa.RegisterInt, fieldKind: reflect.Int64},
-		{name: "an unsigned field assigned from the second parameter", opcode: isa.OpSetStructFieldUint, valueBank: isa.RegisterUint, fieldKind: reflect.Uint64},
-		{name: "a float field assigned from the second parameter", opcode: isa.OpSetStructFieldFloat, valueBank: isa.RegisterFloat, fieldKind: reflect.Float64},
+		{name: "a signed field assigned from the second parameter", opcode: isa.OpSetStructFieldInt64, valueBank: isa.RegisterInt64, fieldKind: reflect.Int64},
+		{name: "an unsigned field assigned from the second parameter", opcode: isa.OpSetStructFieldUint64, valueBank: isa.RegisterUint64, fieldKind: reflect.Uint64},
+		{name: "a float field assigned from the second parameter", opcode: isa.OpSetStructFieldFloat64, valueBank: isa.RegisterFloat64, fieldKind: reflect.Float64},
 		{name: "a boolean field assigned from the second parameter", opcode: isa.OpSetStructFieldBool, valueBank: isa.RegisterBool, fieldKind: reflect.Bool},
 	}
 
@@ -319,32 +319,32 @@ func TestClassifyTinyLeafRefusesScalarAssignmentWhenTheBanksDisagree(t *testing.
 	}{
 		{
 			name:       "a value parameter in the wrong bank is refused",
-			body:       []isa.Instruction{{Op: isa.OpSetStructFieldIntT0, A: 0, B: 1, C: 0}},
-			layouts:    []program.StructFieldLayout{{Offset: 16, PathLength: 1, Kind: uint8(reflect.Int64), RegisterKind: uint8(isa.RegisterInt)}},
-			paramKinds: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterFloat}, paramRegs: []uint8{0, 1},
+			body:       []isa.Instruction{{Op: isa.OpSetStructFieldInt64, A: 0, B: 1, C: 0}},
+			layouts:    []program.StructFieldLayout{{Offset: 16, PathLength: 1, Kind: uint8(reflect.Int64), RegisterKind: uint8(isa.RegisterInt64)}},
+			paramKinds: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterFloat64}, paramRegs: []uint8{0, 1},
 		},
 		{
 			name:       "a field kind that does not match the value bank is refused",
-			body:       []isa.Instruction{{Op: isa.OpSetStructFieldIntT0, A: 0, B: 1, C: 0}},
-			layouts:    []program.StructFieldLayout{{Offset: 16, PathLength: 1, Kind: uint8(reflect.String), RegisterKind: uint8(isa.RegisterInt)}},
-			paramKinds: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt}, paramRegs: []uint8{0, 1},
+			body:       []isa.Instruction{{Op: isa.OpSetStructFieldInt64, A: 0, B: 1, C: 0}},
+			layouts:    []program.StructFieldLayout{{Offset: 16, PathLength: 1, Kind: uint8(reflect.String), RegisterKind: uint8(isa.RegisterInt64)}},
+			paramKinds: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt64}, paramRegs: []uint8{0, 1},
 		},
 		{
 			name:       "a value register that is not the second parameter is refused",
-			body:       []isa.Instruction{{Op: isa.OpSetStructFieldIntT0, A: 0, B: 2, C: 0}},
-			layouts:    []program.StructFieldLayout{{Offset: 16, PathLength: 1, Kind: uint8(reflect.Int64), RegisterKind: uint8(isa.RegisterInt)}},
-			paramKinds: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt}, paramRegs: []uint8{0, 1},
+			body:       []isa.Instruction{{Op: isa.OpSetStructFieldInt64, A: 0, B: 2, C: 0}},
+			layouts:    []program.StructFieldLayout{{Offset: 16, PathLength: 1, Kind: uint8(reflect.Int64), RegisterKind: uint8(isa.RegisterInt64)}},
+			paramKinds: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt64}, paramRegs: []uint8{0, 1},
 		},
 		{
 			name:       "a receiver operand other than zero is refused",
-			body:       []isa.Instruction{{Op: isa.OpSetStructFieldIntT0, A: 1, B: 1, C: 0}},
-			layouts:    []program.StructFieldLayout{{Offset: 16, PathLength: 1, Kind: uint8(reflect.Int64), RegisterKind: uint8(isa.RegisterInt)}},
-			paramKinds: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt}, paramRegs: []uint8{0, 1},
+			body:       []isa.Instruction{{Op: isa.OpSetStructFieldInt64, A: 1, B: 1, C: 0}},
+			layouts:    []program.StructFieldLayout{{Offset: 16, PathLength: 1, Kind: uint8(reflect.Int64), RegisterKind: uint8(isa.RegisterInt64)}},
+			paramKinds: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt64}, paramRegs: []uint8{0, 1},
 		},
 		{
 			name:       "a single parameter is refused",
-			body:       []isa.Instruction{{Op: isa.OpSetStructFieldIntT0, A: 0, B: 1, C: 0}},
-			layouts:    []program.StructFieldLayout{{Offset: 16, PathLength: 1, Kind: uint8(reflect.Int64), RegisterKind: uint8(isa.RegisterInt)}},
+			body:       []isa.Instruction{{Op: isa.OpSetStructFieldInt64, A: 0, B: 1, C: 0}},
+			layouts:    []program.StructFieldLayout{{Offset: 16, PathLength: 1, Kind: uint8(reflect.Int64), RegisterKind: uint8(isa.RegisterInt64)}},
 			paramKinds: []isa.RegisterKind{isa.RegisterGeneral}, paramRegs: []uint8{0},
 		},
 	}
@@ -365,7 +365,7 @@ func TestClassifyTinyLeafRecognisesTheEnvironmentLookupShapes(t *testing.T) {
 	t.Parallel()
 
 	kinds, regs := receiverOnly()
-	read := isa.Instruction{Op: isa.OpGetStructFieldIntT0, A: 0, B: 0, C: 0}
+	read := isa.Instruction{Op: isa.OpGetStructFieldInt64, A: 0, B: 0, C: 0}
 
 	tests := []struct {
 		name string
@@ -374,12 +374,12 @@ func TestClassifyTinyLeafRecognisesTheEnvironmentLookupShapes(t *testing.T) {
 	}{
 		{
 			name: "a slice lookup at the field slot",
-			body: []isa.Instruction{read, {Op: isa.OpSliceGetUint, A: 0, B: 1, C: 0}, tier2Return(1)},
+			body: []isa.Instruction{read, {Op: isa.OpGetElementUint64, A: 0, B: 1, C: 0}, tier2Return(1)},
 			want: program.TinyLeafReturnEnvUintAtIntFieldSlot,
 		},
 		{
 			name: "a typed-direct slice lookup carrying its extension word",
-			body: []isa.Instruction{read, isa.NewTier1Instruction(isa.SubOpSliceGetUintDirect, 0, 1), isa.NewInstruction(isa.OpExt, 0, 0, 0), tier2Return(1)},
+			body: []isa.Instruction{read, isa.NewTier1Instruction(isa.SubOpGetSliceUint64Element, 0, 1), isa.NewInstruction(isa.OpExtension, 0, 0, 0), tier2Return(1)},
 			want: program.TinyLeafReturnEnvUintAtIntFieldSlot,
 		},
 	}
@@ -398,7 +398,7 @@ func TestClassifyTinyLeafRecognisesTheEnvironmentLookupShapes(t *testing.T) {
 	t.Run("a typed-direct lookup without its extension word is refused", func(t *testing.T) {
 		t.Parallel()
 		candidate := tinyLeafCandidate{
-			body:       []isa.Instruction{read, isa.NewTier1Instruction(isa.SubOpSliceGetUintDirect, 0, 1), tier2Return(1)},
+			body:       []isa.Instruction{read, isa.NewTier1Instruction(isa.SubOpGetSliceUint64Element, 0, 1), tier2Return(1)},
 			layouts:    intFieldLayouts(),
 			paramKinds: kinds, paramRegs: regs,
 		}
@@ -410,7 +410,7 @@ func TestClassifyTinyLeafRecognisesTheEnvironmentLookupShapes(t *testing.T) {
 	t.Run("a slice lookup writing a register other than zero is refused", func(t *testing.T) {
 		t.Parallel()
 		candidate := tinyLeafCandidate{
-			body:       []isa.Instruction{read, {Op: isa.OpSliceGetUint, A: 1, B: 1, C: 0}, tier2Return(1)},
+			body:       []isa.Instruction{read, {Op: isa.OpGetElementUint64, A: 1, B: 1, C: 0}, tier2Return(1)},
 			layouts:    intFieldLayouts(),
 			paramKinds: kinds, paramRegs: regs,
 		}
@@ -419,7 +419,7 @@ func TestClassifyTinyLeafRecognisesTheEnvironmentLookupShapes(t *testing.T) {
 	})
 }
 
-func TestFindNextNonNopSkipsOnlyTheAllZeroWord(t *testing.T) {
+func TestFindNextNonNoOperationSkipsOnlyTheAllZeroWord(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -430,18 +430,18 @@ func TestFindNextNonNopSkipsOnlyTheAllZeroWord(t *testing.T) {
 	}{
 		{name: "an empty body has no instruction", body: nil, start: 0, want: -1},
 		{name: "a body of only padding has no instruction", body: []isa.Instruction{nop(), nop()}, start: 0, want: -1},
-		{name: "the first instruction is returned when it is real", body: []isa.Instruction{{Op: isa.OpAddInt}}, start: 0, want: 0},
-		{name: "leading padding is skipped", body: []isa.Instruction{nop(), nop(), {Op: isa.OpAddInt}}, start: 0, want: 2},
-		{name: "the search starts where it is told", body: []isa.Instruction{{Op: isa.OpAddInt}, {Op: isa.OpSubInt}}, start: 1, want: 1},
-		{name: "a start past the end finds nothing", body: []isa.Instruction{{Op: isa.OpAddInt}}, start: 5, want: -1},
-		{name: "a tier-one word with operands is not padding", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpNegInt, 0, 1)}, start: 0, want: 0},
+		{name: "the first instruction is returned when it is real", body: []isa.Instruction{{Op: isa.OpAddInt64}}, start: 0, want: 0},
+		{name: "leading padding is skipped", body: []isa.Instruction{nop(), nop(), {Op: isa.OpAddInt64}}, start: 0, want: 2},
+		{name: "the search starts where it is told", body: []isa.Instruction{{Op: isa.OpAddInt64}, {Op: isa.OpSubtractInt64}}, start: 1, want: 1},
+		{name: "a start past the end finds nothing", body: []isa.Instruction{{Op: isa.OpAddInt64}}, start: 5, want: -1},
+		{name: "a tier-one word with operands is not padding", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpNegateInt64, 0, 1)}, start: 0, want: 0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.want, findNextNonNop(tt.body, tt.start))
-			require.Equal(t, tt.want >= 0, hasNonNopAfter(tt.body, tt.start), "the two helpers must agree")
+			require.Equal(t, tt.want, findNextNonNoOperation(tt.body, tt.start))
+			require.Equal(t, tt.want >= 0, hasNonNoOperationAfter(tt.body, tt.start), "the two helpers must agree")
 		})
 	}
 }
@@ -458,9 +458,9 @@ func TestIsTier2ReturnIgnoresTheValueCount(t *testing.T) {
 		{name: "a return of one value matches", instruction: tier2Return(1), want: true},
 		{name: "a return of many values matches, because the count is not part of the shape", instruction: tier2Return(200), want: true},
 		{name: "padding is not a return", instruction: nop(), want: false},
-		{name: "a tier-zero opcode is not a return", instruction: isa.Instruction{Op: isa.OpAddInt}, want: false},
+		{name: "a tier-zero opcode is not a return", instruction: isa.Instruction{Op: isa.OpAddInt64}, want: false},
 		{name: "another tier-two sub-op is not a return", instruction: isa.NewTier2Instruction(isa.SubOpTier2MakeMap, 0), want: false},
-		{name: "another tier-one sub-op is not a return", instruction: isa.NewTier1Instruction(isa.SubOpNegInt, 0, 0), want: false},
+		{name: "another tier-one sub-op is not a return", instruction: isa.NewTier1Instruction(isa.SubOpNegateInt64, 0, 0), want: false},
 	}
 
 	for _, tt := range tests {
@@ -479,11 +479,11 @@ func TestTinyLeafSetOpBankMapsEachScalarSetter(t *testing.T) {
 		opcode isa.Opcode
 		want   isa.RegisterKind
 	}{
-		{name: "a signed field setter reads the integer bank", opcode: isa.OpSetStructFieldIntT0, want: isa.RegisterInt},
-		{name: "an unsigned field setter reads the unsigned bank", opcode: isa.OpSetStructFieldUint, want: isa.RegisterUint},
-		{name: "a float field setter reads the float bank", opcode: isa.OpSetStructFieldFloat, want: isa.RegisterFloat},
+		{name: "a signed field setter reads the integer bank", opcode: isa.OpSetStructFieldInt64, want: isa.RegisterInt64},
+		{name: "an unsigned field setter reads the unsigned bank", opcode: isa.OpSetStructFieldUint64, want: isa.RegisterUint64},
+		{name: "a float field setter reads the float bank", opcode: isa.OpSetStructFieldFloat64, want: isa.RegisterFloat64},
 		{name: "a boolean field setter reads the boolean bank", opcode: isa.OpSetStructFieldBool, want: isa.RegisterBool},
-		{name: "any other opcode falls back to the general bank", opcode: isa.OpAddInt, want: isa.RegisterGeneral},
+		{name: "any other opcode falls back to the general bank", opcode: isa.OpAddInt64, want: isa.RegisterGeneral},
 	}
 
 	for _, tt := range tests {
@@ -502,19 +502,19 @@ func TestTinyLeafScalarFieldBankCoversEveryScalarKind(t *testing.T) {
 		kind reflect.Kind
 		want isa.RegisterKind
 	}{
-		{name: "a plain int uses the integer bank", kind: reflect.Int, want: isa.RegisterInt},
-		{name: "an int8 uses the integer bank", kind: reflect.Int8, want: isa.RegisterInt},
-		{name: "an int16 uses the integer bank", kind: reflect.Int16, want: isa.RegisterInt},
-		{name: "an int32 uses the integer bank", kind: reflect.Int32, want: isa.RegisterInt},
-		{name: "an int64 uses the integer bank", kind: reflect.Int64, want: isa.RegisterInt},
-		{name: "a plain uint uses the unsigned bank", kind: reflect.Uint, want: isa.RegisterUint},
-		{name: "a uint8 uses the unsigned bank", kind: reflect.Uint8, want: isa.RegisterUint},
-		{name: "a uint16 uses the unsigned bank", kind: reflect.Uint16, want: isa.RegisterUint},
-		{name: "a uint32 uses the unsigned bank", kind: reflect.Uint32, want: isa.RegisterUint},
-		{name: "a uint64 uses the unsigned bank", kind: reflect.Uint64, want: isa.RegisterUint},
-		{name: "a uintptr uses the unsigned bank", kind: reflect.Uintptr, want: isa.RegisterUint},
-		{name: "a float32 uses the float bank", kind: reflect.Float32, want: isa.RegisterFloat},
-		{name: "a float64 uses the float bank", kind: reflect.Float64, want: isa.RegisterFloat},
+		{name: "a plain int uses the integer bank", kind: reflect.Int, want: isa.RegisterInt64},
+		{name: "an int8 uses the integer bank", kind: reflect.Int8, want: isa.RegisterInt64},
+		{name: "an int16 uses the integer bank", kind: reflect.Int16, want: isa.RegisterInt64},
+		{name: "an int32 uses the integer bank", kind: reflect.Int32, want: isa.RegisterInt64},
+		{name: "an int64 uses the integer bank", kind: reflect.Int64, want: isa.RegisterInt64},
+		{name: "a plain uint uses the unsigned bank", kind: reflect.Uint, want: isa.RegisterUint64},
+		{name: "a uint8 uses the unsigned bank", kind: reflect.Uint8, want: isa.RegisterUint64},
+		{name: "a uint16 uses the unsigned bank", kind: reflect.Uint16, want: isa.RegisterUint64},
+		{name: "a uint32 uses the unsigned bank", kind: reflect.Uint32, want: isa.RegisterUint64},
+		{name: "a uint64 uses the unsigned bank", kind: reflect.Uint64, want: isa.RegisterUint64},
+		{name: "a uintptr uses the unsigned bank", kind: reflect.Uintptr, want: isa.RegisterUint64},
+		{name: "a float32 uses the float bank", kind: reflect.Float32, want: isa.RegisterFloat64},
+		{name: "a float64 uses the float bank", kind: reflect.Float64, want: isa.RegisterFloat64},
 		{name: "a bool uses the boolean bank", kind: reflect.Bool, want: isa.RegisterBool},
 		{name: "a string falls back to the general bank", kind: reflect.String, want: isa.RegisterGeneral},
 		{name: "a struct falls back to the general bank", kind: reflect.Struct, want: isa.RegisterGeneral},
@@ -543,57 +543,57 @@ func TestTinyLeafSiteCompatibleMatchesArityAndBanks(t *testing.T) {
 	}{
 		{
 			name:   "a void increment with no return slot is compatible",
-			shape:  program.TinyLeafIncIntField,
+			shape:  program.TinyLeafIncrementIntField,
 			params: []isa.RegisterKind{isa.RegisterGeneral}, arguments: []isa.RegisterKind{isa.RegisterGeneral},
 			want: true,
 		},
 		{
 			name:   "a void increment with a return slot is refused",
-			shape:  program.TinyLeafIncIntField,
+			shape:  program.TinyLeafIncrementIntField,
 			params: []isa.RegisterKind{isa.RegisterGeneral}, arguments: []isa.RegisterKind{isa.RegisterGeneral},
-			returns: []isa.RegisterKind{isa.RegisterInt},
+			returns: []isa.RegisterKind{isa.RegisterInt64},
 			want:    false,
 		},
 		{
 			name:   "a signed field return needs an integer return slot",
 			shape:  program.TinyLeafReturnIntField,
 			params: []isa.RegisterKind{isa.RegisterGeneral}, arguments: []isa.RegisterKind{isa.RegisterGeneral},
-			returns: []isa.RegisterKind{isa.RegisterInt},
+			returns: []isa.RegisterKind{isa.RegisterInt64},
 			want:    true,
 		},
 		{
 			name:   "a signed field return refuses an unsigned return slot",
 			shape:  program.TinyLeafReturnIntField,
 			params: []isa.RegisterKind{isa.RegisterGeneral}, arguments: []isa.RegisterKind{isa.RegisterGeneral},
-			returns: []isa.RegisterKind{isa.RegisterUint},
+			returns: []isa.RegisterKind{isa.RegisterUint64},
 			want:    false,
 		},
 		{
 			name:   "an unsigned field return needs an unsigned return slot",
 			shape:  program.TinyLeafReturnUintField,
 			params: []isa.RegisterKind{isa.RegisterGeneral}, arguments: []isa.RegisterKind{isa.RegisterGeneral},
-			returns: []isa.RegisterKind{isa.RegisterUint},
+			returns: []isa.RegisterKind{isa.RegisterUint64},
 			want:    true,
 		},
 		{
 			name:   "a mismatched argument count is refused",
 			shape:  program.TinyLeafReturnUintField,
-			params: []isa.RegisterKind{isa.RegisterGeneral}, arguments: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt},
-			returns: []isa.RegisterKind{isa.RegisterUint},
+			params: []isa.RegisterKind{isa.RegisterGeneral}, arguments: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt64},
+			returns: []isa.RegisterKind{isa.RegisterUint64},
 			want:    false,
 		},
 		{
 			name:      "a later argument boxed into the general bank is tolerated",
 			shape:     program.TinyLeafSetScalarFieldFromArg,
-			params:    []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt},
+			params:    []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt64},
 			arguments: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterGeneral},
 			want:      true,
 		},
 		{
 			name:      "a receiver in the wrong bank is refused even when boxed",
 			shape:     program.TinyLeafSetScalarFieldFromArg,
-			params:    []isa.RegisterKind{isa.RegisterInt, isa.RegisterInt},
-			arguments: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt},
+			params:    []isa.RegisterKind{isa.RegisterInt64, isa.RegisterInt64},
+			arguments: []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt64},
 			want:      false,
 		},
 	}
@@ -616,4 +616,16 @@ func TestTinyLeafSiteCompatibleMatchesArityAndBanks(t *testing.T) {
 			require.Equal(t, tt.want, tinyLeafSiteCompatible(site, callee))
 		})
 	}
+}
+
+func TestVoidBodyEndsAfterAcceptsOneTrailingVoidReturn(t *testing.T) {
+	t.Parallel()
+	nop := isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
+	returnVoid := isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid)
+	other := isa.NewInstruction(isa.OpAddInt64, 1, 2, 3)
+
+	require.True(t, voidBodyEndsAfter([]isa.Instruction{other}, 1), "nothing follows")
+	require.True(t, voidBodyEndsAfter([]isa.Instruction{other, nop, returnVoid, nop}, 1), "a void return ends the frame")
+	require.False(t, voidBodyEndsAfter([]isa.Instruction{other, other}, 1), "another operation follows")
+	require.False(t, voidBodyEndsAfter([]isa.Instruction{other, returnVoid, other}, 1), "an operation follows the return")
 }

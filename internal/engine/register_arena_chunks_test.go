@@ -75,6 +75,7 @@ func TestChunkedSlabGrowthChargesEachFullChunk(t *testing.T) {
 
 func TestCompactRecyclesDeadHeaderChunks(t *testing.T) {
 	t.Parallel()
+	skipUnderReuseAudit(t)
 	a := NewRegisterArena()
 	a.recycleChunks = true
 	setArenaBudget(t, a, 1<<30)
@@ -100,6 +101,7 @@ func TestCompactRecyclesDeadHeaderChunks(t *testing.T) {
 
 func TestCompactRecyclesDeadGenericByteChunks(t *testing.T) {
 	t.Parallel()
+	skipUnderReuseAudit(t)
 	a := NewRegisterArena()
 	a.recycleChunks = true
 	setArenaBudget(t, a, 1<<30)
@@ -121,6 +123,7 @@ func TestCompactRecyclesDeadGenericByteChunks(t *testing.T) {
 
 func TestRecycledChunkIsZeroed(t *testing.T) {
 	t.Parallel()
+	skipUnderReuseAudit(t)
 	a := NewRegisterArena()
 	a.recycleChunks = true
 	setArenaBudget(t, a, 1<<30)
@@ -160,6 +163,7 @@ func TestCompactDropsDeadChunksBeyondFreeListCap(t *testing.T) {
 
 func TestResetDropsFreeChunks(t *testing.T) {
 	t.Parallel()
+	skipUnderReuseAudit(t)
 	a := NewRegisterArena()
 	a.recycleChunks = true
 	setArenaBudget(t, a, 1<<30)

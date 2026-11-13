@@ -51,7 +51,7 @@ func TestNativeHostWatchdogBootstrap(t *testing.T) {
 
 func exerciseWatchdogBootstrap(t *testing.T, parent, mode string) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
 	executable, err := os.Executable()
 	if err != nil {
@@ -76,7 +76,7 @@ func exerciseWatchdogBootstrap(t *testing.T, parent, mode string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	group, err := newGroup(parent, Limits{})
+	group, err := newGroup(t.Context(), parent, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func exerciseWatchdogBootstrap(t *testing.T, parent, mode string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	supervisor, err := newGroup(parent, Limits{})
+	supervisor, err := newGroup(t.Context(), parent, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}

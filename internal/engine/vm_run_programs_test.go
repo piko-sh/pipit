@@ -45,16 +45,16 @@ func countingLoop(limit int64) *program.CompiledFunction {
 	builder.addIntConst(limit)
 	builder.intRegisters(4).returnInt()
 
-	builder.Emit(isa.OpLoadIntConst, total, 0, 0)
-	builder.Emit(isa.OpLoadIntConst, counter, 0, 0)
-	builder.Emit(isa.OpLoadIntConst, limitReg, 1, 0)
+	builder.Emit(isa.OpLoadInt64Constant, total, 0, 0)
+	builder.Emit(isa.OpLoadInt64Constant, counter, 0, 0)
+	builder.Emit(isa.OpLoadInt64Constant, limitReg, 1, 0)
 
 	loopTop := builder.CurrentPC()
-	builder.Emit(isa.OpLtInt, condition, counter, limitReg)
+	builder.Emit(isa.OpLessThanInt64, condition, counter, limitReg)
 	exitJump := builder.CurrentPC()
 	builder.EmitJump(isa.OpJumpIfFalse, condition, 0)
-	builder.Emit(isa.OpAddInt, total, total, counter)
-	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2IncInt), counter)
+	builder.Emit(isa.OpAddInt64, total, total, counter)
+	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2IncrementInt64), counter)
 	emitTier1Jump(builder, int16(loopTop-builder.CurrentPC()-1))
 
 	exitTarget := builder.CurrentPC()
@@ -114,12 +114,12 @@ func TestAForwardJumpSkipsTheBranchItGuards(t *testing.T) {
 			builder.addIntConst(2)
 			builder.intRegisters(3).returnInt()
 
-			builder.Emit(isa.OpLoadIntConst, 1, 0, 0)
+			builder.Emit(isa.OpLoadInt64Constant, 1, 0, 0)
 
 			builder.EmitJump(isa.OpJumpIfFalse, 1, 2)
-			builder.Emit(isa.OpLoadIntConst, 0, 1, 0)
+			builder.Emit(isa.OpLoadInt64Constant, 0, 1, 0)
 			emitTier1Jump(builder, 1)
-			builder.Emit(isa.OpLoadIntConst, 0, 2, 0)
+			builder.Emit(isa.OpLoadInt64Constant, 0, 2, 0)
 			builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
 			result, err := executeTestBytecode(t, builder.build())
@@ -144,7 +144,7 @@ func TestAProgramOfEveryScalarBankReturnsItsOwnKind(t *testing.T) {
 				b := newBytecodeBuilder()
 				b.addIntConst(42)
 				b.intRegisters(1).returnInt()
-				b.Emit(isa.OpLoadIntConst, 0, 0, 0)
+				b.Emit(isa.OpLoadInt64Constant, 0, 0, 0)
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
@@ -156,7 +156,7 @@ func TestAProgramOfEveryScalarBankReturnsItsOwnKind(t *testing.T) {
 				b := newBytecodeBuilder()
 				b.addFloatConst(2.5)
 				b.floatRegisters(1).returnFloat()
-				b.Emit(isa.OpLoadFloatConst, 0, 0, 0)
+				b.Emit(isa.OpLoadFloat64Constant, 0, 0, 0)
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
@@ -168,7 +168,7 @@ func TestAProgramOfEveryScalarBankReturnsItsOwnKind(t *testing.T) {
 				b := newBytecodeBuilder()
 				b.addStringConst("pipit")
 				b.stringRegisters(1).returnString()
-				b.Emit(isa.OpLoadStringConst, 0, 0, 0)
+				b.Emit(isa.OpLoadStringConstant, 0, 0, 0)
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
@@ -180,7 +180,7 @@ func TestAProgramOfEveryScalarBankReturnsItsOwnKind(t *testing.T) {
 				b := newBytecodeBuilder()
 				b.addBoolConst(true)
 				b.boolRegisters(1).returnBool()
-				b.body = append(b.body, isa.NewTier1Instruction(isa.SubOpLoadBoolConst, 0, 0))
+				b.body = append(b.body, isa.NewTier1Instruction(isa.SubOpLoadBoolConstant, 0, 0))
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
@@ -209,10 +209,10 @@ func TestALongProgramExercisesTheDispatchLoopRepeatedly(t *testing.T) {
 	one := builder.addIntConst(1)
 	builder.intRegisters(3).returnInt()
 
-	builder.Emit(isa.OpLoadIntConst, 0, zero, 0)
-	builder.Emit(isa.OpLoadIntConst, 1, one, 0)
+	builder.Emit(isa.OpLoadInt64Constant, 0, zero, 0)
+	builder.Emit(isa.OpLoadInt64Constant, 1, one, 0)
 	for range steps {
-		builder.Emit(isa.OpAddInt, 0, 0, 1)
+		builder.Emit(isa.OpAddInt64, 0, 0, 1)
 	}
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 

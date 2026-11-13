@@ -19,6 +19,7 @@
 package sandboxworker
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync/atomic"
@@ -56,7 +57,7 @@ type sessionTransport interface {
 	// Close terminates the worker and releases its resources.
 	//
 	// Returns error when termination or cleanup fails.
-	Close() error
+	Close(ctx context.Context) error
 }
 
 // SessionClient owns one dedicated confined worker, never a shared or reusable pool.
@@ -99,7 +100,7 @@ type SessionClient struct {
 // Takes source (string) which is charged to the host's cumulative budget before sending.
 //
 // Returns a validated response only while all native and host-accounted limits hold.
-func (session *SessionClient) Submit(source string) (response Response, err error) {
+func (session *SessionClient) Submit(ctx context.Context, source string) (response Response, err error) {
 	if session == nil || session.stream == nil || session.closed.Load() {
 		return Response{}, ErrSessionClosed
 	}
@@ -114,11 +115,11 @@ func (session *SessionClient) Submit(source string) (response Response, err erro
 		}
 		if err != nil {
 			session.closed.Store(true)
-			err = errors.Join(err, session.stream.Close())
+			err = errors.Join(err, closeSessionTransport(ctx, session.stream))
 			response = Response{Output: "", Error: "", Code: "", Value: nil, CostUsed: 0, OutputTruncated: false}
 		}
 	}()
-	response, err = session.exchange(source)
+	response, err = session.exchange(ctx, source)
 	completed = true
 	return response, err
 }
@@ -127,23 +128,35 @@ func (session *SessionClient) Submit(source string) (response Response, err erro
 // graceful shutdown; active workers are cancelled without racing protocol writes.
 //
 // Returns an error for failed execution, shutdown or resource cleanup.
-func (session *SessionClient) Close() error {
+func (session *SessionClient) Close(ctx context.Context) error {
 	if session == nil || session.stream == nil {
 		return nil
 	}
 	alreadyClosed := session.closed.Swap(true)
 	if alreadyClosed || !session.active.CompareAndSwap(false, true) {
-		return session.stream.Close()
+		return closeSessionTransport(ctx, session.stream)
 	}
 	defer session.active.Store(false)
 	stream := sessionDeadlineTransport{transport: session.stream, expires: session.expires}
 	if err := stream.SetDeadline(time.Now().Add(resultTimeout)); err != nil {
-		return errors.Join(err, session.stream.Close())
+		return errors.Join(err, closeSessionTransport(ctx, session.stream))
 	}
 	if err := session.connection.hostSend(sandboxwire.Close, 0, struct{}{}); err != nil {
-		return errors.Join(err, session.stream.Close())
+		return errors.Join(err, closeSessionTransport(ctx, session.stream))
 	}
-	return errors.Join(session.stream.Wait(), session.stream.Close())
+	return errors.Join(session.stream.Wait(), closeSessionTransport(ctx, session.stream))
+}
+
+// closeSessionTransport closes stream under ctx's values without its cancellation and
+// with a bound (sandboxwire.CleanupContext).
+//
+// Takes stream (sessionTransport) which is closed.
+//
+// Returns error from the close.
+func closeSessionTransport(ctx context.Context, stream sessionTransport) error {
+	cleanupCtx, cancel := sandboxwire.CleanupContext(ctx)
+	defer cancel()
+	return stream.Close(cleanupCtx)
 }
 
 // exchange runs an exclusively admitted submission with host-owned cumulative counters.
@@ -151,7 +164,7 @@ func (session *SessionClient) Close() error {
 // Takes source (string) which has not yet been sent to the worker.
 //
 // Returns a response only after validating policy, accounting and the next deadline.
-func (session *SessionClient) exchange(source string) (Response, error) {
+func (session *SessionClient) exchange(ctx context.Context, source string) (Response, error) {
 	if session.closed.Load() {
 		return Response{}, ErrSessionClosed
 	}
@@ -184,7 +197,7 @@ func (session *SessionClient) exchange(source string) (Response, error) {
 	}
 	if session.submissionsRemaining == 0 {
 		session.closed.Store(true)
-		if err := errors.Join(session.stream.Wait(), session.stream.Close()); err != nil {
+		if err := errors.Join(session.stream.Wait(), closeSessionTransport(ctx, session.stream)); err != nil {
 			return Response{}, err
 		}
 		return response, nil
@@ -231,18 +244,18 @@ func (stream sessionDeadlineTransport) SetDeadline(deadline time.Time) error {
 //
 // Returns *SessionClient for the configured session.
 // Returns error after attempting to close the supplied worker.
-func OpenSession(stream sessionTransport, config Configuration) (*SessionClient, error) {
+func OpenSession(ctx context.Context, stream sessionTransport, config Configuration) (*SessionClient, error) {
 	if stream == nil {
 		return nil, sandboxwire.ErrProtocol
 	}
 	config.Imports = append([]string(nil), config.Imports...)
 	if err := validateSessionSubmission(config, Request{Kind: "submission", Source: "", Entrypoint: ""}); err != nil {
-		return nil, errors.Join(err, stream.Close())
+		return nil, errors.Join(err, closeSessionTransport(ctx, stream))
 	}
 	expires := time.Now().Add(sessionLifetime)
 	connection, err := handshake(stream, config)
 	if err != nil {
-		return nil, errors.Join(err, stream.Close())
+		return nil, errors.Join(err, closeSessionTransport(ctx, stream))
 	}
 	session := &SessionClient{
 		stream: stream, connection: connection, expires: expires, config: config, nextID: 1,
@@ -250,7 +263,7 @@ func OpenSession(stream sessionTransport, config Configuration) (*SessionClient,
 		submissionsRemaining: sessionSubmissions, active: atomic.Bool{}, closed: atomic.Bool{},
 	}
 	if err := session.armIdle(); err != nil {
-		return nil, errors.Join(err, session.Close())
+		return nil, errors.Join(err, session.Close(ctx))
 	}
 	return session, nil
 }

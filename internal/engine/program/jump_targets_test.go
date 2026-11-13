@@ -28,7 +28,7 @@ import (
 
 func offsetExt(offset int16) isa.Instruction {
 	lo, hi := isa.SplitOffset(offset)
-	return isa.NewInstruction(isa.OpExt, lo, hi, 0)
+	return isa.NewInstruction(isa.OpExtension, lo, hi, 0)
 }
 
 func wordJump(op isa.Opcode, a uint8, offset int16) isa.Instruction {
@@ -36,11 +36,11 @@ func wordJump(op isa.Opcode, a uint8, offset int16) isa.Instruction {
 	return isa.NewInstruction(op, a, lo, hi)
 }
 
-func nop() isa.Instruction { return isa.NewInstruction(isa.OpNop, 0, 0, 0) }
+func nop() isa.Instruction { return isa.NewInstruction(isa.OpNoOperation, 0, 0, 0) }
 
 func okRegisterExt(okRegister uint8, offset int16) isa.Instruction {
 	lo, hi := isa.SplitOffset(offset)
-	return isa.NewInstruction(isa.OpExt, okRegister, lo, hi)
+	return isa.NewInstruction(isa.OpExtension, okRegister, lo, hi)
 }
 
 func TestJumpTargetAtMatchesHandlerArithmetic(t *testing.T) {
@@ -59,7 +59,7 @@ func TestJumpTargetAtMatchesHandlerArithmetic(t *testing.T) {
 		},
 		{
 			name:   "test nil jump lands at pc+1+offset",
-			body:   []isa.Instruction{wordJump(isa.OpTestNilJumpTrue, 0, offset)},
+			body:   []isa.Instruction{wordJump(isa.OpJumpIfNil, 0, offset)},
 			target: 1 + offset,
 		},
 		{
@@ -77,57 +77,57 @@ func TestJumpTargetAtMatchesHandlerArithmetic(t *testing.T) {
 		},
 		{
 			name:   "add int jump lands at pc+2+offset",
-			body:   []isa.Instruction{isa.NewInstruction(isa.OpAddIntJump, 0, 1, 2), offsetExt(offset)},
+			body:   []isa.Instruction{isa.NewInstruction(isa.OpAddInt64ConstantThenJump, 0, 1, 2), offsetExt(offset)},
 			target: 2 + offset,
 		},
 		{
 			name:   "lt int jump false lands at pc+2+offset",
-			body:   []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 0, 1), offsetExt(offset)},
+			body:   []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLessThanInt64ThenJumpIfFalse, 0, 1), offsetExt(offset)},
 			target: 2 + offset,
 		},
 		{
 			name:   "eq int const jump true lands at pc+2+offset",
-			body:   []isa.Instruction{isa.NewTier1Instruction(isa.SubOpEqIntConstJumpTrue, 0, 1), offsetExt(offset)},
+			body:   []isa.Instruction{isa.NewTier1Instruction(isa.SubOpEqualInt64ConstantThenJumpIfTrue, 0, 1), offsetExt(offset)},
 			target: 2 + offset,
 		},
 		{
 			name:   "eq string const jump false lands at pc+2+offset",
-			body:   []isa.Instruction{isa.NewTier1Instruction(isa.SubOpEqStringConstJumpFalse, 0, 1), offsetExt(offset)},
+			body:   []isa.Instruction{isa.NewTier1Instruction(isa.SubOpEqualStringConstantThenJumpIfFalse, 0, 1), offsetExt(offset)},
 			target: 2 + offset,
 		},
 		{
 			name:   "inc int jump lt lands at pc+2+offset and its nop is a real word",
-			body:   []isa.Instruction{isa.NewTier1Instruction(isa.SubOpIncIntJumpLt, 0, 1), offsetExt(offset), nop()},
+			body:   []isa.Instruction{isa.NewTier1Instruction(isa.SubOpIncrementInt64ThenJumpIfLessThan, 0, 1), offsetExt(offset), nop()},
 			target: 2 + offset,
 		},
 		{
 			name:   "len string lt jump false lands at pc+2+offset",
-			body:   []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLenStringLtJumpFalse, 0, 1), offsetExt(offset), nop()},
+			body:   []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLessThanLengthStringThenJumpIfFalse, 0, 1), offsetExt(offset), nop()},
 			target: 2 + offset,
 		},
 		{
 			name:   "eq uint const jump false skips its nop before adding the offset",
-			body:   []isa.Instruction{isa.NewTier1Instruction(isa.SubOpEqUintConstJumpFalse, 0, 7), offsetExt(offset), nop()},
-			target: 2 + isa.EqUintConstJumpFalseNopCount + offset,
+			body:   []isa.Instruction{isa.NewTier1Instruction(isa.SubOpEqualUint64ImmediateThenJumpIfFalse, 0, 7), offsetExt(offset), nop()},
+			target: 2 + isa.EqualUint64ImmediateThenJumpIfFalseNoOperationCount + offset,
 		},
 		{
 			name: "range check uint reads the second extension and skips five nops",
 			body: []isa.Instruction{
-				isa.NewTier2Instruction(isa.SubOpTier2RangeCheckUintJumpFalse, 0),
-				isa.NewInstruction(isa.OpExt, 1, 10, 0),
+				isa.NewTier2Instruction(isa.SubOpTier2InRangeUint64ThenJumpIfFalse, 0),
+				isa.NewInstruction(isa.OpExtension, 1, 10, 0),
 				offsetExt(offset),
 				nop(), nop(), nop(), nop(), nop(),
 			},
-			target: 3 + isa.RangeCheckUintFusionNopCount + offset,
+			target: 3 + isa.RangeCheckUintFusionNoOperationCount + offset,
 		},
 		{
 			name:   "map index ok branch lands at pc+2+offset, reading the offset from B|C",
-			body:   []isa.Instruction{isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseStringInt, 0, 1, 2), okRegisterExt(9, offset), nop()},
+			body:   []isa.Instruction{isa.NewInstruction(isa.OpGetMapStringInt64OkThenJumpIfFalse, 0, 1, 2), okRegisterExt(9, offset), nop()},
 			target: 2 + offset,
 		},
 		{
 			name:   "range next slice int lands at pc+2 plus a 24-bit forward offset",
-			body:   []isa.Instruction{isa.NewInstruction(isa.OpRangeNextSliceInt, 0, 1, 2), isa.NewInstruction(isa.OpExt, 0x34, 0x12, 0x01)},
+			body:   []isa.Instruction{isa.NewInstruction(isa.OpRangeNextSliceInt64, 0, 1, 2), isa.NewInstruction(isa.OpExtension, 0x34, 0x12, 0x01)},
 			target: 2 + 0x011234,
 		},
 	}
@@ -145,19 +145,19 @@ func TestJumpTargetAtMatchesHandlerArithmetic(t *testing.T) {
 func TestJumpTargetAtRefusesNonJumps(t *testing.T) {
 	t.Parallel()
 
-	misleading := isa.NewInstruction(isa.OpExt, 0xFD, 0xFF, 0)
+	misleading := isa.NewInstruction(isa.OpExtension, 0xFD, 0xFF, 0)
 	cases := []struct {
 		name string
 		body []isa.Instruction
 	}{
 		{name: "type switch dispatch has no single target", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpTypeSwitchJump, 1, 0)}},
 		{name: "extension word", body: []isa.Instruction{misleading}},
-		{name: "make slice int with extension", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpMakeSliceInt, 0, 1), misleading}},
+		{name: "make slice int with extension", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpMakeSliceInt64, 0, 1), misleading}},
 		{name: "call method with extension", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpCallMethod, 0, 1), misleading}},
 		{name: "tier-2 make map with extension", body: []isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2MakeMap, 0), misleading}},
-		{name: "fused jump missing its extension word", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 0, 1)}},
-		{name: "map index ok branch missing its extension word", body: []isa.Instruction{isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseIntInt, 0, 1, 2)}},
-		{name: "unfused map index ok", body: []isa.Instruction{isa.NewInstruction(isa.OpMapIndexOkIntInt, 0, 1, 2), okRegisterExt(9, 3)}},
+		{name: "fused jump missing its extension word", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLessThanInt64ThenJumpIfFalse, 0, 1)}},
+		{name: "map index ok branch missing its extension word", body: []isa.Instruction{isa.NewInstruction(isa.OpGetMapInt64Int64OkThenJumpIfFalse, 0, 1, 2)}},
+		{name: "unfused map index ok", body: []isa.Instruction{isa.NewInstruction(isa.OpGetMapInt64Int64Ok, 0, 1, 2), okRegisterExt(9, 3)}},
 		{name: "tail call", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpTailCall, 0, 0)}},
 	}
 
@@ -180,11 +180,11 @@ func TestSetJumpTargetRoundTripsEveryLayout(t *testing.T) {
 		body []isa.Instruction
 	}{
 		{name: "word layout", body: []isa.Instruction{wordJump(isa.OpJumpIfFalse, 0, 1), nop(), nop(), nop()}},
-		{name: "extension layout", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpGeIntJumpFalse, 4, 5), offsetExt(1), nop(), nop()}},
-		{name: "extension layout with nop padding", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpEqUintConstJumpFalse, 4, 5), offsetExt(1), nop(), nop(), nop()}},
-		{name: "second extension layout", body: []isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2RangeCheckUintJumpFalse, 4), isa.NewInstruction(isa.OpExt, 1, 2, 0), offsetExt(1), nop(), nop(), nop(), nop(), nop(), nop(), nop()}},
-		{name: "24-bit extension layout", body: []isa.Instruction{isa.NewInstruction(isa.OpRangeNextSliceByte, 0, 1, 2), isa.NewInstruction(isa.OpExt, 1, 0, 0), nop(), nop()}},
-		{name: "extension layout with the offset in B and C", body: []isa.Instruction{isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseIntGeneral, 4, 5, 6), okRegisterExt(9, 1), nop(), nop(), nop()}},
+		{name: "extension layout", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpGreaterOrEqualInt64ThenJumpIfFalse, 4, 5), offsetExt(1), nop(), nop()}},
+		{name: "extension layout with nop padding", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpEqualUint64ImmediateThenJumpIfFalse, 4, 5), offsetExt(1), nop(), nop(), nop()}},
+		{name: "second extension layout", body: []isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2InRangeUint64ThenJumpIfFalse, 4), isa.NewInstruction(isa.OpExtension, 1, 2, 0), offsetExt(1), nop(), nop(), nop(), nop(), nop(), nop(), nop()}},
+		{name: "24-bit extension layout", body: []isa.Instruction{isa.NewInstruction(isa.OpRangeNextSliceByte, 0, 1, 2), isa.NewInstruction(isa.OpExtension, 1, 0, 0), nop(), nop()}},
+		{name: "extension layout with the offset in B and C", body: []isa.Instruction{isa.NewInstruction(isa.OpGetMapInt64GeneralOkThenJumpIfFalse, 4, 5, 6), okRegisterExt(9, 1), nop(), nop(), nop()}},
 	}
 
 	for _, testCase := range cases {
@@ -211,26 +211,26 @@ func TestSetJumpTargetRefusesWhatItCannotEncode(t *testing.T) {
 	multiWay := []isa.Instruction{isa.NewTier1Instruction(isa.SubOpTypeSwitchJump, 1, 0), nop()}
 	require.False(t, SetJumpTarget(multiWay, 0, 1), "the type-switch dispatch has no single target to set")
 
-	notAJump := []isa.Instruction{isa.NewTier1Instruction(isa.SubOpMakeSliceInt, 0, 1), isa.NewInstruction(isa.OpExt, 9, 9, 9)}
+	notAJump := []isa.Instruction{isa.NewTier1Instruction(isa.SubOpMakeSliceInt64, 0, 1), isa.NewInstruction(isa.OpExtension, 9, 9, 9)}
 	require.False(t, SetJumpTarget(notAJump, 0, 0))
-	require.Equal(t, isa.NewInstruction(isa.OpExt, 9, 9, 9), notAJump[1], "a refused repoint leaves the body untouched")
+	require.Equal(t, isa.NewInstruction(isa.OpExtension, 9, 9, 9), notAJump[1], "a refused repoint leaves the body untouched")
 
-	backward24 := []isa.Instruction{nop(), isa.NewInstruction(isa.OpRangeNextSliceInt, 0, 1, 2), isa.NewInstruction(isa.OpExt, 1, 0, 0)}
+	backward24 := []isa.Instruction{nop(), isa.NewInstruction(isa.OpRangeNextSliceInt64, 0, 1, 2), isa.NewInstruction(isa.OpExtension, 1, 0, 0)}
 	require.False(t, SetJumpTarget(backward24, 1, 0), "the 24-bit layout is forward only")
 
-	missingExt := []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 0, 1)}
+	missingExt := []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLessThanInt64ThenJumpIfFalse, 0, 1)}
 	require.False(t, SetJumpTarget(missingExt, 0, 0))
 
-	missingOkExt := []isa.Instruction{isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseIntInt, 0, 1, 2)}
+	missingOkExt := []isa.Instruction{isa.NewInstruction(isa.OpGetMapInt64Int64OkThenJumpIfFalse, 0, 1, 2)}
 	require.False(t, SetJumpTarget(missingOkExt, 0, 0))
 }
 
-func TestSetJumpTargetKeepsTheOkRegisterOfAMapIndexOkBranch(t *testing.T) {
+func TestSetJumpTargetKeepsTheOkRegisterOfAGetMapOkBranch(t *testing.T) {
 	t.Parallel()
 
 	const okRegister = 9
 	body := []isa.Instruction{
-		isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseStringString, 4, 5, 6),
+		isa.NewInstruction(isa.OpGetMapStringStringOkThenJumpIfFalse, 4, 5, 6),
 		okRegisterExt(okRegister, 1),
 		nop(), nop(), nop(), nop(),
 	}
@@ -246,10 +246,10 @@ func TestJumpTargetsOfCollectsEveryLayout(t *testing.T) {
 
 	body := []isa.Instruction{
 		wordJump(isa.OpJumpIfFalse, 0, 6),
-		isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 0, 1),
+		isa.NewTier1Instruction(isa.SubOpLessThanInt64ThenJumpIfFalse, 0, 1),
 		offsetExt(3),
-		isa.NewTier1Instruction(isa.SubOpMakeSliceInt, 0, 1),
-		isa.NewInstruction(isa.OpExt, 0xFD, 0xFF, 0),
+		isa.NewTier1Instruction(isa.SubOpMakeSliceInt64, 0, 1),
+		isa.NewInstruction(isa.OpExtension, 0xFD, 0xFF, 0),
 		wordJump(isa.OpTypeSwitchCase, 0, 2),
 		nop(),
 		nop(),
@@ -264,13 +264,13 @@ func TestJumpWordCountAndFootprint(t *testing.T) {
 	t.Parallel()
 
 	require.Equal(t, 1, JumpWordCount(wordJump(isa.OpJumpIfFalse, 0, 1)))
-	require.Equal(t, 2, JumpWordCount(isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 0, 1)))
-	require.Equal(t, 3, JumpWordCount(isa.NewTier2Instruction(isa.SubOpTier2RangeCheckUintJumpFalse, 0)))
+	require.Equal(t, 2, JumpWordCount(isa.NewTier1Instruction(isa.SubOpLessThanInt64ThenJumpIfFalse, 0, 1)))
+	require.Equal(t, 3, JumpWordCount(isa.NewTier2Instruction(isa.SubOpTier2InRangeUint64ThenJumpIfFalse, 0)))
 	require.Equal(t, 1, JumpWordCount(nop()))
 
-	require.Equal(t, 2+isa.EqUintConstJumpFalseNopCount, JumpFootprint(isa.NewTier1Instruction(isa.SubOpEqUintConstJumpFalse, 0, 1)))
-	require.Equal(t, 3+isa.RangeCheckUintFusionNopCount, JumpFootprint(isa.NewTier2Instruction(isa.SubOpTier2RangeCheckUintJumpFalse, 0)))
+	require.Equal(t, 2+isa.EqualUint64ImmediateThenJumpIfFalseNoOperationCount, JumpFootprint(isa.NewTier1Instruction(isa.SubOpEqualUint64ImmediateThenJumpIfFalse, 0, 1)))
+	require.Equal(t, 3+isa.RangeCheckUintFusionNoOperationCount, JumpFootprint(isa.NewTier2Instruction(isa.SubOpTier2InRangeUint64ThenJumpIfFalse, 0)))
 	require.Equal(t, 1, JumpFootprint(nop()))
-	require.Equal(t, 2, JumpFootprint(isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseIntInt, 0, 1, 2)),
+	require.Equal(t, 2, JumpFootprint(isa.NewInstruction(isa.OpGetMapInt64Int64OkThenJumpIfFalse, 0, 1, 2)),
 		"a map index ok branch falls through onto the nop its fusion leaves")
 }

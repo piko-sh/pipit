@@ -47,7 +47,7 @@ func EntrypointRun() int { return len(buildWeights(4)) }`)
 
 	require.Positivef(t, strings.Count(dump, "MAKE_SLICE_HEAP"),
 		"expected the row stored into weights[i] to be heap-placed; disasm:\n%s", dump)
-	require.Zerof(t, strings.Count(dump, "MAKE_SLICE_FLOAT"),
+	require.Zerof(t, strings.Count(dump, "MAKE_SLICE_FLOAT64"),
 		"expected no arena make for the escaping row; disasm:\n%s", dump)
 }
 
@@ -67,7 +67,7 @@ func rowSum(n int) float64 {
 }
 func EntrypointRun() float64 { return rowSum(8) }`)
 
-	require.Positivef(t, strings.Count(dump, "MAKE_SLICE_FLOAT"),
+	require.Positivef(t, strings.Count(dump, "MAKE_SLICE_FLOAT64"),
 		"expected a frame-local row to stay in the arena; disasm:\n%s", dump)
 	require.Zerof(t, strings.Count(dump, "MAKE_SLICE_HEAP"),
 		"expected no heap make for a frame-local row; disasm:\n%s", dump)
@@ -94,7 +94,7 @@ func EntrypointRun() int {
 
 	require.Equalf(t, 2, strings.Count(dump, "MAKE_SLICE_HEAP"),
 		"expected both the captured and the sent buffers to be heap-placed; disasm:\n%s", dump)
-	require.Zerof(t, strings.Count(dump, "MAKE_SLICE_INT")+strings.Count(dump, "MAKE_SLICE_UINT"),
+	require.Zerof(t, strings.Count(dump, "MAKE_SLICE_INT64")+strings.Count(dump, "MAKE_SLICE_UINT64"),
 		"expected no arena make for escaping buffers; disasm:\n%s", dump)
 }
 

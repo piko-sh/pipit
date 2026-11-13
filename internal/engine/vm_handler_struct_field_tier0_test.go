@@ -52,11 +52,11 @@ func tier0Layout(fieldIndex int) program.StructFieldLayout {
 func isaBankForKind(kind reflect.Kind) isa.RegisterKind {
 	switch kind {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return isa.RegisterInt
+		return isa.RegisterInt64
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return isa.RegisterUint
+		return isa.RegisterUint64
 	case reflect.Float32, reflect.Float64:
-		return isa.RegisterFloat
+		return isa.RegisterFloat64
 	case reflect.Bool:
 		return isa.RegisterBool
 	default:
@@ -93,35 +93,35 @@ func TestTier0FieldReadsLandInTheirOwnBank(t *testing.T) {
 		field   uint8
 	}{
 		{
-			name: "a signed field", handler: handleGetStructFieldIntT0, field: 0,
+			name: "a signed field", handler: handleGetStructFieldInt64, field: 0,
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Equal(t, int64(42), registers.Ints[0])
 			},
 		},
 		{
-			name: "a narrow signed field widens", handler: handleGetStructFieldIntT0, field: 4,
+			name: "a narrow signed field widens", handler: handleGetStructFieldInt64, field: 4,
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Equal(t, int64(-7), registers.Ints[0])
 			},
 		},
 		{
-			name: "an unsigned field", handler: handleGetStructFieldUintT0, field: 1,
+			name: "an unsigned field", handler: handleGetStructFieldUint64, field: 1,
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Equal(t, uint64(7), registers.Uints[0])
 			},
 		},
 		{
-			name: "a float field", handler: handleGetStructFieldFloatT0, field: 2,
+			name: "a float field", handler: handleGetStructFieldFloat64, field: 2,
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.InDelta(t, 1.5, registers.Floats[0], 0)
 			},
 		},
 		{
-			name: "a boolean field", handler: handleGetStructFieldBoolT0, field: 3,
+			name: "a boolean field", handler: handleGetStructFieldBool, field: 3,
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.True(t, registers.Bools[0])
@@ -163,7 +163,7 @@ func TestTier0FieldWritesReachTheReceiver(t *testing.T) {
 		field   uint8
 	}{
 		{
-			name: "a signed field", handler: handleSetStructFieldIntT0, field: 0,
+			name: "a signed field", handler: handleSetStructFieldInt64, field: 0,
 			seed: func(registers *Registers) { registers.Ints[2] = 42 },
 			check: func(t *testing.T, target *tier0Fields) {
 				t.Helper()
@@ -171,7 +171,7 @@ func TestTier0FieldWritesReachTheReceiver(t *testing.T) {
 			},
 		},
 		{
-			name: "a narrow signed field", handler: handleSetStructFieldIntT0, field: 4,
+			name: "a narrow signed field", handler: handleSetStructFieldInt64, field: 4,
 			seed: func(registers *Registers) { registers.Ints[2] = -7 },
 			check: func(t *testing.T, target *tier0Fields) {
 				t.Helper()
@@ -179,7 +179,7 @@ func TestTier0FieldWritesReachTheReceiver(t *testing.T) {
 			},
 		},
 		{
-			name: "an unsigned field", handler: handleSetStructFieldUintT0, field: 1,
+			name: "an unsigned field", handler: handleSetStructFieldUint64, field: 1,
 			seed: func(registers *Registers) { registers.Uints[2] = 7 },
 			check: func(t *testing.T, target *tier0Fields) {
 				t.Helper()
@@ -187,7 +187,7 @@ func TestTier0FieldWritesReachTheReceiver(t *testing.T) {
 			},
 		},
 		{
-			name: "a float field", handler: handleSetStructFieldFloatT0, field: 2,
+			name: "a float field", handler: handleSetStructFieldFloat64, field: 2,
 			seed: func(registers *Registers) { registers.Floats[2] = 1.5 },
 			check: func(t *testing.T, target *tier0Fields) {
 				t.Helper()
@@ -195,7 +195,7 @@ func TestTier0FieldWritesReachTheReceiver(t *testing.T) {
 			},
 		},
 		{
-			name: "a boolean field", handler: handleSetStructFieldBoolT0, field: 3,
+			name: "a boolean field", handler: handleSetStructFieldBool, field: 3,
 			seed: func(registers *Registers) { registers.Bools[2] = true },
 			check: func(t *testing.T, target *tier0Fields) {
 				t.Helper()
@@ -235,7 +235,7 @@ func TestTier0FieldSliceLengthReadsTheHeader(t *testing.T) {
 			t.Parallel()
 			vm, frame, registers := newTier0Frame(t, &tier0Fields{Values: tt.values})
 
-			require.Equal(t, opContinue, handleGetStructFieldSliceLen(vm, frame, registers, op(0, 1, 5)))
+			require.Equal(t, opContinue, handleLengthStructField(vm, frame, registers, op(0, 1, 5)))
 			require.Equal(t, tt.want, registers.Ints[0])
 		})
 	}
@@ -252,7 +252,7 @@ func TestTier0LayoutIndexPastTheTableIsReported(t *testing.T) {
 			"a layout index past the table must be reported rather than reading arbitrary memory")
 	}()
 
-	handleGetStructFieldIntT0(vm, frame, registers, op(0, 1, 99))
+	handleGetStructFieldInt64(vm, frame, registers, op(0, 1, 99))
 }
 
 func TestTier0FieldReadOnANilPointerRaisesADereferenceFault(t *testing.T) {
@@ -260,7 +260,7 @@ func TestTier0FieldReadOnANilPointerRaisesADereferenceFault(t *testing.T) {
 
 	vm, frame, registers := newTier0Frame(t, (*tier0Fields)(nil))
 
-	got := handleGetStructFieldIntT0(vm, frame, registers, op(0, 1, 0))
+	got := handleGetStructFieldInt64(vm, frame, registers, op(0, 1, 0))
 
 	require.NotEqual(t, opContinue, got,
 		"reading a field through a nil pointer must raise the dereference the language promises")
@@ -285,7 +285,7 @@ func TestTier0FieldReadLeavesTheDestinationAloneOnAWalkMiss(t *testing.T) {
 			vm, frame, registers := newTier0Frame(t, tt.receiver)
 			registers.Ints[0] = -999
 
-			got := handleGetStructFieldIntT0(vm, frame, registers, op(0, 1, 0))
+			got := handleGetStructFieldInt64(vm, frame, registers, op(0, 1, 0))
 
 			require.Equal(t, opContinue, got)
 			require.Equal(t, int64(-999), registers.Ints[0],

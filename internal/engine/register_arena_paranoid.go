@@ -60,6 +60,12 @@ func (a *RegisterArena) poisonReleasedStringBytes() {
 	for _, old := range a.oldByteSlabs {
 		poisonBytes(old)
 	}
+	if a.mutByteIndex > 0 {
+		poisonBytes(a.mutByteSlab[:a.mutByteIndex])
+	}
+	for _, old := range a.oldMutByteSlabs {
+		poisonBytes(old)
+	}
 }
 
 // poisonReleasedPrimitives overwrites released primitive-slab ranges with canary values.
@@ -86,7 +92,6 @@ func (a *RegisterArena) poisonReleasedPrimitives(sp *ArenaSavePoint) {
 	for i := sp.ComplexIndex; i < a.ComplexIndex; i++ {
 		a.complexSlab[i] = complex(math.Float64frombits(arenaPoisonWord), math.Float64frombits(arenaPoisonWord))
 	}
-
 }
 
 // poisonBytes fills b with the canary byte.

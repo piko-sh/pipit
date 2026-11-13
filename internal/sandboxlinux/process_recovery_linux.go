@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,12 +16,15 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
 	"context"
 
 	"pipit.sh/pipit/internal/sandboxbroker"
+	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 // reapForRecovery separates execution failure from proof of safe cleanup. A crashed
@@ -40,9 +41,9 @@ func (process *WorkerProcess) reapForRecovery(ctx context.Context) error {
 	select {
 	case <-process.done:
 	case <-ctx.Done():
-		return ctx.Err()
+		return sandboxwire.ContextErr(ctx)
 	}
-	return process.cleanup()
+	return process.cleanup(ctx)
 }
 
 // LaunchFilesystemRecovery reaps the original broker before launching sealed cleanup. It

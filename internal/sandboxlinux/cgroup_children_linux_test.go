@@ -36,12 +36,12 @@ import (
 
 func TestCgroupNativeAggregateTasks(t *testing.T) {
 	aggregate, ctx := aggregateGroupFixture(t, Limits{MemoryBytes: 0, CPUMilli: 100, Tasks: 1})
-	first, err := aggregate.newChild(Limits{})
+	first, err := aggregate.newChild(t.Context(), Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer first.closeGroup(ctx)
-	second, err := aggregate.newChild(Limits{})
+	second, err := aggregate.newChild(t.Context(), Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestCgroupNativeAggregateTasks(t *testing.T) {
 	if err := command.Wait(); err == nil {
 		t.Fatal("parent close did not kill descendant")
 	}
-	if _, err := aggregate.newChild(Limits{}); !errors.Is(err, errClosed) {
+	if _, err := aggregate.newChild(t.Context(), Limits{}); !errors.Is(err, errClosed) {
 		t.Fatal("closing aggregate admitted child:", err)
 	}
 	if err := first.closeGroup(ctx); err != nil {
@@ -102,12 +102,12 @@ func TestCgroupNativeAggregateMemory(t *testing.T) {
 		return
 	}
 	aggregate, ctx := aggregateGroupFixture(t, Limits{MemoryBytes: 64 << 20, CPUMilli: 0, Tasks: 0})
-	first, err := aggregate.newChild(Limits{MemoryBytes: 128 << 20, CPUMilli: 0, Tasks: 0})
+	first, err := aggregate.newChild(t.Context(), Limits{MemoryBytes: 128 << 20, CPUMilli: 0, Tasks: 0})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer first.closeGroup(ctx)
-	second, err := aggregate.newChild(Limits{MemoryBytes: 128 << 20, CPUMilli: 0, Tasks: 0})
+	second, err := aggregate.newChild(t.Context(), Limits{MemoryBytes: 128 << 20, CPUMilli: 0, Tasks: 0})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,11 +168,11 @@ func aggregateMemoryCommand(t *testing.T, ctx context.Context, group *Group, awa
 func aggregateGroupFixture(t *testing.T, limits Limits) (*Group, context.Context) {
 	t.Helper()
 	parent := sandboxtest.CgroupParent(t)
-	aggregate, err := newGroup(parent, limits)
+	aggregate, err := newGroup(t.Context(), parent, limits)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	t.Cleanup(func() {
 		defer cancel()
 		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
@@ -186,11 +186,11 @@ func aggregateGroupFixture(t *testing.T, limits Limits) (*Group, context.Context
 
 func TestGroupChildAdmission(t *testing.T) {
 	var absent *Group
-	if _, err := absent.newChild(Limits{}); !errors.Is(err, errClosed) {
+	if _, err := absent.newChild(t.Context(), Limits{}); !errors.Is(err, errClosed) {
 		t.Fatal(err)
 	}
 	for _, group := range []*Group{{closed: true}, {closing: true}, {started: true}} {
-		if _, err := group.newChild(Limits{}); !errors.Is(err, errClosed) {
+		if _, err := group.newChild(t.Context(), Limits{}); !errors.Is(err, errClosed) {
 			t.Fatal("invalid parent accepted:", err)
 		}
 	}

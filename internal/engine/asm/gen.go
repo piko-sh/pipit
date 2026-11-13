@@ -159,8 +159,8 @@ func dispatchGroup(baseName string, handlers []asmgen.HandlerDefinition[Bytecode
 	}
 }
 
-// RegisterBankBases identifies register banks that hold pointers, for validating
-// assembly write-barrier guards.
+// RegisterBankBases identifies register banks that hold pointers, for validating assembly
+// write-barrier guards.
 var RegisterBankBases = map[string]bool{
 	"CTX_INTS_BASE":          false,
 	"CTX_FLOATS_BASE":        false,

@@ -32,10 +32,6 @@ const (
 
 	// TruncatedDisassembleStringLen is the prefix length kept when truncating.
 	TruncatedDisassembleStringLen = 37
-
-	// extensionHighByteShift is the left shift applied to the high byte of a 16-bit constant
-	// pool index packed into an extension word.
-	extensionHighByteShift = 8
 )
 
 // Disassemble returns a human-readable listing of the function's bytecode. Each line
@@ -52,7 +48,7 @@ func (compiledFunction *CompiledFunction) Disassemble() string {
 }
 
 // DisassembleRange returns a human-readable listing for the instruction range [start,
-// end). Out-of-bounds indices are clamped to the body length.
+// end).
 //
 // Takes start (int) which is the inclusive start index.
 // Takes end (int) which is the exclusive end index.
@@ -70,16 +66,16 @@ func (compiledFunction *CompiledFunction) DisassembleRange(start, end int) strin
 	}
 
 	var builder strings.Builder
-	for pc := start; pc < end; pc++ {
-		instr := compiledFunction.Body[pc]
-		label := isa.InstructionDisplayName(instr)
-		comment := compiledFunction.disassembleCommentAt(instr, pc, end)
+	for programCounter := start; programCounter < end; programCounter++ {
+		instruction := compiledFunction.Body[programCounter]
+		label := isa.InstructionDisplayName(instruction)
+		comment := compiledFunction.disassembleCommentAt(instruction, programCounter, end)
 		if comment != "" {
-			fmt.Fprintf(&builder, "%04d  %-26s %3d %3d %3d    ; %s\n",
-				pc, label, instr.A, instr.B, instr.C, comment)
+			fmt.Fprintf(&builder, "%04d  %-*s %3d %3d %3d    ; %s\n",
+				programCounter, isa.DisplayLabelWidth, label, instruction.A, instruction.B, instruction.C, comment)
 		} else {
-			fmt.Fprintf(&builder, "%04d  %-26s %3d %3d %3d\n",
-				pc, label, instr.A, instr.B, instr.C)
+			fmt.Fprintf(&builder, "%04d  %-*s %3d %3d %3d\n",
+				programCounter, isa.DisplayLabelWidth, label, instruction.A, instruction.B, instruction.C)
 		}
 	}
 	return builder.String()
@@ -88,81 +84,73 @@ func (compiledFunction *CompiledFunction) DisassembleRange(start, end int) strin
 // DisassembleComment returns an inline comment for instructions that reference constant
 // pools or have special semantics.
 //
-// Takes instr (instruction) which is the instruction to annotate.
+// Takes instruction (instruction) which is the instruction to annotate.
 //
 // Returns the comment string, or an empty string if none applies.
-func (compiledFunction *CompiledFunction) DisassembleComment(instr isa.Instruction) string {
-	if comment := compiledFunction.disassembleLoadComment(instr); comment != "" {
+func (compiledFunction *CompiledFunction) DisassembleComment(instruction isa.Instruction) string {
+	if comment := compiledFunction.disassembleLoadComment(instruction); comment != "" {
 		return comment
 	}
-	return disassembleControlComment(instr)
+	return disassembleControlComment(instruction)
 }
 
 // disassembleCommentAt is the position-aware variant used by the range printer.
 //
-// Some tier-1 subops (e.g. fused uint-const arith) carry their constant-pool index in the
-// following isa.OpExt word; this variant peeks at body[pc+1] to render the constant
-// value.
-//
-// Takes instr (instruction) which is the current instruction word.
-// Takes pc (int) which is the position of instr within the body.
+// Takes instruction (instruction) which is the current instruction word.
+// Takes programCounter (int) which is the position of instruction within the body.
 // Takes end (int) which is the exclusive upper bound on body access.
 //
 // Returns the disassembly comment string.
-func (compiledFunction *CompiledFunction) disassembleCommentAt(instr isa.Instruction, pc, end int) string {
-	if isa.InstrIsTier1SubOp(instr, isa.SubOpAddUintConst) ||
-		isa.InstrIsTier1SubOp(instr, isa.SubOpSubUintConst) ||
-		isa.InstrIsTier1SubOp(instr, isa.SubOpBitAndUintConst) {
-		if pc+1 < end {
-			ext := compiledFunction.Body[pc+1]
-			constIdx := int(ext.A) | (int(ext.B) << extensionHighByteShift)
-			if constIdx < len(compiledFunction.UintConstants) {
-				return fmt.Sprintf("uconst = %d", compiledFunction.UintConstants[constIdx])
-			}
+func (compiledFunction *CompiledFunction) disassembleCommentAt(instruction isa.Instruction, programCounter, end int) string {
+	if programCounter+1 < end {
+		index, kind, ok := isa.ExtensionConstantIndex(instruction, compiledFunction.Body[programCounter+1])
+		if ok && kind == isa.RegisterUint64 && index < len(compiledFunction.UintConstants) {
+			return fmt.Sprintf("uconst = %d", compiledFunction.UintConstants[index])
 		}
 	}
-	return compiledFunction.DisassembleComment(instr)
+	return compiledFunction.DisassembleComment(instruction)
 }
 
 // disassembleLoadComment handles constant-loading and data instructions.
 //
-// Takes instr (instruction) which is the instruction to annotate.
+// Takes instruction (instruction) which is the instruction to annotate.
 //
 // Returns a comment string for constant-load opcodes, or empty string for other opcodes.
-func (compiledFunction *CompiledFunction) disassembleLoadComment(instr isa.Instruction) string {
-	if isa.InstrIsTier1SubOp(instr, isa.SubOpLoadBoolConst) {
-		if int(instr.C) < len(compiledFunction.BoolConstants) {
-			return fmt.Sprintf("bools[%d] = %v", instr.B, compiledFunction.BoolConstants[instr.C])
+func (compiledFunction *CompiledFunction) disassembleLoadComment(instruction isa.Instruction) string {
+	if isa.InstrIsTier1SubOp(instruction, isa.SubOpLoadBoolConstant) {
+		if int(instruction.C) < len(compiledFunction.BoolConstants) {
+			return fmt.Sprintf("bools[%d] = %v", instruction.B, compiledFunction.BoolConstants[instruction.C])
 		}
 	}
-	if isa.InstrIsTier1SubOp(instr, isa.SubOpLoadIntConstSmall) {
-		return fmt.Sprintf("ints[%d] = %d", instr.B, instr.C)
+	if isa.InstrIsTier1SubOp(instruction, isa.SubOpLoadInt64Immediate) {
+		return fmt.Sprintf("ints[%d] = %d", instruction.B, instruction.C)
 	}
-	if isa.InstrIsTier1SubOp(instr, isa.SubOpLoadBool) {
-		if instr.C != 0 {
-			return fmt.Sprintf("ints[%d] = true", instr.B)
+	if isa.InstrIsTier1SubOp(instruction, isa.SubOpLoadBoolImmediateAsInt64) {
+		if instruction.C != 0 {
+			return fmt.Sprintf("ints[%d] = true", instruction.B)
 		}
-		return fmt.Sprintf("ints[%d] = false", instr.B)
+		return fmt.Sprintf("ints[%d] = false", instruction.B)
 	}
-	if isa.InstrIsTier1SubOp(instr, isa.SubOpLoadUintConstSmall) {
-		return fmt.Sprintf("uints[%d] = %d", instr.B, instr.C)
+	if isa.InstrIsTier1SubOp(instruction, isa.SubOpLoadUint64Immediate) {
+		return fmt.Sprintf("uints[%d] = %d", instruction.B, instruction.C)
 	}
-	switch instr.Op {
-	case isa.OpLoadIntConst:
-		index := instr.WideIndex()
+	switch instruction.Op {
+	case isa.OpLoadInt64Constant:
+		index := instruction.WideIndex()
 		if int(index) < len(compiledFunction.IntConstants) {
-			return fmt.Sprintf("ints[%d] = %d", instr.A, compiledFunction.IntConstants[index])
+			return fmt.Sprintf("ints[%d] = %d", instruction.A, compiledFunction.IntConstants[index])
 		}
-	case isa.OpLoadFloatConst:
-		index := instr.WideIndex()
+	case isa.OpLoadFloat64Constant:
+		index := instruction.WideIndex()
 		if int(index) < len(compiledFunction.FloatConstants) {
-			return fmt.Sprintf("floats[%d] = %g", instr.A, compiledFunction.FloatConstants[index])
+			return fmt.Sprintf("floats[%d] = %g", instruction.A, compiledFunction.FloatConstants[index])
 		}
-	case isa.OpLoadStringConst:
-		return compiledFunction.disassembleStringConstComment(instr)
-	case isa.OpAddIntConst, isa.OpSubIntConst, isa.OpMulIntConst, isa.OpAddInt32Const, isa.OpSubInt32Const:
-		if int(instr.C) < len(compiledFunction.IntConstants) {
-			return fmt.Sprintf("const = %d", compiledFunction.IntConstants[instr.C])
+	case isa.OpLoadStringConstant:
+		return compiledFunction.disassembleStringConstComment(instruction)
+	case isa.OpAddInt64Constant, isa.OpSubtractInt64Constant, isa.OpMultiplyInt64Constant, isa.OpAddInt32Constant, isa.OpSubtractInt32Constant,
+		isa.OpMultiplyInt64ConstantThenAdd:
+		if int(instruction.C) < len(compiledFunction.IntConstants) {
+			return fmt.Sprintf("const = %d", compiledFunction.IntConstants[instruction.C])
 		}
 	default:
 	}
@@ -171,11 +159,11 @@ func (compiledFunction *CompiledFunction) disassembleLoadComment(instr isa.Instr
 
 // disassembleStringConstComment formats a string constant load comment.
 //
-// Takes instr (instruction) which is the isa.OpLoadStringConst instruction.
+// Takes instruction (instruction) which is the isa.OpLoadStringConstant instruction.
 //
 // Returns a quoted comment showing the destination register and value.
-func (compiledFunction *CompiledFunction) disassembleStringConstComment(instr isa.Instruction) string {
-	index := instr.WideIndex()
+func (compiledFunction *CompiledFunction) disassembleStringConstComment(instruction isa.Instruction) string {
+	index := instruction.WideIndex()
 	if int(index) >= len(compiledFunction.StringConstants) {
 		return ""
 	}
@@ -183,29 +171,29 @@ func (compiledFunction *CompiledFunction) disassembleStringConstComment(instr is
 	if len(s) > MaxDisassembleStringLen {
 		s = s[:TruncatedDisassembleStringLen] + "..."
 	}
-	return fmt.Sprintf("strings[%d] = %q", instr.A, s)
+	return fmt.Sprintf("strings[%d] = %q", instruction.A, s)
 }
 
 // disassembleControlComment handles control flow and return instructions.
 //
-// Takes instr (instruction) which is the instruction to annotate.
+// Takes instruction (instruction) which is the instruction to annotate.
 //
 // Returns a comment string for jump and return opcodes, or empty string for other
 // opcodes.
-func disassembleControlComment(instr isa.Instruction) string {
-	if isa.InstrIsTier1SubOp(instr, isa.SubOpJump) {
-		return fmt.Sprintf("goto %d", int(instr.SignedOffset()))
+func disassembleControlComment(instruction isa.Instruction) string {
+	if isa.InstrIsTier1SubOp(instruction, isa.SubOpJump) {
+		return fmt.Sprintf("goto %d", int(instruction.SignedOffset()))
 	}
-	if instr.Op == isa.OpDrillTier1 &&
-		isa.SubOpcode(instr.A) == isa.SubOpDrillTier2 &&
-		isa.SubOpcodeTier2(instr.B) == isa.SubOpTier2Return {
-		return fmt.Sprintf("%d values", instr.C)
+	if instruction.Op == isa.OpDrillTier1 &&
+		isa.SubOpcode(instruction.A) == isa.SubOpDrillTier2 &&
+		isa.SubOpcodeTier2(instruction.B) == isa.SubOpTier2Return {
+		return fmt.Sprintf("%d values", instruction.C)
 	}
-	switch instr.Op {
+	switch instruction.Op {
 	case isa.OpJumpIfTrue:
-		return fmt.Sprintf("if ints[%d] != 0 goto %+d", instr.A, int(instr.SignedOffset()))
+		return fmt.Sprintf("if ints[%d] != 0 goto %+d", instruction.A, int(instruction.SignedOffset()))
 	case isa.OpJumpIfFalse:
-		return fmt.Sprintf("if ints[%d] == 0 goto %+d", instr.A, int(instr.SignedOffset()))
+		return fmt.Sprintf("if ints[%d] == 0 goto %+d", instruction.A, int(instruction.SignedOffset()))
 	default:
 	}
 	return ""

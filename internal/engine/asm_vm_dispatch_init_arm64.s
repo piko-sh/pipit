@@ -40,91 +40,91 @@ initjt_fill:
 
 	MOVD table+0(FP), R0
 
-	MOVD $·handlerLoadIntConst(SB), R1
+	MOVD $·handlerLoadInt64Constant(SB), R1
 	MOVD R1, 16(R0)
 
-	MOVD $·handlerLoadFloatConst(SB), R1
+	MOVD $·handlerLoadFloat64Constant(SB), R1
 	MOVD R1, 24(R0)
 
-	MOVD $·handlerAddInt(SB), R1
+	MOVD $·handlerAddInt64(SB), R1
 	MOVD R1, 32(R0)
 
-	MOVD $·handlerSubInt(SB), R1
+	MOVD $·handlerSubtractInt64(SB), R1
 	MOVD R1, 40(R0)
 
-	MOVD $·handlerMulInt(SB), R1
+	MOVD $·handlerMultiplyInt64(SB), R1
 	MOVD R1, 48(R0)
 
-	MOVD $·handlerDivInt(SB), R1
+	MOVD $·handlerDivideInt64(SB), R1
 	MOVD R1, 56(R0)
 
-	MOVD $·handlerRemInt(SB), R1
+	MOVD $·handlerRemainderInt64(SB), R1
 	MOVD R1, 64(R0)
 
-	MOVD $·handlerBitAnd(SB), R1
+	MOVD $·handlerBitAndInt64(SB), R1
 	MOVD R1, 72(R0)
 
-	MOVD $·handlerBitOr(SB), R1
+	MOVD $·handlerBitOrInt64(SB), R1
 	MOVD R1, 80(R0)
 
-	MOVD $·handlerBitXor(SB), R1
+	MOVD $·handlerBitXorInt64(SB), R1
 	MOVD R1, 88(R0)
 
-	MOVD $·handlerBitAndNot(SB), R1
+	MOVD $·handlerBitAndNotInt64(SB), R1
 	MOVD R1, 96(R0)
 
-	MOVD $·handlerShiftLeft(SB), R1
+	MOVD $·handlerShiftLeftInt64(SB), R1
 	MOVD R1, 104(R0)
 
-	MOVD $·handlerShiftRight(SB), R1
+	MOVD $·handlerShiftRightInt64(SB), R1
 	MOVD R1, 112(R0)
 
-	MOVD $·handlerAddFloat(SB), R1
+	MOVD $·handlerAddFloat64(SB), R1
 	MOVD R1, 120(R0)
 
-	MOVD $·handlerSubFloat(SB), R1
+	MOVD $·handlerSubtractFloat64(SB), R1
 	MOVD R1, 128(R0)
 
-	MOVD $·handlerMulFloat(SB), R1
+	MOVD $·handlerMultiplyFloat64(SB), R1
 	MOVD R1, 136(R0)
 
-	MOVD $·handlerDivFloat(SB), R1
+	MOVD $·handlerDivideFloat64(SB), R1
 	MOVD R1, 144(R0)
 
-	MOVD $·handlerEqInt(SB), R1
+	MOVD $·handlerEqualInt64(SB), R1
 	MOVD R1, 152(R0)
 
-	MOVD $·handlerNeInt(SB), R1
+	MOVD $·handlerNotEqualInt64(SB), R1
 	MOVD R1, 160(R0)
 
-	MOVD $·handlerLtInt(SB), R1
+	MOVD $·handlerLessThanInt64(SB), R1
 	MOVD R1, 168(R0)
 
-	MOVD $·handlerLeInt(SB), R1
+	MOVD $·handlerLessOrEqualInt64(SB), R1
 	MOVD R1, 176(R0)
 
-	MOVD $·handlerGtInt(SB), R1
+	MOVD $·handlerGreaterThanInt64(SB), R1
 	MOVD R1, 184(R0)
 
-	MOVD $·handlerGeInt(SB), R1
+	MOVD $·handlerGreaterOrEqualInt64(SB), R1
 	MOVD R1, 192(R0)
 
-	MOVD $·handlerEqFloat(SB), R1
+	MOVD $·handlerEqualFloat64(SB), R1
 	MOVD R1, 200(R0)
 
-	MOVD $·handlerNeFloat(SB), R1
+	MOVD $·handlerNotEqualFloat64(SB), R1
 	MOVD R1, 208(R0)
 
-	MOVD $·handlerLtFloat(SB), R1
+	MOVD $·handlerLessThanFloat64(SB), R1
 	MOVD R1, 216(R0)
 
-	MOVD $·handlerLeFloat(SB), R1
+	MOVD $·handlerLessOrEqualFloat64(SB), R1
 	MOVD R1, 224(R0)
 
-	MOVD $·handlerGtFloat(SB), R1
+	MOVD $·handlerGreaterThanFloat64(SB), R1
 	MOVD R1, 232(R0)
 
-	MOVD $·handlerGeFloat(SB), R1
+	MOVD $·handlerGreaterOrEqualFloat64(SB), R1
 	MOVD R1, 240(R0)
 
 	MOVD $·handlerJumpIfTrue(SB), R1
@@ -133,383 +133,398 @@ initjt_fill:
 	MOVD $·handlerJumpIfFalse(SB), R1
 	MOVD R1, 256(R0)
 
-	MOVD $·handlerSubIntConst(SB), R1
+	MOVD $·handlerSubtractInt64Constant(SB), R1
 	MOVD R1, 264(R0)
 
-	MOVD $·handlerAddIntConst(SB), R1
+	MOVD $·handlerAddInt64Constant(SB), R1
 	MOVD R1, 272(R0)
 
-	MOVD $·handlerMulIntConst(SB), R1
+	MOVD $·handlerMultiplyInt64Constant(SB), R1
 	MOVD R1, 280(R0)
 
-	MOVD $·handlerAddIntJump(SB), R1
+	MOVD $·handlerAddInt64ConstantThenJump(SB), R1
 	MOVD R1, 288(R0)
 
-	MOVD $·handlerStringIndex(SB), R1
+	MOVD $·handlerGetStringByte(SB), R1
 	MOVD R1, 296(R0)
 
-	MOVD $·handlerEqString(SB), R1
+	MOVD $·handlerEqualString(SB), R1
 	MOVD R1, 304(R0)
 
-	MOVD $·handlerNeString(SB), R1
+	MOVD $·handlerNotEqualString(SB), R1
 	MOVD R1, 312(R0)
 
 	MOVD $·handlerSliceString(SB), R1
 	MOVD R1, 320(R0)
 
-	MOVD $·handlerStringIndexToInt(SB), R1
+	MOVD $·handlerGetStringByteAsInt64(SB), R1
 	MOVD R1, 328(R0)
 
 	MOVD $·handlerMoveGeneral(SB), R1
 	MOVD R1, 336(R0)
 
-	MOVD $·handlerLoadStringConst(SB), R1
+	MOVD $·handlerLoadStringConstant(SB), R1
 	MOVD R1, 344(R0)
 
-	MOVD $·handlerLoadUintConst(SB), R1
+	MOVD $·handlerLoadUint64Constant(SB), R1
 	MOVD R1, 360(R0)
 
-	MOVD $·handlerAddUint(SB), R1
+	MOVD $·handlerAddUint64(SB), R1
 	MOVD R1, 376(R0)
 
-	MOVD $·handlerSubUint(SB), R1
+	MOVD $·handlerSubtractUint64(SB), R1
 	MOVD R1, 384(R0)
 
-	MOVD $·handlerMulUint(SB), R1
+	MOVD $·handlerMultiplyUint64(SB), R1
 	MOVD R1, 392(R0)
 
-	MOVD $·handlerDivUint(SB), R1
+	MOVD $·handlerDivideUint64(SB), R1
 	MOVD R1, 400(R0)
 
-	MOVD $·handlerRemUint(SB), R1
+	MOVD $·handlerRemainderUint64(SB), R1
 	MOVD R1, 408(R0)
 
-	MOVD $·handlerBitAndUint(SB), R1
+	MOVD $·handlerBitAndUint64(SB), R1
 	MOVD R1, 416(R0)
 
-	MOVD $·handlerBitOrUint(SB), R1
+	MOVD $·handlerBitOrUint64(SB), R1
 	MOVD R1, 424(R0)
 
-	MOVD $·handlerBitXorUint(SB), R1
+	MOVD $·handlerBitXorUint64(SB), R1
 	MOVD R1, 432(R0)
 
-	MOVD $·handlerBitAndNotUint(SB), R1
+	MOVD $·handlerBitAndNotUint64(SB), R1
 	MOVD R1, 440(R0)
 
-	MOVD $·handlerShiftLeftUint(SB), R1
+	MOVD $·handlerShiftLeftUint64(SB), R1
 	MOVD R1, 448(R0)
 
-	MOVD $·handlerShiftRightUint(SB), R1
+	MOVD $·handlerShiftRightUint64(SB), R1
 	MOVD R1, 456(R0)
 
-	MOVD $·handlerEqUint(SB), R1
+	MOVD $·handlerEqualUint64(SB), R1
 	MOVD R1, 464(R0)
 
-	MOVD $·handlerNeUint(SB), R1
+	MOVD $·handlerNotEqualUint64(SB), R1
 	MOVD R1, 472(R0)
 
-	MOVD $·handlerLtUint(SB), R1
+	MOVD $·handlerLessThanUint64(SB), R1
 	MOVD R1, 480(R0)
 
-	MOVD $·handlerLeUint(SB), R1
+	MOVD $·handlerLessOrEqualUint64(SB), R1
 	MOVD R1, 488(R0)
 
-	MOVD $·handlerGtUint(SB), R1
+	MOVD $·handlerGreaterThanUint64(SB), R1
 	MOVD R1, 496(R0)
 
-	MOVD $·handlerGeUint(SB), R1
+	MOVD $·handlerGreaterOrEqualUint64(SB), R1
 	MOVD R1, 504(R0)
 
-	MOVD $·handlerEqGeneral(SB), R1
+	MOVD $·handlerEqualGeneral(SB), R1
 	MOVD R1, 616(R0)
 
-	MOVD $·handlerTruncateNarrow(SB), R1
+	MOVD $·handlerTruncateToWidth(SB), R1
 	MOVD R1, 704(R0)
 
-	MOVD $·handlerTestNilJumpTrue(SB), R1
+	MOVD $·handlerJumpIfNil(SB), R1
 	MOVD R1, 728(R0)
 
-	MOVD $·handlerTestNilJumpFalse(SB), R1
+	MOVD $·handlerJumpIfNotNil(SB), R1
 	MOVD R1, 736(R0)
 
-	MOVD $·handlerGetUpvalueScalar(SB), R1
+	MOVD $·handlerGetCapturedVariable(SB), R1
 	MOVD R1, 752(R0)
+
+	MOVD $·handlerGetElementInt64(SB), R1
+	MOVD R1, 864(R0)
+
+	MOVD $·handlerSetElementInt64(SB), R1
+	MOVD R1, 872(R0)
+
+	MOVD $·handlerGetElementUint64(SB), R1
+	MOVD R1, 928(R0)
+
+	MOVD $·handlerSetElementUint64(SB), R1
+	MOVD R1, 936(R0)
 
 	MOVD $·handlerRangeNextSliceByte(SB), R1
 	MOVD R1, 952(R0)
 
-	MOVD $·handlerSliceGetIntDirect(SB), R1
+	MOVD $·handlerGetGlobal(SB), R1
+	MOVD R1, 1200(R0)
+
+	MOVD $·handlerSetGlobal(SB), R1
+	MOVD R1, 1208(R0)
+
+	MOVD $·handlerGetSliceInt64Element(SB), R1
 	MOVD R1, 1376(R0)
 
-	MOVD $·handlerSliceSetIntDirect(SB), R1
+	MOVD $·handlerSetSliceInt64Element(SB), R1
 	MOVD R1, 1384(R0)
 
-	MOVD $·handlerGetStructFieldIntT0(SB), R1
+	MOVD $·handlerGetStructFieldInt64(SB), R1
 	MOVD R1, 1400(R0)
 
-	MOVD $·handlerSetStructFieldIntT0(SB), R1
+	MOVD $·handlerSetStructFieldInt64(SB), R1
 	MOVD R1, 1408(R0)
 
-	MOVD $·handlerGetStructFieldUintT0(SB), R1
+	MOVD $·handlerGetStructFieldUint64(SB), R1
 	MOVD R1, 1416(R0)
 
-	MOVD $·handlerSetStructFieldUintT0(SB), R1
+	MOVD $·handlerSetStructFieldUint64(SB), R1
 	MOVD R1, 1424(R0)
 
-	MOVD $·handlerGetStructFieldFloatT0(SB), R1
+	MOVD $·handlerGetStructFieldFloat64(SB), R1
 	MOVD R1, 1432(R0)
 
-	MOVD $·handlerSetStructFieldFloatT0(SB), R1
+	MOVD $·handlerSetStructFieldFloat64(SB), R1
 	MOVD R1, 1440(R0)
 
-	MOVD $·handlerGetStructFieldBoolT0(SB), R1
+	MOVD $·handlerGetStructFieldBool(SB), R1
 	MOVD R1, 1448(R0)
 
-	MOVD $·handlerSetStructFieldBoolT0(SB), R1
+	MOVD $·handlerSetStructFieldBool(SB), R1
 	MOVD R1, 1456(R0)
 
-	MOVD $·handlerGetStructFieldGeneralT0(SB), R1
+	MOVD $·handlerGetStructFieldGeneral(SB), R1
 	MOVD R1, 1464(R0)
 
-	MOVD $·handlerSetStructFieldGeneralT0(SB), R1
+	MOVD $·handlerSetStructFieldGeneral(SB), R1
 	MOVD R1, 1472(R0)
 
-	MOVD $·handlerSliceIndexStructFieldInt(SB), R1
+	MOVD $·handlerGetElementFieldInt64(SB), R1
 	MOVD R1, 1488(R0)
 
-	MOVD $·handlerSliceIndexStructFieldFloat(SB), R1
+	MOVD $·handlerGetElementFieldFloat64(SB), R1
 	MOVD R1, 1504(R0)
 
-	MOVD $·handlerGetStructFieldRawPointerT0(SB), R1
+	MOVD $·handlerGetStructFieldRawPointer(SB), R1
 	MOVD R1, 1584(R0)
 
-	MOVD $·handlerSliceGetIntDirectUnchecked(SB), R1
+	MOVD $·handlerGetSliceInt64ElementUnchecked(SB), R1
 	MOVD R1, 1592(R0)
 
-	MOVD $·handlerSliceSetIntDirectUnchecked(SB), R1
+	MOVD $·handlerSetSliceInt64ElementUnchecked(SB), R1
 	MOVD R1, 1600(R0)
 
-	MOVD $·handlerDerefSliceGetInt(SB), R1
+	MOVD $·handlerGetElementInt64ViaPointer(SB), R1
 	MOVD R1, 1680(R0)
 
-	MOVD $·handlerDerefSliceSetInt(SB), R1
+	MOVD $·handlerSetElementInt64ViaPointer(SB), R1
 	MOVD R1, 1688(R0)
 
-	MOVD $·handlerGetStructFieldSliceLen(SB), R1
+	MOVD $·handlerLengthStructField(SB), R1
 	MOVD R1, 1696(R0)
 
-	MOVD $·handlerGetStructFieldSliceIndexScalar(SB), R1
+	MOVD $·handlerGetStructFieldElementField(SB), R1
 	MOVD R1, 1704(R0)
 
 	MOVD $·handlerAddInt32(SB), R1
 	MOVD R1, 1752(R0)
 
-	MOVD $·handlerSubInt32(SB), R1
+	MOVD $·handlerSubtractInt32(SB), R1
 	MOVD R1, 1760(R0)
 
-	MOVD $·handlerMulInt32(SB), R1
+	MOVD $·handlerMultiplyInt32(SB), R1
 	MOVD R1, 1768(R0)
 
-	MOVD $·handlerAddInt32Const(SB), R1
+	MOVD $·handlerAddInt32Constant(SB), R1
 	MOVD R1, 1776(R0)
 
-	MOVD $·handlerSubInt32Const(SB), R1
+	MOVD $·handlerSubtractInt32Constant(SB), R1
 	MOVD R1, 1784(R0)
 
 	MOVD $·handlerAddUint32(SB), R1
 	MOVD R1, 1792(R0)
 
-	MOVD $·handlerPathBShimLoadGeneralConst(SB), R1
+	MOVD $·handlerMultiplyInt64ConstantThenAdd(SB), R1
+	MOVD R1, 1800(R0)
+
+	MOVD $·handlerSubtractUint32(SB), R1
+	MOVD R1, 1816(R0)
+
+	MOVD $·handlerMultiplyUint32(SB), R1
+	MOVD R1, 1824(R0)
+
+	MOVD $·handlerSetElementFieldInt64(SB), R1
+	MOVD R1, 1832(R0)
+
+	MOVD $·handlerSetElementFieldFloat64(SB), R1
+	MOVD R1, 1840(R0)
+
+	MOVD $·handlerPathBShimLoadGeneralConstant(SB), R1
 	MOVD R1, 352(R0)
 
-	MOVD $·handlerPathBShimLoadComplexConst(SB), R1
+	MOVD $·handlerPathBShimLoadComplex128Constant(SB), R1
 	MOVD R1, 368(R0)
 
-	MOVD $·handlerPathBShimAddComplex(SB), R1
+	MOVD $·handlerPathBShimAddComplex128(SB), R1
 	MOVD R1, 512(R0)
 
-	MOVD $·handlerPathBShimSubComplex(SB), R1
+	MOVD $·handlerPathBShimSubtractComplex128(SB), R1
 	MOVD R1, 520(R0)
 
-	MOVD $·handlerPathBShimMulComplex(SB), R1
+	MOVD $·handlerPathBShimMultiplyComplex128(SB), R1
 	MOVD R1, 528(R0)
 
-	MOVD $·handlerPathBShimDivComplex(SB), R1
+	MOVD $·handlerPathBShimDivideComplex128(SB), R1
 	MOVD R1, 536(R0)
 
-	MOVD $·handlerPathBShimEqComplex(SB), R1
+	MOVD $·handlerPathBShimEqualComplex128(SB), R1
 	MOVD R1, 544(R0)
 
-	MOVD $·handlerPathBShimNeComplex(SB), R1
+	MOVD $·handlerPathBShimNotEqualComplex128(SB), R1
 	MOVD R1, 552(R0)
 
-	MOVD $·handlerPathBShimBuildComplex(SB), R1
+	MOVD $·handlerPathBShimMakeComplex128(SB), R1
 	MOVD R1, 560(R0)
 
-	MOVD $·handlerPathBShimConcatString(SB), R1
+	MOVD $·handlerPathBShimConcatenateString(SB), R1
 	MOVD R1, 568(R0)
 
-	MOVD $·handlerPathBShimConcatRuneString(SB), R1
+	MOVD $·handlerPathBShimConcatenateStringRune(SB), R1
 	MOVD R1, 576(R0)
 
-	MOVD $·handlerPathBShimNeGeneral(SB), R1
+	MOVD $·handlerPathBShimNotEqualGeneral(SB), R1
 	MOVD R1, 624(R0)
 
-	MOVD $·handlerPathBShimLtGeneral(SB), R1
+	MOVD $·handlerPathBShimLessThanGeneral(SB), R1
 	MOVD R1, 632(R0)
 
-	MOVD $·handlerPathBShimLeGeneral(SB), R1
+	MOVD $·handlerPathBShimLessOrEqualGeneral(SB), R1
 	MOVD R1, 640(R0)
 
-	MOVD $·handlerPathBShimGtGeneral(SB), R1
+	MOVD $·handlerPathBShimGreaterThanGeneral(SB), R1
 	MOVD R1, 648(R0)
 
-	MOVD $·handlerPathBShimGeGeneral(SB), R1
+	MOVD $·handlerPathBShimGreaterOrEqualGeneral(SB), R1
 	MOVD R1, 656(R0)
 
-	MOVD $·handlerPathBShimPackInterface(SB), R1
+	MOVD $·handlerPathBShimBoxAsInterface(SB), R1
 	MOVD R1, 712(R0)
 
-	MOVD $·handlerPathBShimUnpackInterface(SB), R1
+	MOVD $·handlerPathBShimUnboxFromInterface(SB), R1
 	MOVD R1, 720(R0)
 
 	MOVD $·handlerPathBShimMakeClosure(SB), R1
 	MOVD R1, 744(R0)
 
-	MOVD $·handlerPathBShimSetUpvalue(SB), R1
+	MOVD $·handlerPathBShimSetCapturedVariable(SB), R1
 	MOVD R1, 760(R0)
 
 	MOVD $·handlerPathBShimMakeSlice(SB), R1
 	MOVD R1, 784(R0)
 
-	MOVD $·handlerPathBShimIndex(SB), R1
+	MOVD $·handlerPathBShimGetElement(SB), R1
 	MOVD R1, 792(R0)
 
-	MOVD $·handlerPathBShimIndexSet(SB), R1
+	MOVD $·handlerPathBShimSetElement(SB), R1
 	MOVD R1, 800(R0)
 
-	MOVD $·handlerPathBShimMapSet(SB), R1
+	MOVD $·handlerPathBShimSetMap(SB), R1
 	MOVD R1, 816(R0)
 
-	MOVD $·handlerPathBShimMapIndexOk(SB), R1
+	MOVD $·handlerPathBShimGetMapOk(SB), R1
 	MOVD R1, 824(R0)
 
 	MOVD $·handlerPathBShimAppendSpread(SB), R1
 	MOVD R1, 840(R0)
 
-	MOVD $·handlerPathBShimCopy(SB), R1
+	MOVD $·handlerPathBShimCopyGeneral(SB), R1
 	MOVD R1, 856(R0)
 
-	MOVD $·handlerPathBShimSliceGetInt(SB), R1
-	MOVD R1, 864(R0)
-
-	MOVD $·handlerPathBShimSliceSetInt(SB), R1
-	MOVD R1, 872(R0)
-
-	MOVD $·handlerPathBShimSliceGetFloat(SB), R1
+	MOVD $·handlerPathBShimGetElementFloat64(SB), R1
 	MOVD R1, 880(R0)
 
-	MOVD $·handlerPathBShimSliceSetFloat(SB), R1
+	MOVD $·handlerPathBShimSetElementFloat64(SB), R1
 	MOVD R1, 888(R0)
 
-	MOVD $·handlerPathBShimSliceGetString(SB), R1
+	MOVD $·handlerPathBShimGetElementString(SB), R1
 	MOVD R1, 896(R0)
 
-	MOVD $·handlerPathBShimSliceSetString(SB), R1
+	MOVD $·handlerPathBShimSetElementString(SB), R1
 	MOVD R1, 904(R0)
 
-	MOVD $·handlerPathBShimSliceGetBool(SB), R1
+	MOVD $·handlerPathBShimGetElementBool(SB), R1
 	MOVD R1, 912(R0)
 
-	MOVD $·handlerPathBShimSliceSetBool(SB), R1
+	MOVD $·handlerPathBShimSetElementBool(SB), R1
 	MOVD R1, 920(R0)
 
-	MOVD $·handlerPathBShimSliceGetUint(SB), R1
-	MOVD R1, 928(R0)
-
-	MOVD $·handlerPathBShimSliceSetUint(SB), R1
-	MOVD R1, 936(R0)
-
-	MOVD $·handlerPathBShimMapGetIntInt(SB), R1
+	MOVD $·handlerPathBShimGetMapInt64Int64(SB), R1
 	MOVD R1, 960(R0)
 
-	MOVD $·handlerPathBShimMapSetIntInt(SB), R1
+	MOVD $·handlerPathBShimSetMapInt64Int64(SB), R1
 	MOVD R1, 968(R0)
 
-	MOVD $·handlerPathBShimMapGetStringInt(SB), R1
+	MOVD $·handlerPathBShimGetMapStringInt64(SB), R1
 	MOVD R1, 976(R0)
 
-	MOVD $·handlerPathBShimMapSetStringInt(SB), R1
+	MOVD $·handlerPathBShimSetMapStringInt64(SB), R1
 	MOVD R1, 984(R0)
 
-	MOVD $·handlerPathBShimMapGetStringString(SB), R1
+	MOVD $·handlerPathBShimGetMapStringString(SB), R1
 	MOVD R1, 992(R0)
 
-	MOVD $·handlerPathBShimMapSetStringString(SB), R1
+	MOVD $·handlerPathBShimSetMapStringString(SB), R1
 	MOVD R1, 1000(R0)
 
-	MOVD $·handlerPathBShimMapGetIntString(SB), R1
+	MOVD $·handlerPathBShimGetMapInt64String(SB), R1
 	MOVD R1, 1008(R0)
 
-	MOVD $·handlerPathBShimMapSetIntString(SB), R1
+	MOVD $·handlerPathBShimSetMapInt64String(SB), R1
 	MOVD R1, 1016(R0)
 
-	MOVD $·handlerPathBShimMapIndexOkIntInt(SB), R1
+	MOVD $·handlerPathBShimGetMapInt64Int64Ok(SB), R1
 	MOVD R1, 1024(R0)
 
-	MOVD $·handlerPathBShimMapIndexOkStringInt(SB), R1
+	MOVD $·handlerPathBShimGetMapStringInt64Ok(SB), R1
 	MOVD R1, 1032(R0)
 
-	MOVD $·handlerPathBShimMapIndexOkStringString(SB), R1
+	MOVD $·handlerPathBShimGetMapStringStringOk(SB), R1
 	MOVD R1, 1040(R0)
 
-	MOVD $·handlerPathBShimMapIndexOkIntString(SB), R1
+	MOVD $·handlerPathBShimGetMapInt64StringOk(SB), R1
 	MOVD R1, 1048(R0)
 
-	MOVD $·handlerPathBShimMapGetIntGeneral(SB), R1
+	MOVD $·handlerPathBShimGetMapInt64General(SB), R1
 	MOVD R1, 1056(R0)
 
-	MOVD $·handlerPathBShimMapIndexOkIntGeneral(SB), R1
+	MOVD $·handlerPathBShimGetMapInt64GeneralOk(SB), R1
 	MOVD R1, 1064(R0)
 
-	MOVD $·handlerPathBShimMapGetStringGeneral(SB), R1
+	MOVD $·handlerPathBShimGetMapStringGeneral(SB), R1
 	MOVD R1, 1072(R0)
 
-	MOVD $·handlerPathBShimMapIndexOkStringGeneral(SB), R1
+	MOVD $·handlerPathBShimGetMapStringGeneralOk(SB), R1
 	MOVD R1, 1080(R0)
 
-	MOVD $·handlerPathBShimMapSetStringGeneral(SB), R1
+	MOVD $·handlerPathBShimSetMapStringGeneral(SB), R1
 	MOVD R1, 1088(R0)
 
-	MOVD $·handlerPathBShimMapAddIntInt(SB), R1
+	MOVD $·handlerPathBShimAddToMapInt64Int64(SB), R1
 	MOVD R1, 1096(R0)
 
-	MOVD $·handlerPathBShimMapAddStringInt(SB), R1
+	MOVD $·handlerPathBShimAddToMapStringInt64(SB), R1
 	MOVD R1, 1104(R0)
 
 	MOVD $·handlerPathBShimBindMethod(SB), R1
 	MOVD R1, 1144(R0)
 
-	MOVD $·handlerPathBShimAddr(SB), R1
+	MOVD $·handlerPathBShimAddress(SB), R1
 	MOVD R1, 1160(R0)
 
-	MOVD $·handlerPathBShimDeref(SB), R1
+	MOVD $·handlerPathBShimDereference(SB), R1
 	MOVD R1, 1168(R0)
 
-	MOVD $·handlerPathBShimAllocIndirect(SB), R1
+	MOVD $·handlerPathBShimAllocateIndirect(SB), R1
 	MOVD R1, 1176(R0)
 
 	MOVD $·handlerPathBShimTypeAssert(SB), R1
 	MOVD R1, 1184(R0)
 
-	MOVD $·handlerPathBShimConvert(SB), R1
+	MOVD $·handlerPathBShimConvertGeneral(SB), R1
 	MOVD R1, 1192(R0)
-
-	MOVD $·handlerPathBShimGetGlobal(SB), R1
-	MOVD R1, 1200(R0)
-
-	MOVD $·handlerPathBShimSetGlobal(SB), R1
-	MOVD R1, 1208(R0)
 
 	MOVD $·handlerPathBShimUnsafeString(SB), R1
 	MOVD R1, 1216(R0)
@@ -520,551 +535,670 @@ initjt_fill:
 	MOVD $·handlerPathBShimUnsafeAdd(SB), R1
 	MOVD R1, 1232(R0)
 
-	MOVD $·handlerPathBShimStrContainsRune(SB), R1
+	MOVD $·handlerPathBShimStringsContainsRune(SB), R1
 	MOVD R1, 1240(R0)
 
-	MOVD $·handlerPathBShimStrContains(SB), R1
+	MOVD $·handlerPathBShimStringsContains(SB), R1
 	MOVD R1, 1248(R0)
 
-	MOVD $·handlerPathBShimStrHasPrefix(SB), R1
+	MOVD $·handlerPathBShimStringsHasPrefix(SB), R1
 	MOVD R1, 1256(R0)
 
-	MOVD $·handlerPathBShimStrHasSuffix(SB), R1
+	MOVD $·handlerPathBShimStringsHasSuffix(SB), R1
 	MOVD R1, 1264(R0)
 
-	MOVD $·handlerPathBShimStrEqualFold(SB), R1
+	MOVD $·handlerPathBShimStringsEqualFold(SB), R1
 	MOVD R1, 1272(R0)
 
-	MOVD $·handlerPathBShimStrIndex(SB), R1
+	MOVD $·handlerPathBShimStringsIndex(SB), R1
 	MOVD R1, 1280(R0)
 
-	MOVD $·handlerPathBShimStrCount(SB), R1
+	MOVD $·handlerPathBShimStringsCount(SB), R1
 	MOVD R1, 1288(R0)
 
-	MOVD $·handlerPathBShimStrTrimPrefix(SB), R1
+	MOVD $·handlerPathBShimStringsTrimPrefix(SB), R1
 	MOVD R1, 1296(R0)
 
-	MOVD $·handlerPathBShimStrTrimSuffix(SB), R1
+	MOVD $·handlerPathBShimStringsTrimSuffix(SB), R1
 	MOVD R1, 1304(R0)
 
-	MOVD $·handlerPathBShimStrTrim(SB), R1
+	MOVD $·handlerPathBShimStringsTrim(SB), R1
 	MOVD R1, 1312(R0)
 
-	MOVD $·handlerPathBShimStrIndexRune(SB), R1
+	MOVD $·handlerPathBShimStringsIndexRune(SB), R1
 	MOVD R1, 1320(R0)
 
-	MOVD $·handlerPathBShimStrRepeat(SB), R1
+	MOVD $·handlerPathBShimStringsRepeat(SB), R1
 	MOVD R1, 1328(R0)
 
-	MOVD $·handlerPathBShimStrLastIndex(SB), R1
+	MOVD $·handlerPathBShimStringsLastIndex(SB), R1
 	MOVD R1, 1336(R0)
 
-	MOVD $·handlerPathBShimStrJoin(SB), R1
+	MOVD $·handlerPathBShimStringsJoin(SB), R1
 	MOVD R1, 1344(R0)
 
-	MOVD $·handlerPathBShimStrSplit(SB), R1
+	MOVD $·handlerPathBShimStringsSplit(SB), R1
 	MOVD R1, 1352(R0)
 
-	MOVD $·handlerPathBShimStrReplaceAll(SB), R1
+	MOVD $·handlerPathBShimStringsReplaceAll(SB), R1
 	MOVD R1, 1360(R0)
 
 	MOVD $·handlerPathBShimMathPow(SB), R1
 	MOVD R1, 1368(R0)
 
-	MOVD $·handlerPathBShimCopyStructFieldGeneralT0(SB), R1
+	MOVD $·handlerPathBShimCopyStructFieldGeneral(SB), R1
 	MOVD R1, 1480(R0)
 
-	MOVD $·handlerPathBShimMapIndexOkJumpIfFalseIntInt(SB), R1
+	MOVD $·handlerPathBShimGetMapInt64Int64OkThenJumpIfFalse(SB), R1
 	MOVD R1, 1528(R0)
 
-	MOVD $·handlerPathBShimMapIndexOkJumpIfFalseStringInt(SB), R1
+	MOVD $·handlerPathBShimGetMapStringInt64OkThenJumpIfFalse(SB), R1
 	MOVD R1, 1536(R0)
 
-	MOVD $·handlerPathBShimMapIndexOkJumpIfFalseStringString(SB), R1
+	MOVD $·handlerPathBShimGetMapStringStringOkThenJumpIfFalse(SB), R1
 	MOVD R1, 1544(R0)
 
-	MOVD $·handlerPathBShimMapIndexOkJumpIfFalseIntString(SB), R1
+	MOVD $·handlerPathBShimGetMapInt64StringOkThenJumpIfFalse(SB), R1
 	MOVD R1, 1552(R0)
 
-	MOVD $·handlerPathBShimMapIndexOkJumpIfFalseIntGeneral(SB), R1
+	MOVD $·handlerPathBShimGetMapInt64GeneralOkThenJumpIfFalse(SB), R1
 	MOVD R1, 1560(R0)
 
-	MOVD $·handlerPathBShimMapIndexOkJumpIfFalseStringGeneral(SB), R1
+	MOVD $·handlerPathBShimGetMapStringGeneralOkThenJumpIfFalse(SB), R1
 	MOVD R1, 1568(R0)
 
-	MOVD $·handlerPathBShimSwapStructFieldsGeneralT0(SB), R1
+	MOVD $·handlerPathBShimSwapStructFieldsGeneral(SB), R1
 	MOVD R1, 1576(R0)
 
-	MOVD $·handlerPathBShimMapSetIntGeneral(SB), R1
+	MOVD $·handlerPathBShimSetMapInt64General(SB), R1
 	MOVD R1, 1656(R0)
 
-	MOVD $·handlerPathBShimGetStructFieldIndexGeneral(SB), R1
+	MOVD $·handlerPathBShimGetStructFieldElementGeneral(SB), R1
 	MOVD R1, 1664(R0)
 
-	MOVD $·handlerPathBShimSetStructFieldIndexGeneral(SB), R1
+	MOVD $·handlerPathBShimSetStructFieldElementGeneral(SB), R1
 	MOVD R1, 1672(R0)
+
+	MOVD $·handlerPathBShimAppendStringToMapString(SB), R1
+	MOVD R1, 1808(R0)
 
 	RET
 
 // initSubOpJumpTables installs .abi0 addresses of tier-1+ ASM handlers into the sub-op jump tables, bypassing the ABIInternal wrapper that adds a per-dispatch frame.
 TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
-	MOVD $·handlerSubOpMathSin(SB), R1
+	MOVD $·handlerMathSin(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 8(R2)
 
-	MOVD $·handlerSubOpMathCos(SB), R1
+	MOVD $·handlerMathCos(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 16(R2)
 
-	MOVD $·handlerSubOpMathExp(SB), R1
+	MOVD $·handlerMathExp(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 24(R2)
 
-	MOVD $·handlerSubOpMathTan(SB), R1
+	MOVD $·handlerMathTan(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 32(R2)
 
-	MOVD $·handlerSubOpMathMod(SB), R1
+	MOVD $·handlerMathMod(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 40(R2)
 
-	MOVD $·handlerSubOpStrconvFormatBool(SB), R1
+	MOVD $·handlerStrconvFormatBool(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 48(R2)
 
-	MOVD $·handlerSubOpStrconvFormatInt(SB), R1
+	MOVD $·handlerStrconvFormatInt(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 56(R2)
 
-	MOVD $·handlerSubOpStrconvItoa(SB), R1
+	MOVD $·handlerStrconvItoa(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 64(R2)
 
-	MOVD $·handlerSubOpRealComplex(SB), R1
+	MOVD $·handlerRealPartComplex128(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 72(R2)
 
-	MOVD $·handlerSubOpImagComplex(SB), R1
+	MOVD $·handlerImaginaryPartComplex128(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 80(R2)
 
-	MOVD $·handlerSubOpBytesToString(SB), R1
+	MOVD $·handlerConvertBytesToString(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 88(R2)
 
-	MOVD $·handlerSubOpCap(SB), R1
+	MOVD $·handlerCapacityGeneral(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 104(R2)
 
-	MOVD $·handlerSubOpNegComplex(SB), R1
+	MOVD $·handlerNegateComplex128(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 112(R2)
 
-	MOVD $·handlerSubOpMoveComplex(SB), R1
+	MOVD $·handlerMoveComplex128(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 120(R2)
 
-	MOVD $·handlerSubOpLenSliceIntDirect(SB), R1
+	MOVD $·handlerLengthSliceInt64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 136(R2)
 
-	MOVD $·handlerSubOpSliceGetFloatDirect(SB), R1
+	MOVD $·handlerGetSliceFloat64Element(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 152(R2)
 
-	MOVD $·handlerSubOpSliceSetFloatDirect(SB), R1
+	MOVD $·handlerSetSliceFloat64Element(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 160(R2)
 
-	MOVD $·handlerSubOpLenSliceFloatDirect(SB), R1
+	MOVD $·handlerLengthSliceFloat64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 168(R2)
 
-	MOVD $·handlerSubOpSliceGetStringDirect(SB), R1
+	MOVD $·handlerGetSliceStringElement(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 184(R2)
 
-	MOVD $·handlerSubOpSliceSetStringDirectExit(SB), R1
+	MOVD $·handlerSetSliceStringElementExit(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 192(R2)
 
-	MOVD $·handlerSubOpLenSliceStringDirect(SB), R1
+	MOVD $·handlerLengthSliceString(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 200(R2)
 
-	MOVD $·handlerSubOpSliceGetBoolDirect(SB), R1
+	MOVD $·handlerGetSliceBoolElement(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 216(R2)
 
-	MOVD $·handlerSubOpSliceSetBoolDirect(SB), R1
+	MOVD $·handlerSetSliceBoolElement(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 224(R2)
 
-	MOVD $·handlerSubOpLenSliceBoolDirect(SB), R1
+	MOVD $·handlerLengthSliceBool(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 232(R2)
 
-	MOVD $·handlerSubOpSliceGetUintDirect(SB), R1
+	MOVD $·handlerGetSliceUint64Element(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 248(R2)
 
-	MOVD $·handlerSubOpSliceSetUintDirect(SB), R1
+	MOVD $·handlerSetSliceUint64Element(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 256(R2)
 
-	MOVD $·handlerSubOpLenSliceUintDirect(SB), R1
+	MOVD $·handlerLengthSliceUint64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 264(R2)
 
-	MOVD $·handlerSubOpBoxSliceInt(SB), R1
+	MOVD $·handlerBoxSliceInt64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 272(R2)
 
-	MOVD $·handlerSubOpMoveInt(SB), R1
+	MOVD $·handlerMoveInt64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 280(R2)
 
-	MOVD $·handlerSubOpMoveFloat(SB), R1
+	MOVD $·handlerMoveFloat64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 288(R2)
 
-	MOVD $·handlerSubOpMoveString(SB), R1
+	MOVD $·handlerMoveString(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 296(R2)
 
-	MOVD $·handlerSubOpMoveBool(SB), R1
+	MOVD $·handlerMoveBool(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 304(R2)
 
-	MOVD $·handlerSubOpMoveUint(SB), R1
+	MOVD $·handlerMoveUint64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 312(R2)
 
-	MOVD $·handlerSubOpNegInt(SB), R1
+	MOVD $·handlerNegateInt64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 368(R2)
 
-	MOVD $·handlerSubOpNegFloat(SB), R1
+	MOVD $·handlerNegateFloat64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 376(R2)
 
-	MOVD $·handlerSubOpBitNot(SB), R1
+	MOVD $·handlerBitNotInt64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 384(R2)
 
-	MOVD $·handlerSubOpIntToFloat(SB), R1
+	MOVD $·handlerConvertInt64ToFloat64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 400(R2)
 
-	MOVD $·handlerSubOpFloatToInt(SB), R1
+	MOVD $·handlerConvertFloat64ToInt64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 408(R2)
 
-	MOVD $·handlerSubOpUintToFloat(SB), R1
+	MOVD $·handlerNotInt64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 416(R2)
+
+	MOVD $·handlerConvertBoolToInt64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 424(R2)
+
+	MOVD $·handlerConvertInt64ToBool(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 432(R2)
+
+	MOVD $·handlerConvertInt64ToUint64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 440(R2)
+
+	MOVD $·handlerConvertUint64ToInt64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 448(R2)
+
+	MOVD $·handlerConvertUint64ToFloat64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 456(R2)
 
-	MOVD $·handlerSubOpFloatToUint(SB), R1
+	MOVD $·handlerConvertFloat64ToUint64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 464(R2)
 
-	MOVD $·handlerSubOpMathSqrt(SB), R1
+	MOVD $·handlerMathSqrt(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 472(R2)
 
-	MOVD $·handlerSubOpMathAbs(SB), R1
+	MOVD $·handlerMathAbs(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 480(R2)
 
-	MOVD $·handlerSubOpMathFloor(SB), R1
+	MOVD $·handlerMathFloor(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 488(R2)
 
-	MOVD $·handlerSubOpMathCeil(SB), R1
+	MOVD $·handlerMathCeil(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 496(R2)
 
-	MOVD $·handlerSubOpMathTrunc(SB), R1
+	MOVD $·handlerMathTrunc(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 504(R2)
 
-	MOVD $·handlerSubOpMathRound(SB), R1
+	MOVD $·handlerMathRound(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 512(R2)
 
-	MOVD $·handlerSubOpLenString(SB), R1
+	MOVD $·handlerLengthString(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 520(R2)
+
+	MOVD $·handlerLengthGeneral(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 560(R2)
 
 	MOVD $·handlerJump(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 592(R2)
 
-	MOVD $·handlerLoadIntConstSmall(SB), R1
+	MOVD $·handlerLoadInt64Immediate(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 600(R2)
 
-	MOVD $·handlerLoadBool(SB), R1
+	MOVD $·handlerLoadBoolImmediateAsInt64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 608(R2)
 
-	MOVD $·handlerIncIntJumpLt(SB), R1
+	MOVD $·handlerIncrementInt64ThenJumpIfLessThan(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 616(R2)
 
-	MOVD $·handlerLenStringLtJumpFalse(SB), R1
+	MOVD $·handlerLessThanLengthStringThenJumpIfFalse(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 624(R2)
 
-	MOVD $·handlerSubOpAddUintConst(SB), R1
+	MOVD $·handlerLoadZero(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 632(R2)
+
+	MOVD $·handlerAddUint64Constant(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 768(R2)
 
-	MOVD $·handlerSubOpSubUintConst(SB), R1
+	MOVD $·handlerSubtractUint64Constant(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 776(R2)
 
-	MOVD $·handlerSubOpBitAndUintConst(SB), R1
+	MOVD $·handlerBitAndUint64Constant(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 784(R2)
 
-	MOVD $·handlerSubOpLoadUintConstSmall(SB), R1
+	MOVD $·handlerLoadUint64Immediate(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 792(R2)
 
-	MOVD $·handlerSubOpIncStructFieldInt(SB), R1
+	MOVD $·handlerIncrementStructFieldInt64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 856(R2)
 
-	MOVD $·handlerSubOpDecStructFieldInt(SB), R1
+	MOVD $·handlerDecrementStructFieldInt64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 864(R2)
 
-	MOVD $·handlerSubOpIncStructFieldUint(SB), R1
+	MOVD $·handlerIncrementStructFieldUint64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 872(R2)
 
-	MOVD $·handlerSubOpDecStructFieldUint(SB), R1
+	MOVD $·handlerDecrementStructFieldUint64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 880(R2)
 
-	MOVD $·handlerSubOpSliceGetByteDirect(SB), R1
+	MOVD $·handlerGetSliceByteElement(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 896(R2)
 
-	MOVD $·handlerSubOpSliceSetByteDirect(SB), R1
+	MOVD $·handlerSetSliceByteElement(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 904(R2)
 
-	MOVD $·handlerSubOpLenSliceByteDirect(SB), R1
+	MOVD $·handlerLengthSliceByte(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 912(R2)
 
-	MOVD $·handlerSubOpSliceByteSlice(SB), R1
+	MOVD $·handlerSliceSliceByte(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 920(R2)
 
-	MOVD $·handlerLtIntJumpFalse(SB), R1
+	MOVD $·handlerLessThanInt64ThenJumpIfFalse(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 928(R2)
 
-	MOVD $·handlerLeIntJumpFalse(SB), R1
+	MOVD $·handlerLessOrEqualInt64ThenJumpIfFalse(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 936(R2)
 
-	MOVD $·handlerGtIntJumpFalse(SB), R1
+	MOVD $·handlerGreaterThanInt64ThenJumpIfFalse(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 944(R2)
 
-	MOVD $·handlerGeIntJumpFalse(SB), R1
+	MOVD $·handlerGreaterOrEqualInt64ThenJumpIfFalse(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 952(R2)
 
-	MOVD $·handlerEqIntJumpFalse(SB), R1
+	MOVD $·handlerEqualInt64ThenJumpIfFalse(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 960(R2)
 
-	MOVD $·handlerNeIntJumpFalse(SB), R1
+	MOVD $·handlerNotEqualInt64ThenJumpIfFalse(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 968(R2)
 
-	MOVD $·handlerLeIntConstJumpFalse(SB), R1
+	MOVD $·handlerLessOrEqualInt64ConstantThenJumpIfFalse(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 976(R2)
 
-	MOVD $·handlerLtIntConstJumpFalse(SB), R1
+	MOVD $·handlerLessThanInt64ConstantThenJumpIfFalse(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 984(R2)
 
-	MOVD $·handlerEqIntConstJumpFalse(SB), R1
+	MOVD $·handlerEqualInt64ConstantThenJumpIfFalse(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 992(R2)
 
-	MOVD $·handlerEqIntConstJumpTrue(SB), R1
+	MOVD $·handlerEqualInt64ConstantThenJumpIfTrue(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1000(R2)
 
-	MOVD $·handlerGeIntConstJumpFalse(SB), R1
+	MOVD $·handlerGreaterOrEqualInt64ConstantThenJumpIfFalse(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1008(R2)
 
-	MOVD $·handlerGtIntConstJumpFalse(SB), R1
+	MOVD $·handlerGreaterThanInt64ConstantThenJumpIfFalse(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1016(R2)
 
-	MOVD $·handlerCallInline(SB), R1
+	MOVD $·handlerCall(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1024(R2)
 
-	MOVD $·handlerTailCallInline(SB), R1
+	MOVD $·handlerTailCall(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1032(R2)
 
-	MOVD $·handlerCallMethodInline(SB), R1
+	MOVD $·handlerCallMethod(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1056(R2)
 
-	MOVD $·handlerCallInlineScalar(SB), R1
+	MOVD $·handlerCallScalar(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1072(R2)
 
-	MOVD $·handlerLoadBoolConst(SB), R1
+	MOVD $·handlerLoadBoolConstant(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1104(R2)
 
-	MOVD $·handlerSubOpEqUintConstJumpFalse(SB), R1
+	MOVD $·handlerGetGlobalWide(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1152(R2)
+
+	MOVD $·handlerSetGlobalWide(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1160(R2)
+
+	MOVD $·handlerEqualUint64ImmediateThenJumpIfFalse(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1200(R2)
 
-	MOVD $·handlerSubOpMoveSliceInt(SB), R1
+	MOVD $·handlerMoveSliceInt64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1320(R2)
 
-	MOVD $·handlerSubOpMoveSliceFloat(SB), R1
+	MOVD $·handlerMoveSliceFloat64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1328(R2)
 
-	MOVD $·handlerSubOpMoveSliceString(SB), R1
+	MOVD $·handlerMoveSliceString(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1336(R2)
 
-	MOVD $·handlerSubOpMoveSliceBool(SB), R1
+	MOVD $·handlerMoveSliceBool(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1344(R2)
 
-	MOVD $·handlerSubOpMoveSliceUint(SB), R1
+	MOVD $·handlerMoveSliceUint64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1352(R2)
 
-	MOVD $·handlerSubOpMoveSliceByte(SB), R1
+	MOVD $·handlerMoveSliceByte(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1360(R2)
 
-	MOVD $·handlerSubOpAppendSliceIntDirect(SB), R1
+	MOVD $·handlerAppendSliceInt64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1368(R2)
 
-	MOVD $·handlerSubOpAppendSliceFloatDirect(SB), R1
+	MOVD $·handlerAppendSliceFloat64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1376(R2)
 
-	MOVD $·handlerSubOpAppendSliceStringDirect(SB), R1
+	MOVD $·handlerAppendSliceString(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1384(R2)
 
-	MOVD $·handlerSubOpAppendSliceBoolDirect(SB), R1
+	MOVD $·handlerAppendSliceBool(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1392(R2)
 
-	MOVD $·handlerSubOpAppendSliceUintDirect(SB), R1
+	MOVD $·handlerAppendSliceUint64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1400(R2)
 
-	MOVD $·handlerSubOpAppendSliceByteDirect(SB), R1
+	MOVD $·handlerAppendSliceByte(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1408(R2)
 
-	MOVD $·handlerSubOpSliceSliceIntDirect(SB), R1
+	MOVD $·handlerSliceSliceInt64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1416(R2)
 
-	MOVD $·handlerSubOpSliceSliceFloatDirect(SB), R1
+	MOVD $·handlerSliceSliceFloat64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1424(R2)
 
-	MOVD $·handlerSubOpSliceSliceStringDirect(SB), R1
+	MOVD $·handlerSliceSliceString(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1432(R2)
 
-	MOVD $·handlerSubOpSliceSliceBoolDirect(SB), R1
+	MOVD $·handlerSliceSliceBool(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1440(R2)
 
-	MOVD $·handlerSubOpSliceSliceUintDirect(SB), R1
+	MOVD $·handlerSliceSliceUint64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1448(R2)
 
-	MOVD $·handlerSubOpTier2IncInt(SB), R1
+	MOVD $·handlerIncrementInt64ThenJumpIfLessThanConstant(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1720(R2)
+
+	MOVD $·handlerSetSliceByteElementRun(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1728(R2)
+
+	MOVD $·handlerGetSliceByteElementInt64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1736(R2)
+
+	MOVD $·handlerAddUint32Constant(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1752(R2)
+
+	MOVD $·handlerSubtractUint32Constant(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1760(R2)
+
+	MOVD $·handlerEqualUint64ThenJumpIfFalse(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1768(R2)
+
+	MOVD $·handlerNotEqualUint64ThenJumpIfFalse(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1776(R2)
+
+	MOVD $·handlerIncrementInt64ThenJumpIfLessOrEqual(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1784(R2)
+
+	MOVD $·handlerIncrementInt64(SB), R1
 	MOVD $·tier2JumpTable(SB), R2
 	MOVD R1, 8(R2)
 
-	MOVD $·handlerSubOpTier2DecInt(SB), R1
+	MOVD $·handlerDecrementInt64(SB), R1
 	MOVD $·tier2JumpTable(SB), R2
 	MOVD R1, 16(R2)
 
-	MOVD $·handlerSubOpTier2IncUint(SB), R1
+	MOVD $·handlerIncrementUint64(SB), R1
 	MOVD $·tier2JumpTable(SB), R2
 	MOVD R1, 24(R2)
 
-	MOVD $·handlerSubOpTier2DecUint(SB), R1
+	MOVD $·handlerDecrementUint64(SB), R1
 	MOVD $·tier2JumpTable(SB), R2
 	MOVD R1, 32(R2)
 
-	MOVD $·handlerReturnInline(SB), R1
+	MOVD $·handlerReturn(SB), R1
 	MOVD $·tier2JumpTable(SB), R2
 	MOVD R1, 80(R2)
 
-	MOVD $·handlerSubOpRangeCheckUintJumpFalse(SB), R1
+	MOVD $·handlerInRangeUint64ThenJumpIfFalse(SB), R1
 	MOVD $·tier2JumpTable(SB), R2
 	MOVD R1, 104(R2)
 
-	MOVD $·handlerSubOpAllocStructLiteral(SB), R1
+	MOVD $·handlerAllocateStructLiteral(SB), R1
 	MOVD $·tier2JumpTable(SB), R2
 	MOVD R1, 112(R2)
 
-	MOVD $·handlerSubOpTier2IncInt32(SB), R1
+	MOVD $·handlerIncrementInt32(SB), R1
 	MOVD $·tier2JumpTable(SB), R2
 	MOVD R1, 128(R2)
 
-	MOVD $·handlerSubOpTier2DecInt32(SB), R1
+	MOVD $·handlerDecrementInt32(SB), R1
 	MOVD $·tier2JumpTable(SB), R2
 	MOVD R1, 136(R2)
 
-	MOVD $·handlerReturnVoidInline(SB), R1
+	MOVD $·handlerJumpIfFalseBool(SB), R1
+	MOVD $·tier2JumpTable(SB), R2
+	MOVD R1, 160(R2)
+
+	MOVD $·handlerJumpIfTrueBool(SB), R1
+	MOVD $·tier2JumpTable(SB), R2
+	MOVD R1, 168(R2)
+
+	MOVD $·handlerReturnVoid(SB), R1
 	MOVD $·tier3JumpTable(SB), R2
 	MOVD R1, 8(R2)
 
-	MOVD $·handlerPathBShimSubOpMakeSliceInt(SB), R1
+	MOVD $·handlerPathBShimMakeSliceInt64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 128(R2)
 
-	MOVD $·handlerPathBShimSubOpMakeSliceFloat(SB), R1
+	MOVD $·handlerPathBShimMakeSliceFloat64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 144(R2)
 
-	MOVD $·handlerPathBShimSubOpMakeSliceString(SB), R1
+	MOVD $·handlerPathBShimMakeSliceString(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 176(R2)
 
-	MOVD $·handlerPathBShimSubOpMakeSliceBool(SB), R1
+	MOVD $·handlerPathBShimMakeSliceBool(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 208(R2)
 
-	MOVD $·handlerPathBShimSubOpMakeSliceUint(SB), R1
+	MOVD $·handlerPathBShimMakeSliceUint64(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 240(R2)
 
-	MOVD $·handlerPathBShimSubOpMakeSliceByte(SB), R1
+	MOVD $·handlerPathBShimBoxInt64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 320(R2)
+
+	MOVD $·handlerPathBShimUnboxInt64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 328(R2)
+
+	MOVD $·handlerPathBShimBoxFloat64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 336(R2)
+
+	MOVD $·handlerPathBShimBoxString(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 352(R2)
+
+	MOVD $·handlerPathBShimDeleteFromMap(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 648(R2)
+
+	MOVD $·handlerPathBShimGetStructFieldStringWide(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 720(R2)
+
+	MOVD $·handlerPathBShimSetStructFieldStringWide(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 760(R2)
+
+	MOVD $·handlerPathBShimAppendUint64Wide(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 800(R2)
+
+	MOVD $·handlerPathBShimAppendByteViaPointer(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 840(R2)
+
+	MOVD $·handlerPathBShimAppendSpreadByteViaPointer(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 848(R2)
+
+	MOVD $·handlerPathBShimMakeSliceByte(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 888(R2)
 
@@ -1072,15 +1206,15 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1112(R2)
 
-	MOVD $·handlerPathBShimWriteSharedCell(SB), R1
+	MOVD $·handlerPathBShimSetSharedCell(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1120(R2)
 
-	MOVD $·handlerPathBShimSliceOp(SB), R1
+	MOVD $·handlerPathBShimSliceGeneral(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1128(R2)
 
-	MOVD $·handlerPathBShimRangeInit(SB), R1
+	MOVD $·handlerPathBShimRangeInitialise(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1136(R2)
 
@@ -1088,23 +1222,111 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1144(R2)
 
-	MOVD $·handlerPathBShimGetGlobalWide(SB), R1
-	MOVD $·tier1JumpTable(SB), R2
-	MOVD R1, 1152(R2)
-
-	MOVD $·handlerPathBShimSetGlobalWide(SB), R1
-	MOVD $·tier1JumpTable(SB), R2
-	MOVD R1, 1160(R2)
-
-	MOVD $·handlerPathBShimEqInterfaceNil(SB), R1
+	MOVD $·handlerPathBShimEqualInterfaceNil(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1168(R2)
 
-	MOVD $·handlerPathBShimNeInterfaceNil(SB), R1
+	MOVD $·handlerPathBShimNotEqualInterfaceNil(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 1176(R2)
 
-	MOVD $·handlerPathBShimSyncClosureUpvalues(SB), R1
+	MOVD $·handlerPathBShimBoxSliceByte(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1184(R2)
+
+	MOVD $·handlerPathBShimConvertSliceByteToString(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1192(R2)
+
+	MOVD $·handlerPathBShimUnboxSliceFloat64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1240(R2)
+
+	MOVD $·handlerPathBShimUnboxSliceInt64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1248(R2)
+
+	MOVD $·handlerPathBShimUnboxSliceString(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1256(R2)
+
+	MOVD $·handlerPathBShimUnboxSliceBool(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1264(R2)
+
+	MOVD $·handlerPathBShimUnboxSliceUint64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1272(R2)
+
+	MOVD $·handlerPathBShimUnboxSliceByte(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1280(R2)
+
+	MOVD $·handlerPathBShimBoxSliceFloat64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1288(R2)
+
+	MOVD $·handlerPathBShimBoxSliceString(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1296(R2)
+
+	MOVD $·handlerPathBShimBoxSliceBool(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1304(R2)
+
+	MOVD $·handlerPathBShimBoxSliceUint64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1312(R2)
+
+	MOVD $·handlerPathBShimGetStructFieldSliceInt64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1520(R2)
+
+	MOVD $·handlerPathBShimGetStructFieldSliceFloat64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1528(R2)
+
+	MOVD $·handlerPathBShimGetStructFieldSliceUint64(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1536(R2)
+
+	MOVD $·handlerPathBShimGetStructFieldSliceString(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1544(R2)
+
+	MOVD $·handlerPathBShimGetStructFieldSliceBool(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1552(R2)
+
+	MOVD $·handlerPathBShimGetStructFieldSliceByte(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1560(R2)
+
+	MOVD $·handlerPathBShimMakeSliceHeap(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1664(R2)
+
+	MOVD $·handlerPathBShimTypeSwitchJump(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1672(R2)
+
+	MOVD $·handlerPathBShimAddressField(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1712(R2)
+
+	MOVD $·handlerPathBShimGetStructFieldUint64Run(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1744(R2)
+
+	MOVD $·handlerPathBShimGetElementFieldUint64Run(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 1792(R2)
+
+	MOVD $·handlerPathBShimMakeMap(SB), R1
+	MOVD $·tier2JumpTable(SB), R2
+	MOVD R1, 96(R2)
+
+	MOVD $·handlerPathBShimSynchroniseClosureCapturedVariables(SB), R1
 	MOVD $·tier2JumpTable(SB), R2
 	MOVD R1, 120(R2)
 
@@ -1131,7 +1353,7 @@ TEXT ·pathBFallback(SB), NOSPLIT|NOFRAME, $0
 	MOVD R20, CTX_EXIT_PC(R19)
 	RET
 
-// handlerCallExit exits to Go with EXIT_CALL for dedicated OpCall handling.
+// handlerCallExit exits to Go with EXIT_CALL for dedicated isa.SubOpCall handling.
 TEXT ·handlerCallExit(SB), NOSPLIT|NOFRAME, $0
 	SUB  $1, R20, R20
 	MOVD R20, CTX_PC(R19)
@@ -1140,7 +1362,7 @@ TEXT ·handlerCallExit(SB), NOSPLIT|NOFRAME, $0
 	MOVD R20, CTX_EXIT_PC(R19)
 	RET
 
-// handlerReturnExit exits to Go with EXIT_RETURN for dedicated OpReturn handling.
+// handlerReturnExit exits to Go with EXIT_RETURN for dedicated isa.SubOpTier2Return handling.
 TEXT ·handlerReturnExit(SB), NOSPLIT|NOFRAME, $0
 	SUB  $1, R20, R20
 	MOVD R20, CTX_PC(R19)
@@ -1149,7 +1371,7 @@ TEXT ·handlerReturnExit(SB), NOSPLIT|NOFRAME, $0
 	MOVD R20, CTX_EXIT_PC(R19)
 	RET
 
-// handlerReturnVoidExit exits to Go with EXIT_RETURN_VOID for dedicated OpReturnVoid handling.
+// handlerReturnVoidExit exits to Go with EXIT_RETURN_VOID for dedicated isa.SubOpTier3ReturnVoid handling.
 TEXT ·handlerReturnVoidExit(SB), NOSPLIT|NOFRAME, $0
 	SUB  $1, R20, R20
 	MOVD R20, CTX_PC(R19)
@@ -1158,7 +1380,7 @@ TEXT ·handlerReturnVoidExit(SB), NOSPLIT|NOFRAME, $0
 	MOVD R20, CTX_EXIT_PC(R19)
 	RET
 
-// handlerTailCallExit exits to Go with EXIT_TAIL_CALL for dedicated OpTailCall handling.
+// handlerTailCallExit exits to Go with EXIT_TAIL_CALL for dedicated isa.SubOpTailCall handling.
 TEXT ·handlerTailCallExit(SB), NOSPLIT|NOFRAME, $0
 	SUB  $1, R20, R20
 	MOVD R20, CTX_PC(R19)
