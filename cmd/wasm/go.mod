@@ -5,8 +5,8 @@ go 1.27.0
 require (
 	github.com/stretchr/testify v1.12.1
 	go.uber.org/goleak v1.3.0
-	pipit.sh/pipit v0.0.0
-	pipit.sh/pipit/sdk/stdlib v0.0.0
+	pipit.sh/pipit v0.0.0-alpha.9
+	pipit.sh/pipit/sdk/stdlib v0.0.0-alpha.9
 )
 
 require (
