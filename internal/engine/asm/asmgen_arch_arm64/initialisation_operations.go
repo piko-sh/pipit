@@ -21,6 +21,8 @@ package asmgen_arch_arm64
 import (
 	"strconv"
 
+	"pipit.sh/pipit/internal/engine/asm/asmports"
+
 	"piko.sh/asmgen"
 	"piko.sh/asmgen/asmarm64"
 )
@@ -37,7 +39,7 @@ type arm64InitOps struct {
 }
 
 var (
-	_ asmgen.InitialisationOperationsPort = (*arm64InitOps)(nil)
+	_ asmports.InitialisationOperationsPort = (*arm64InitOps)(nil)
 )
 
 // EmitInitJumpTable emits the full initJumpTable function body, filling all 256 entries

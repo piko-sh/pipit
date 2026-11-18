@@ -21,6 +21,7 @@ package asmgen_arch_amd64
 import (
 	"piko.sh/asmgen"
 	"piko.sh/asmgen/asmamd64"
+	"pipit.sh/pipit/internal/engine/asm/asmports"
 )
 
 const (
@@ -36,7 +37,7 @@ const (
 type amd64StringOps struct{}
 
 var (
-	_ asmgen.StringOperationsPort = (*amd64StringOps)(nil)
+	_ asmports.StringOperationsPort = (*amd64StringOps)(nil)
 )
 
 // EmitLengthString emits the body for handlerLengthString.

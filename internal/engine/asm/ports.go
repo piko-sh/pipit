@@ -20,6 +20,7 @@ package asm
 
 import (
 	"piko.sh/asmgen"
+	"pipit.sh/pipit/internal/engine/asm/asmports"
 
 	archamd64 "pipit.sh/pipit/internal/engine/asm/asmgen_arch_amd64"
 	archarm64 "pipit.sh/pipit/internal/engine/asm/asmgen_arch_arm64"
@@ -48,11 +49,6 @@ type AsmHandlerJumpTableEntry struct {
 // the pipit bytecode dispatch loop.
 type BytecodeArchitecturePort interface {
 	asmgen.ArchitecturePort
-
-	// Convention returns the calling convention for this architecture.
-	//
-	// Returns RegisterConvention which describes the register layout.
-	Convention() asmgen.RegisterConvention
 
 	// ScratchRegisters returns the available general-purpose scratch registers.
 	//
@@ -213,7 +209,7 @@ type BytecodeArchitecturePort interface {
 	// Takes indexRegister (string) which holds the slot index.
 	//
 	// Takes destinationRegister (string) which receives the loaded value.
-	LoadFromBank(emitter *asmgen.Emitter, bank asmgen.RegisterBank, indexRegister, destinationRegister string)
+	LoadFromBank(emitter *asmgen.Emitter, bank asmports.RegisterBank, indexRegister, destinationRegister string)
 
 	// StoreToBank emits instructions to store a value from the source register into the
 	// specified register bank at the given index.
@@ -225,7 +221,7 @@ type BytecodeArchitecturePort interface {
 	// Takes sourceRegister (string) which holds the value to store.
 	//
 	// Takes indexRegister (string) which holds the slot index.
-	StoreToBank(emitter *asmgen.Emitter, bank asmgen.RegisterBank, sourceRegister, indexRegister string)
+	StoreToBank(emitter *asmgen.Emitter, bank asmports.RegisterBank, sourceRegister, indexRegister string)
 
 	// LoadConstant emits instructions to load a constant from the specified constant pool at
 	// the given index into the destination register.
@@ -237,7 +233,7 @@ type BytecodeArchitecturePort interface {
 	// Takes indexRegister (string) which holds the pool index.
 	//
 	// Takes destinationRegister (string) which receives the loaded constant.
-	LoadConstant(emitter *asmgen.Emitter, bank asmgen.RegisterBank, indexRegister, destinationRegister string)
+	LoadConstant(emitter *asmgen.Emitter, bank asmports.RegisterBank, indexRegister, destinationRegister string)
 
 	// LoadFloatConstantToBank emits instructions to load a float constant from the constant
 	// pool and store it directly into the float register bank.
@@ -1220,19 +1216,19 @@ type BytecodeArchitecturePort interface {
 	// methods.
 	//
 	// Returns StringOperationsPort which is the arch-specific string operations port.
-	StringOperations() asmgen.StringOperationsPort
+	StringOperations() asmports.StringOperationsPort
 
 	// InitialisationOperations returns the port that provides jump table setup and dispatch
 	// loop initialisation methods.
 	//
 	// Returns InitialisationOperationsPort which is the arch-specific initialisation port.
-	InitialisationOperations() asmgen.InitialisationOperationsPort
+	InitialisationOperations() asmports.InitialisationOperationsPort
 
 	// InlineCallOperations returns the port that provides inline call and return assembly
 	// emission methods.
 	//
 	// Returns InlineCallOperationsPort which is the arch-specific inline call port.
-	InlineCallOperations() asmgen.InlineCallOperationsPort
+	InlineCallOperations() asmports.InlineCallOperationsPort
 
 	// EmitCallMethodInline emits the body of handlerCallMethod, the inline call handler
 	// variant for SubOpCallMethod that selects the callee entry by the receiver's type word

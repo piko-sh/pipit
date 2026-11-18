@@ -20,6 +20,7 @@ package asm
 
 import (
 	"piko.sh/asmgen"
+	"pipit.sh/pipit/internal/engine/asm/asmports"
 )
 
 const (
@@ -186,7 +187,7 @@ func handlerJumpIfTrue() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
 			architecture.ExtractA(emitter, scratches[0])
-			architecture.LoadFromBank(emitter, asmgen.RegisterBankInteger, scratches[0], scratches[1])
+			architecture.LoadFromBank(emitter, asmports.RegisterBankInteger, scratches[0], scratches[1])
 			architecture.TestAndBranch(emitter, scratches[1], "ZERO", labelSkip)
 			architecture.ExtractSignedBC(emitter, scratches[0])
 			architecture.AddToProgramCounter(emitter, scratches[0])
@@ -209,7 +210,7 @@ func handlerJumpIfFalse() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			scratches := architecture.ScratchRegisters()
 			architecture.ExtractA(emitter, scratches[0])
-			architecture.LoadFromBank(emitter, asmgen.RegisterBankInteger, scratches[0], scratches[1])
+			architecture.LoadFromBank(emitter, asmports.RegisterBankInteger, scratches[0], scratches[1])
 			architecture.TestAndBranch(emitter, scratches[1], "NONZERO", labelSkip)
 			architecture.ExtractSignedBC(emitter, scratches[0])
 			architecture.AddToProgramCounter(emitter, scratches[0])

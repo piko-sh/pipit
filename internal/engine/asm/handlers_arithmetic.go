@@ -20,6 +20,7 @@ package asm
 
 import (
 	"piko.sh/asmgen"
+	"pipit.sh/pipit/internal/engine/asm/asmports"
 )
 
 const (
@@ -94,8 +95,8 @@ func handlerLoadInt64Constant() asmgen.HandlerDefinition[BytecodeArchitecturePor
 			architecture.ExtractA(emitter, scratches[0])
 			architecture.ExtractWideBC(emitter, scratches[1])
 			temp := architecture.DataTemporary(dataTempScratch0)
-			architecture.LoadConstant(emitter, asmgen.RegisterBankInteger, scratches[1], temp)
-			architecture.StoreToBank(emitter, asmgen.RegisterBankInteger, temp, scratches[0])
+			architecture.LoadConstant(emitter, asmports.RegisterBankInteger, scratches[1], temp)
+			architecture.StoreToBank(emitter, asmports.RegisterBankInteger, temp, scratches[0])
 			architecture.DispatchNext(emitter)
 		},
 	}
@@ -265,7 +266,7 @@ func handlerLoadBoolImmediateAsInt64() asmgen.HandlerDefinition[BytecodeArchitec
 			scratches := architecture.ScratchRegisters()
 			architecture.ExtractB(emitter, scratches[0])
 			architecture.ExtractC(emitter, scratches[1])
-			architecture.StoreToBank(emitter, asmgen.RegisterBankInteger, scratches[1], scratches[0])
+			architecture.StoreToBank(emitter, asmports.RegisterBankInteger, scratches[1], scratches[0])
 			architecture.DispatchNext(emitter)
 		},
 	}
@@ -283,7 +284,7 @@ func handlerLoadInt64Immediate() asmgen.HandlerDefinition[BytecodeArchitecturePo
 			scratches := architecture.ScratchRegisters()
 			architecture.ExtractB(emitter, scratches[0])
 			architecture.ExtractC(emitter, scratches[1])
-			architecture.StoreToBank(emitter, asmgen.RegisterBankInteger, scratches[1], scratches[0])
+			architecture.StoreToBank(emitter, asmports.RegisterBankInteger, scratches[1], scratches[0])
 			architecture.DispatchNext(emitter)
 		},
 	}

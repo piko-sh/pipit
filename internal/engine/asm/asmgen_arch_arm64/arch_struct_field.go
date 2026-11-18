@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"strings"
 
+	"pipit.sh/pipit/internal/engine/asm/asmports"
+
 	"piko.sh/asmgen"
 	"piko.sh/asmgen/asmarm64"
 	core "piko.sh/asmgen/asmgen_arch_arm64"
@@ -65,10 +67,10 @@ func (*BytecodeARM64Arch) LoadTypedSliceHeaderLength(e *asmgen.Emitter, contextO
 // LoadFromBank implements BytecodeArchPort.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-// Takes bank (asmgen.RegisterBank) which selects the register bank to load from.
+// Takes bank (asmports.RegisterBank) which selects the register bank to load from.
 // Takes indexRegister (string) which holds the register index.
 // Takes destinationRegister (string) which receives the loaded value.
-func (*BytecodeARM64Arch) LoadFromBank(e *asmgen.Emitter, bank asmgen.RegisterBank, indexRegister, destinationRegister string) {
+func (*BytecodeARM64Arch) LoadFromBank(e *asmgen.Emitter, bank asmports.RegisterBank, indexRegister, destinationRegister string) {
 	base, mnemonic := bankAccess(bank)
 	shift := bankShift(bank)
 	inst5(e, mnemonic, "("+base+")("+indexRegister+"<<"+shift+"), "+destinationRegister)
@@ -77,10 +79,10 @@ func (*BytecodeARM64Arch) LoadFromBank(e *asmgen.Emitter, bank asmgen.RegisterBa
 // StoreToBank implements BytecodeArchPort.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-// Takes bank (asmgen.RegisterBank) which selects the register bank to store to.
+// Takes bank (asmports.RegisterBank) which selects the register bank to store to.
 // Takes sourceRegister (string) which holds the value to store.
 // Takes indexRegister (string) which holds the register index.
-func (*BytecodeARM64Arch) StoreToBank(e *asmgen.Emitter, bank asmgen.RegisterBank, sourceRegister, indexRegister string) {
+func (*BytecodeARM64Arch) StoreToBank(e *asmgen.Emitter, bank asmports.RegisterBank, sourceRegister, indexRegister string) {
 	base, mnemonic := bankAccess(bank)
 	shift := bankShift(bank)
 	inst5(e, mnemonic, sourceRegister+", ("+base+")("+indexRegister+"<<"+shift+")")
@@ -94,14 +96,14 @@ func (*BytecodeARM64Arch) StoreToBank(e *asmgen.Emitter, bank asmgen.RegisterBan
 // generate-asmgen-validate compares byte for byte.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-// Takes bank (asmgen.RegisterBank) which selects the constant pool to load from.
+// Takes bank (asmports.RegisterBank) which selects the constant pool to load from.
 // Takes indexRegister (string) which holds the constant index.
 // Takes destinationRegister (string) which receives the loaded value.
-func (*BytecodeARM64Arch) LoadConstant(e *asmgen.Emitter, bank asmgen.RegisterBank, indexRegister, destinationRegister string) {
+func (*BytecodeARM64Arch) LoadConstant(e *asmgen.Emitter, bank asmports.RegisterBank, indexRegister, destinationRegister string) {
 	switch bank {
-	case asmgen.RegisterBankInteger:
+	case asmports.RegisterBankInteger:
 		inst5(e, asmarm64.OperationMove64Bits, "(R26)("+indexRegister+"<<3), "+destinationRegister)
-	case asmgen.RegisterBankFloat:
+	case asmports.RegisterBankFloat:
 		inst5(e, asmarm64.OperationMove64Bits, "CTX_FLT_CONSTS_BASE(R19), "+destinationRegister)
 	default:
 	}
@@ -958,21 +960,21 @@ func (*BytecodeARM64Arch) InitialiseJumpTableEntry(e *asmgen.Emitter, handlerSym
 
 // StringOperations implements BytecodeArchPort.
 //
-// Returns asmgen.StringOperationsPort which provides the arm64 string operation emitters.
-func (*BytecodeARM64Arch) StringOperations() asmgen.StringOperationsPort { return &arm64StringOps{} }
+// Returns asmports.StringOperationsPort which provides the arm64 string operation emitters.
+func (*BytecodeARM64Arch) StringOperations() asmports.StringOperationsPort { return &arm64StringOps{} }
 
 // InitialisationOperations implements BytecodeArchPort.
 //
-// Returns asmgen.InitialisationOperationsPort which provides the arm64 initialisation
+// Returns asmports.InitialisationOperationsPort which provides the arm64 initialisation
 // emitters.
-func (a *BytecodeARM64Arch) InitialisationOperations() asmgen.InitialisationOperationsPort {
+func (a *BytecodeARM64Arch) InitialisationOperations() asmports.InitialisationOperationsPort {
 	return &arm64InitOps{entries: a.jumpTableEntries}
 }
 
 // InlineCallOperations implements BytecodeArchPort.
 //
-// Returns asmgen.InlineCallOperationsPort which provides the arm64 inline call emitters.
-func (*BytecodeARM64Arch) InlineCallOperations() asmgen.InlineCallOperationsPort {
+// Returns asmports.InlineCallOperationsPort which provides the arm64 inline call emitters.
+func (*BytecodeARM64Arch) InlineCallOperations() asmports.InlineCallOperationsPort {
 	return &arm64InlineCallOps{}
 }
 
@@ -1432,15 +1434,15 @@ func shiftLiteralARM64(shift uint8) string {
 // than nothing. Any mistake here changes emitted assembly, which make
 // generate-asmgen-validate compares byte for byte.
 //
-// Takes bank (asmgen.RegisterBank) which selects the register bank.
+// Takes bank (asmports.RegisterBank) which selects the register bank.
 //
 // Returns base (string) which is the base register name.
 // Returns mnemonic (string) which is the load/store instruction mnemonic.
-func bankAccess(bank asmgen.RegisterBank) (base, mnemonic string) {
+func bankAccess(bank asmports.RegisterBank) (base, mnemonic string) {
 	switch bank {
-	case asmgen.RegisterBankFloat:
+	case asmports.RegisterBankFloat:
 		return "R24", asmarm64.OperationFloatMove64Bits
-	case asmgen.RegisterBankString, asmgen.RegisterBankBoolean, asmgen.RegisterBankUnsignedInteger:
+	case asmports.RegisterBankString, asmports.RegisterBankBoolean, asmports.RegisterBankUnsignedInteger:
 		return "", asmarm64.OperationMove64Bits
 	default:
 		return "R23", asmarm64.OperationMove64Bits
@@ -1449,12 +1451,12 @@ func bankAccess(bank asmgen.RegisterBank) (base, mnemonic string) {
 
 // bankShift returns the shift amount string for indexing into a register bank.
 //
-// Takes bank (asmgen.RegisterBank) which selects the register bank.
+// Takes bank (asmports.RegisterBank) which selects the register bank.
 //
 // Returns string which is the shift amount for address computation.
-func bankShift(bank asmgen.RegisterBank) string {
+func bankShift(bank asmports.RegisterBank) string {
 	switch bank {
-	case asmgen.RegisterBankString:
+	case asmports.RegisterBankString:
 		return "4"
 	default:
 		return "3"

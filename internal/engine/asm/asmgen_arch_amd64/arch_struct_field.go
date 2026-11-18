@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"strings"
 
+	"pipit.sh/pipit/internal/engine/asm/asmports"
+
 	"piko.sh/asmgen"
 	"piko.sh/asmgen/asmamd64"
 	core "piko.sh/asmgen/asmgen_arch_amd64"
@@ -227,10 +229,10 @@ func (*BytecodeAMD64Arch) LoadTypedSliceHeaderLength(e *asmgen.Emitter, contextO
 // LoadFromBank implements BytecodeArchPort.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-// Takes bank (asmgen.RegisterBank) which selects the register bank.
+// Takes bank (asmports.RegisterBank) which selects the register bank.
 // Takes indexRegister (string) which holds the register index.
 // Takes destinationRegister (string) which receives the loaded value.
-func (*BytecodeAMD64Arch) LoadFromBank(e *asmgen.Emitter, bank asmgen.RegisterBank, indexRegister, destinationRegister string) {
+func (*BytecodeAMD64Arch) LoadFromBank(e *asmgen.Emitter, bank asmports.RegisterBank, indexRegister, destinationRegister string) {
 	base, mnemonic := bankAccess(bank)
 	inst(e, mnemonic, "("+base+")("+indexRegister+"*8), "+destinationRegister)
 }
@@ -238,10 +240,10 @@ func (*BytecodeAMD64Arch) LoadFromBank(e *asmgen.Emitter, bank asmgen.RegisterBa
 // StoreToBank implements BytecodeArchPort.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-// Takes bank (asmgen.RegisterBank) which selects the register bank.
+// Takes bank (asmports.RegisterBank) which selects the register bank.
 // Takes sourceRegister (string) which holds the value to store.
 // Takes indexRegister (string) which holds the destination index.
-func (*BytecodeAMD64Arch) StoreToBank(e *asmgen.Emitter, bank asmgen.RegisterBank, sourceRegister, indexRegister string) {
+func (*BytecodeAMD64Arch) StoreToBank(e *asmgen.Emitter, bank asmports.RegisterBank, sourceRegister, indexRegister string) {
 	base, mnemonic := bankAccess(bank)
 	inst(e, mnemonic, sourceRegister+", ("+base+")("+indexRegister+"*8)")
 }
@@ -254,14 +256,14 @@ func (*BytecodeAMD64Arch) StoreToBank(e *asmgen.Emitter, bank asmgen.RegisterBan
 // generate-asmgen-validate compares byte for byte.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-// Takes bank (asmgen.RegisterBank) which selects the constant pool bank.
+// Takes bank (asmports.RegisterBank) which selects the constant pool bank.
 // Takes indexRegister (string) which holds the constant index.
 // Takes destinationRegister (string) which receives the loaded constant.
-func (*BytecodeAMD64Arch) LoadConstant(e *asmgen.Emitter, bank asmgen.RegisterBank, indexRegister, destinationRegister string) {
+func (*BytecodeAMD64Arch) LoadConstant(e *asmgen.Emitter, bank asmports.RegisterBank, indexRegister, destinationRegister string) {
 	switch bank {
-	case asmgen.RegisterBankInteger:
+	case asmports.RegisterBankInteger:
 		inst(e, asmamd64.OperationMove64Bits, "(R11)("+indexRegister+"*8), "+destinationRegister)
-	case asmgen.RegisterBankFloat:
+	case asmports.RegisterBankFloat:
 		inst(e, asmamd64.OperationMove64Bits, "CTX_FLT_CONSTS_BASE(R15), "+destinationRegister)
 	default:
 	}
@@ -1005,21 +1007,21 @@ func (*BytecodeAMD64Arch) InitialiseJumpTableEntry(e *asmgen.Emitter, handlerSym
 
 // StringOperations implements BytecodeArchPort.
 //
-// Returns asmgen.StringOperationsPort which provides string operation emitters.
-func (*BytecodeAMD64Arch) StringOperations() asmgen.StringOperationsPort { return &amd64StringOps{} }
+// Returns asmports.StringOperationsPort which provides string operation emitters.
+func (*BytecodeAMD64Arch) StringOperations() asmports.StringOperationsPort { return &amd64StringOps{} }
 
 // InitialisationOperations implements BytecodeArchPort.
 //
-// Returns asmgen.InitialisationOperationsPort which provides initialisation operation
+// Returns asmports.InitialisationOperationsPort which provides initialisation operation
 // emitters.
-func (a *BytecodeAMD64Arch) InitialisationOperations() asmgen.InitialisationOperationsPort {
+func (a *BytecodeAMD64Arch) InitialisationOperations() asmports.InitialisationOperationsPort {
 	return &amd64InitOps{entries: a.jumpTableEntries}
 }
 
 // InlineCallOperations implements BytecodeArchPort.
 //
-// Returns asmgen.InlineCallOperationsPort which provides inline call operation emitters.
-func (*BytecodeAMD64Arch) InlineCallOperations() asmgen.InlineCallOperationsPort {
+// Returns asmports.InlineCallOperationsPort which provides inline call operation emitters.
+func (*BytecodeAMD64Arch) InlineCallOperations() asmports.InlineCallOperationsPort {
 	return &amd64InlineCallOps{}
 }
 
@@ -1526,15 +1528,15 @@ func emitTypedRangeNextByteBodyAndEpilogue(e *asmgen.Emitter) {
 // than nothing. Any mistake here changes emitted assembly, which make
 // generate-asmgen-validate compares byte for byte.
 //
-// Takes bank (asmgen.RegisterBank) which selects the register bank.
+// Takes bank (asmports.RegisterBank) which selects the register bank.
 //
 // Returns string which is the base register name.
 // Returns string which is the load/store mnemonic.
-func bankAccess(bank asmgen.RegisterBank) (base, mnemonic string) {
+func bankAccess(bank asmports.RegisterBank) (base, mnemonic string) {
 	switch bank {
-	case asmgen.RegisterBankFloat:
+	case asmports.RegisterBankFloat:
 		return "R9", asmamd64.OperationMoveScalarDouble
-	case asmgen.RegisterBankString, asmgen.RegisterBankBoolean, asmgen.RegisterBankUnsignedInteger:
+	case asmports.RegisterBankString, asmports.RegisterBankBoolean, asmports.RegisterBankUnsignedInteger:
 		return "", asmamd64.OperationMove64Bits
 	default:
 		return "R8", asmamd64.OperationMove64Bits

@@ -21,6 +21,7 @@ package asmgen_arch_arm64
 import (
 	"piko.sh/asmgen"
 	"piko.sh/asmgen/asmarm64"
+	"pipit.sh/pipit/internal/engine/asm/asmports"
 )
 
 const (
@@ -37,7 +38,7 @@ const (
 type arm64StringOps struct{}
 
 var (
-	_ asmgen.StringOperationsPort = (*arm64StringOps)(nil)
+	_ asmports.StringOperationsPort = (*arm64StringOps)(nil)
 )
 
 // EmitLengthString emits the LENGTH_STRING handler body, loading the string header length

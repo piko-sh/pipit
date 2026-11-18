@@ -21,6 +21,7 @@ package asmgen_arch_amd64
 import (
 	"piko.sh/asmgen"
 	"piko.sh/asmgen/asmamd64"
+	"pipit.sh/pipit/internal/engine/asm/asmports"
 )
 
 const (
@@ -58,7 +59,7 @@ const (
 type amd64InlineCallOps struct{}
 
 var (
-	_ asmgen.InlineCallOperationsPort = (*amd64InlineCallOps)(nil)
+	_ asmports.InlineCallOperationsPort = (*amd64InlineCallOps)(nil)
 )
 
 // EmitTailCallInline emits the top-level body of handlerTailCall. The handler is NOSPLIT

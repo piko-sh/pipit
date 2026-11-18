@@ -21,6 +21,7 @@ package asmgen_arch_arm64
 import (
 	"piko.sh/asmgen"
 	"piko.sh/asmgen/asmarm64"
+	"pipit.sh/pipit/internal/engine/asm/asmports"
 )
 
 const (
@@ -58,7 +59,7 @@ const (
 type arm64InlineCallOps struct{}
 
 var (
-	_ asmgen.InlineCallOperationsPort = (*arm64InlineCallOps)(nil)
+	_ asmports.InlineCallOperationsPort = (*arm64InlineCallOps)(nil)
 )
 
 // EmitTailCallInline emits the arm64 top-level body of handlerTailCall.

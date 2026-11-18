@@ -162,10 +162,14 @@ func matchesHostGoMod(dir string) bool {
 //
 // Returns error when file generation or writing fails.
 func runGeneration() error {
-	writer := asmgen.NewDiskWriter()
+	fileSystem, err := asmgen.NewDiskFileSystem(".")
+	if err != nil {
+		return fmt.Errorf("opening project root: %w", err)
+	}
+	defer func() { _ = fileSystem.Close() }()
 
-	err := asmgen.GenerateFiles(
-		writer,
+	err = asmgen.GenerateFiles(
+		fileSystem,
 		architecturePorts(),
 		engineasm.FileGroups(),
 		interpHeaderFiles(),
@@ -185,7 +189,14 @@ func runGeneration() error {
 //
 // Returns error when validation fails or mismatches are found.
 func runValidation() error {
+	fileSystem, err := asmgen.NewDiskFileSystem(".")
+	if err != nil {
+		return fmt.Errorf("opening project root: %w", err)
+	}
+	defer func() { _ = fileSystem.Close() }()
+
 	interpMismatches, err := asmgen.GenerateAndValidate(
+		fileSystem,
 		architecturePorts(),
 		engineasm.FileGroups(),
 		interpHeaderFiles(),
@@ -203,8 +214,8 @@ func runValidation() error {
 	}
 
 	for _, m := range allMismatches {
-		fmt.Fprintf(os.Stderr, "mismatch in %s at line %d:\n  expected: %q\n  actual:   %q\n",
-			m.File, m.Line, m.Expected, m.Actual)
+		fmt.Fprintf(os.Stderr, "mismatch in %s at line %d:\n  on disk:   %q\n  generated: %q\n",
+			m.File, m.Line, m.OnDisk, m.Generated)
 	}
 
 	return fmt.Errorf("%d file(s) have mismatches", len(allMismatches))

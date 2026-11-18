@@ -20,6 +20,7 @@ package asm
 
 import (
 	"piko.sh/asmgen"
+	"pipit.sh/pipit/internal/engine/asm/asmports"
 )
 
 // contextBaseBank identifies which context-loaded bank a context-based move handler
@@ -42,7 +43,7 @@ const (
 // for this group.
 func tier1MoveHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		moveHandler("handlerMoveInt64", asmgen.RegisterBankInteger),
+		moveHandler("handlerMoveInt64", asmports.RegisterBankInteger),
 		moveHandlerFloat("handlerMoveFloat64"),
 		moveHandlerContextBased("handlerMoveBool", contextBaseBool),
 		moveHandlerContextBased("handlerMoveUint64", contextBaseUint),
@@ -86,7 +87,7 @@ func moveHandlerString(name string) asmgen.HandlerDefinition[BytecodeArchitectur
 // Takes bank (RegisterBank) which is the register bank to move within.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func moveHandler(name string, bank asmgen.RegisterBank) asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func moveHandler(name string, bank asmports.RegisterBank) asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		Name:      name,
 		Comment:   name + " copies the value at bank[C] into bank[B] for the tier-1 register-move sub-op.",
@@ -120,8 +121,8 @@ func moveHandlerFloat(name string) asmgen.HandlerDefinition[BytecodeArchitecture
 			floatScratches := architecture.FloatScratchRegisters()
 			architecture.ExtractB(emitter, scratches[0])
 			architecture.ExtractC(emitter, scratches[1])
-			architecture.LoadFromBank(emitter, asmgen.RegisterBankFloat, scratches[1], floatScratches[0])
-			architecture.StoreToBank(emitter, asmgen.RegisterBankFloat, floatScratches[0], scratches[0])
+			architecture.LoadFromBank(emitter, asmports.RegisterBankFloat, scratches[1], floatScratches[0])
+			architecture.StoreToBank(emitter, asmports.RegisterBankFloat, floatScratches[0], scratches[0])
 			architecture.DispatchNext(emitter)
 		},
 	}

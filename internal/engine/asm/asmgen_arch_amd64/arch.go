@@ -27,6 +27,10 @@ import (
 )
 
 const (
+	// instructionDivByZeroExitMacro is the DIV_BY_ZERO_EXIT() macro invocation that
+	// stores the divide-by-zero exit reason and returns to Go.
+	instructionDivByZeroExitMacro = "DIV_BY_ZERO_EXIT()"
+
 	// mnemonicColumnWidth is the standard column alignment for amd64 Plan 9 assembly
 	// mnemonics.
 	mnemonicColumnWidth = 8
@@ -113,7 +117,7 @@ func (*BytecodeAMD64Arch) DispatchNext(e *asmgen.Emitter) { e.Instruction(macroD
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 func (*BytecodeAMD64Arch) DivisionByZeroExit(e *asmgen.Emitter) {
-	e.Instruction(asmamd64.InstructionDivByZeroExitMacro)
+	e.Instruction(instructionDivByZeroExitMacro)
 }
 
 // EmitTruncateToWidth implements BytecodeArchitecturePort.

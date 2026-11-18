@@ -21,6 +21,8 @@ package asmgen_arch_amd64
 import (
 	"testing"
 
+	"pipit.sh/pipit/internal/engine/asm/asmports"
+
 	"github.com/stretchr/testify/assert"
 
 	"piko.sh/asmgen"
@@ -338,7 +340,7 @@ func TestLoadFromBank_Integer(t *testing.T) {
 
 	arch := New()
 	e := asmgen.NewEmitter()
-	arch.LoadFromBank(e, asmgen.RegisterBankInteger, "AX", "SI")
+	arch.LoadFromBank(e, asmports.RegisterBankInteger, "AX", "SI")
 
 	assertContainsAll(t, e.String(), "(R8)")
 }
@@ -348,7 +350,7 @@ func TestLoadFromBank_Float(t *testing.T) {
 
 	arch := New()
 	e := asmgen.NewEmitter()
-	arch.LoadFromBank(e, asmgen.RegisterBankFloat, "AX", "X0")
+	arch.LoadFromBank(e, asmports.RegisterBankFloat, "AX", "X0")
 
 	assertContainsAll(t, e.String(), "(R9)", "MOVSD")
 }
@@ -358,7 +360,7 @@ func TestStoreToBank(t *testing.T) {
 
 	arch := New()
 	e := asmgen.NewEmitter()
-	arch.StoreToBank(e, asmgen.RegisterBankInteger, "SI", "AX")
+	arch.StoreToBank(e, asmports.RegisterBankInteger, "SI", "AX")
 
 	assertContainsAll(t, e.String(), "(R8)")
 }

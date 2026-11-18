@@ -21,6 +21,8 @@ package asmgen_arch_amd64
 import (
 	"fmt"
 
+	"pipit.sh/pipit/internal/engine/asm/asmports"
+
 	"piko.sh/asmgen"
 	"piko.sh/asmgen/asmamd64"
 )
@@ -33,7 +35,7 @@ type amd64InitOps struct {
 }
 
 var (
-	_ asmgen.InitialisationOperationsPort = (*amd64InitOps)(nil)
+	_ asmports.InitialisationOperationsPort = (*amd64InitOps)(nil)
 )
 
 // EmitInitJumpTable emits the body of initJumpTable, filling every slot with the fallback

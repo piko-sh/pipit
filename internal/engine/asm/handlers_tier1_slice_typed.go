@@ -20,6 +20,7 @@ package asm
 
 import (
 	"piko.sh/asmgen"
+	"pipit.sh/pipit/internal/engine/asm/asmports"
 )
 
 const (
@@ -589,7 +590,7 @@ func typedSliceLenHandler(name, comment, contextOffset string) asmgen.HandlerDef
 			architecture.ExtractC(emitter, scratches[1])
 			temp := architecture.DataTemporary(dataTempScratch0)
 			architecture.LoadTypedSliceHeaderLength(emitter, contextOffset, scratches[1], temp)
-			architecture.StoreToBank(emitter, asmgen.RegisterBankInteger, temp, scratches[0])
+			architecture.StoreToBank(emitter, asmports.RegisterBankInteger, temp, scratches[0])
 			architecture.DispatchNext(emitter)
 		},
 	}

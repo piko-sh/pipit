@@ -20,6 +20,7 @@ package asm
 
 import (
 	"piko.sh/asmgen"
+	"pipit.sh/pipit/internal/engine/asm/asmports"
 )
 
 // bankCrossing names a conversion that moves a value from one scalar bank to another
@@ -95,15 +96,15 @@ func bankCrossingHandler(name string, crossing bankCrossing, comment string) asm
 			switch crossing {
 			case uintBankIntoIntBank:
 				architecture.LoadFromUintBank(emitter, source, value, base)
-				architecture.StoreToBank(emitter, asmgen.RegisterBankInteger, value, destination)
+				architecture.StoreToBank(emitter, asmports.RegisterBankInteger, value, destination)
 			case intBankIntoUintBank:
-				architecture.LoadFromBank(emitter, asmgen.RegisterBankInteger, source, value)
+				architecture.LoadFromBank(emitter, asmports.RegisterBankInteger, source, value)
 				architecture.StoreToUintBank(emitter, value, destination, base)
 			case boolBankIntoIntBank:
 				architecture.LoadFromBoolBank(emitter, source, value, base)
-				architecture.StoreToBank(emitter, asmgen.RegisterBankInteger, value, destination)
+				architecture.StoreToBank(emitter, asmports.RegisterBankInteger, value, destination)
 			case intBankIntoBoolBank:
-				architecture.LoadFromBank(emitter, asmgen.RegisterBankInteger, source, base)
+				architecture.LoadFromBank(emitter, asmports.RegisterBankInteger, source, base)
 				architecture.LogicalSetNonZero(emitter, value, base)
 				architecture.StoreToBoolBank(emitter, value, destination, base)
 			}
